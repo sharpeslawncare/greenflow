@@ -42,7 +42,6 @@ export type ChemicalRecord = {
 
   packSize: number;
   packUnit: ChemicalUnit;
-
   costPerPack: number;
 
   currentStock: number;
@@ -67,6 +66,7 @@ export type ChemicalRecord = {
 
   walkingSpeedKph: number;
   flowRateLitresPerMinute: number;
+  sprayWidthMetres: number;
   pressureBar: number;
 
   ppeRequirements: string;
@@ -85,6 +85,26 @@ type NewChemicalInput = Partial<
     "id" | "createdAt" | "updatedAt"
   >
 >;
+
+type ApplicationCalculation = {
+  productRequired: number;
+  productUnit: ChemicalUnit;
+
+  calibratedWaterVolumePerHectare: number;
+  waterRequiredLitres: number;
+
+  tankFills: number;
+  productPerTank: number;
+
+  productCost: number;
+
+  calibrationUsed: boolean;
+};
+
+type StockDeductionResult = {
+  success: boolean;
+  message: string;
+};
 
 type ChemicalStoreValue = {
   chemicals: ChemicalRecord[];
@@ -109,20 +129,49 @@ type ChemicalStoreValue = {
   calculateApplication: (
     chemicalId: string,
     areaSquareMetres: number,
-  ) => {
-    productRequired: number;
-    productUnit: ChemicalUnit;
-    waterRequiredLitres: number;
-    tankFills: number;
-    productPerTank: number;
-    productCost: number;
-  } | null;
+  ) => ApplicationCalculation | null;
+
+  deductChemicalStock: (
+    chemicalId: string,
+    productAmount: number,
+    productUnit: ChemicalUnit,
+  ) => StockDeductionResult;
 
   restoreDemoChemicals: () => void;
 };
 
 const STORAGE_KEY =
   "greenflow-chemicals-v1";
+
+const DEFAULT_EQUIPMENT = {
+  nozzleColour: "Grey",
+  nozzleType: "Deflector Tip",
+
+  knapsackMake: "Berthoud",
+  knapsackModel: "Vermorel 2000",
+
+  tankCapacityLitres: 16,
+
+  walkingSpeedKph: 3,
+  flowRateLitresPerMinute: 1.4,
+  sprayWidthMetres: 1.3,
+  pressureBar: 1,
+};
+
+const EMPTY_EQUIPMENT = {
+  nozzleColour: "",
+  nozzleType: "",
+
+  knapsackMake: "",
+  knapsackModel: "",
+
+  tankCapacityLitres: 0,
+
+  walkingSpeedKph: 0,
+  flowRateLitresPerMinute: 0,
+  sprayWidthMetres: 0,
+  pressureBar: 0,
+};
 
 const demoChemicals: ChemicalRecord[] = [
   {
@@ -133,12 +182,12 @@ const demoChemicals: ChemicalRecord[] = [
     type: "Fertiliser",
 
     activeIngredients:
-      "Nitrogen 21%, Phosphate 5%, Potassium 6%",
+      "Nitrogen 21%, phosphate 5%, potassium 6%",
+
     registrationNumber: "",
 
     packSize: 25,
     packUnit: "kg",
-
     costPerPack: 42,
 
     currentStock: 10,
@@ -155,21 +204,14 @@ const demoChemicals: ChemicalRecord[] = [
     targetUse:
       "Seasonal lawn feeding and colour improvement.",
 
-    nozzleColour: "",
-    nozzleType: "",
-
-    knapsackMake: "",
-    knapsackModel: "",
-    tankCapacityLitres: 0,
-
-    walkingSpeedKph: 0,
-    flowRateLitresPerMinute: 0,
-    pressureBar: 0,
+    ...EMPTY_EQUIPMENT,
 
     ppeRequirements:
       "Gloves and suitable work clothing.",
+
     coshhNotes:
       "Avoid creating dust. Wash hands after handling.",
+
     environmentalWarnings:
       "Keep away from drains and watercourses.",
 
@@ -177,6 +219,7 @@ const demoChemicals: ChemicalRecord[] = [
 
     createdAt:
       "2026-08-03T12:00:00.000Z",
+
     updatedAt:
       "2026-08-03T12:00:00.000Z",
   },
@@ -190,11 +233,12 @@ const demoChemicals: ChemicalRecord[] = [
 
     activeIngredients:
       "Fluroxypyr, clopyralid and triclopyr",
-    registrationNumber: "MAPP 18092",
+
+    registrationNumber:
+      "MAPP 18092",
 
     packSize: 2,
     packUnit: "L",
-
     costPerPack: 128,
 
     currentStock: 2,
@@ -211,21 +255,14 @@ const demoChemicals: ChemicalRecord[] = [
     targetUse:
       "Selective control of broad-leaved weeds in established turf.",
 
-    nozzleColour: "Blue",
-    nozzleType: "Flat fan",
-
-    knapsackMake: "Cooper Pegler",
-    knapsackModel: "CP15 Evolution",
-    tankCapacityLitres: 15,
-
-    walkingSpeedKph: 4.8,
-    flowRateLitresPerMinute: 0.8,
-    pressureBar: 2,
+    ...DEFAULT_EQUIPMENT,
 
     ppeRequirements:
       "Chemical-resistant gloves, coveralls and suitable footwear.",
+
     coshhNotes:
-      "Follow the product label and COSHH assessment before use.",
+      "Follow the current product label and COSHH assessment before use.",
+
     environmentalWarnings:
       "Do not contaminate water. Observe all label buffer-zone requirements.",
 
@@ -233,6 +270,7 @@ const demoChemicals: ChemicalRecord[] = [
 
     createdAt:
       "2026-08-03T12:05:00.000Z",
+
     updatedAt:
       "2026-08-03T12:05:00.000Z",
   },
@@ -246,11 +284,11 @@ const demoChemicals: ChemicalRecord[] = [
 
     activeIngredients:
       "Ferrous sulphate",
+
     registrationNumber: "",
 
     packSize: 10,
     packUnit: "L",
-
     costPerPack: 36,
 
     currentStock: 4,
@@ -267,21 +305,14 @@ const demoChemicals: ChemicalRecord[] = [
     targetUse:
       "Moss suppression and turf greening.",
 
-    nozzleColour: "Blue",
-    nozzleType: "Flat fan",
-
-    knapsackMake: "Cooper Pegler",
-    knapsackModel: "CP15 Evolution",
-    tankCapacityLitres: 15,
-
-    walkingSpeedKph: 4.8,
-    flowRateLitresPerMinute: 0.8,
-    pressureBar: 2,
+    ...DEFAULT_EQUIPMENT,
 
     ppeRequirements:
       "Gloves, eye protection and suitable work clothing.",
+
     coshhNotes:
       "May stain hard surfaces. Rinse spills immediately.",
+
     environmentalWarnings:
       "Avoid application near watercourses and drains.",
 
@@ -289,6 +320,7 @@ const demoChemicals: ChemicalRecord[] = [
 
     createdAt:
       "2026-08-03T12:10:00.000Z",
+
     updatedAt:
       "2026-08-03T12:10:00.000Z",
   },
@@ -330,19 +362,23 @@ export function ChemicalStoreProvider({
               normaliseChemical,
             ),
           );
+        } else {
+          setChemicals(
+            cloneDemoChemicals(),
+          );
         }
       } catch {
         window.localStorage.removeItem(
           STORAGE_KEY,
         );
+
+        setChemicals(
+          cloneDemoChemicals(),
+        );
       }
     } else {
       setChemicals(
-        demoChemicals.map(
-          (chemical) => ({
-            ...chemical,
-          }),
-        ),
+        cloneDemoChemicals(),
       );
     }
 
@@ -350,7 +386,9 @@ export function ChemicalStoreProvider({
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      return;
+    }
 
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -366,9 +404,39 @@ export function ChemicalStoreProvider({
 
     const newChemical =
       normaliseChemical({
-        id: `chemical-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 8)}`,
+        id: createChemicalId(),
+
+        name: "New chemical",
+        manufacturer: "",
+        type: "Other",
+
+        activeIngredients: "",
+        registrationNumber: "",
+
+        packSize: 1,
+        packUnit: "L",
+        costPerPack: 0,
+
+        currentStock: 0,
+        reorderLevel: 0,
+
+        applicationRate: 0,
+        applicationRateUnit: "L/ha",
+
+        waterVolumePerHectare: 0,
+
+        maximumAnnualApplications: 0,
+        maximumAnnualDose: 0,
+
+        targetUse: "",
+
+        ...DEFAULT_EQUIPMENT,
+
+        ppeRequirements: "",
+        coshhNotes: "",
+        environmentalWarnings: "",
+
+        active: true,
 
         ...input,
 
@@ -390,6 +458,7 @@ export function ChemicalStoreProvider({
     const updatedChemical =
       normaliseChemical({
         ...chemical,
+
         updatedAt:
           new Date().toISOString(),
       });
@@ -435,96 +504,119 @@ export function ChemicalStoreProvider({
       return null;
     }
 
-    const safeArea = Math.max(
-      0,
+    return calculateChemicalApplication(
+      chemical,
       areaSquareMetres,
     );
+  }
 
-    const areaHectares =
-      safeArea / 10000;
+  function deductChemicalStock(
+    chemicalId: string,
+    productAmount: number,
+    productUnit: ChemicalUnit,
+  ): StockDeductionResult {
+    const chemical =
+      chemicals.find(
+        (item) =>
+          item.id === chemicalId,
+      );
 
-    let productRequired = 0;
-
-    if (
-      chemical.applicationRateUnit ===
-        "kg/ha" ||
-      chemical.applicationRateUnit ===
-        "L/ha"
-    ) {
-      productRequired =
-        chemical.applicationRate *
-        areaHectares;
-    } else {
-      productRequired =
-        chemical.applicationRate *
-        safeArea;
+    if (!chemical) {
+      return {
+        success: false,
+        message:
+          "The selected chemical could not be found.",
+      };
     }
 
-    const waterRequiredLitres =
-      chemical.waterVolumePerHectare *
-      areaHectares;
+    if (productAmount <= 0) {
+      return {
+        success: false,
+        message:
+          "The product amount must be greater than zero.",
+      };
+    }
 
-    const tankCapacity =
-      chemical.tankCapacityLitres;
+    if (chemical.packSize <= 0) {
+      return {
+        success: false,
+        message:
+          `${chemical.name} does not have a valid pack size.`,
+      };
+    }
 
-    const tankFills =
-      tankCapacity > 0
-        ? waterRequiredLitres /
-          tankCapacity
-        : 0;
+    const amountInPackUnit =
+      convertChemicalAmount(
+        productAmount,
+        productUnit,
+        chemical.packUnit,
+      );
 
-    const productPerTank =
-      tankFills > 0
-        ? productRequired /
-          tankFills
-        : productRequired;
+    if (amountInPackUnit === null) {
+      return {
+        success: false,
+        message:
+          `The treatment unit ${productUnit} cannot be converted to the saved pack unit ${chemical.packUnit}.`,
+      };
+    }
 
-    const packSize =
+    const packsUsed =
+      amountInPackUnit /
       chemical.packSize;
 
-    const productCost =
-      packSize > 0
-        ? (productRequired /
-            packSize) *
-          chemical.costPerPack
-        : 0;
+    if (
+      packsUsed >
+      chemical.currentStock
+    ) {
+      return {
+        success: false,
+
+        message: `There is not enough ${chemical.name} in stock. Required: ${packsUsed.toFixed(
+          3,
+        )} packs. Available: ${chemical.currentStock.toFixed(
+          3,
+        )} packs.`,
+      };
+    }
+
+    setChemicals((current) =>
+      current.map((item) => {
+        if (
+          item.id !== chemicalId
+        ) {
+          return item;
+        }
+
+        return {
+          ...item,
+
+          currentStock:
+            roundToThreeDecimals(
+              Math.max(
+                0,
+                item.currentStock -
+                  packsUsed,
+              ),
+            ),
+
+          updatedAt:
+            new Date().toISOString(),
+        };
+      }),
+    );
 
     return {
-      productRequired:
-        roundNumber(productRequired),
+      success: true,
 
-      productUnit:
-        rateUnitToChemicalUnit(
-          chemical.applicationRateUnit,
-        ),
-
-      waterRequiredLitres:
-        roundNumber(
-          waterRequiredLitres,
-        ),
-
-      tankFills:
-        roundNumber(tankFills),
-
-      productPerTank:
-        roundNumber(productPerTank),
-
-      productCost:
-        roundCurrency(productCost),
+      message: `${chemical.name} stock reduced by ${packsUsed.toFixed(
+        3,
+      )} packs.`,
     };
   }
 
   function restoreDemoChemicals() {
     setChemicals(
-      demoChemicals.map(
-        (chemical) => ({
-          ...chemical,
-        }),
-      ),
-    );
-
-    window.localStorage.removeItem(
-      STORAGE_KEY,
+      cloneDemoChemicals(),
     );
   }
 
@@ -533,11 +625,15 @@ export function ChemicalStoreProvider({
       () => ({
         chemicals,
         ready,
+
         addChemical,
         updateChemical,
         deleteChemical,
+
         getChemicalById,
         calculateApplication,
+        deductChemicalStock,
+
         restoreDemoChemicals,
       }),
       [chemicals, ready],
@@ -572,9 +668,7 @@ function normaliseChemical(
   return {
     id:
       chemical.id ??
-      `chemical-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`,
+      createChemicalId(),
 
     name:
       chemical.name ??
@@ -594,66 +688,106 @@ function normaliseChemical(
       chemical.registrationNumber ?? "",
 
     packSize:
-      chemical.packSize ?? 1,
+      toSafeNumber(
+        chemical.packSize,
+        1,
+      ),
 
     packUnit:
       chemical.packUnit ?? "L",
 
     costPerPack:
-      chemical.costPerPack ?? 0,
+      toSafeNumber(
+        chemical.costPerPack,
+      ),
 
     currentStock:
-      chemical.currentStock ?? 0,
+      toSafeNumber(
+        chemical.currentStock,
+      ),
 
     reorderLevel:
-      chemical.reorderLevel ?? 0,
+      toSafeNumber(
+        chemical.reorderLevel,
+      ),
 
     applicationRate:
-      chemical.applicationRate ?? 0,
+      toSafeNumber(
+        chemical.applicationRate,
+      ),
 
     applicationRateUnit:
       chemical.applicationRateUnit ??
       "L/ha",
 
     waterVolumePerHectare:
-      chemical.waterVolumePerHectare ??
-      0,
+      toSafeNumber(
+        chemical.waterVolumePerHectare,
+      ),
 
     maximumAnnualApplications:
-      chemical.maximumAnnualApplications ??
-      0,
+      toSafeNumber(
+        chemical.maximumAnnualApplications,
+      ),
 
     maximumAnnualDose:
-      chemical.maximumAnnualDose ?? 0,
+      toSafeNumber(
+        chemical.maximumAnnualDose,
+      ),
 
     targetUse:
       chemical.targetUse ?? "",
 
     nozzleColour:
-      chemical.nozzleColour ?? "",
+      chemical.nozzleColour ??
+      DEFAULT_EQUIPMENT.nozzleColour,
 
     nozzleType:
-      chemical.nozzleType ?? "",
+      chemical.nozzleType ??
+      DEFAULT_EQUIPMENT.nozzleType,
 
     knapsackMake:
-      chemical.knapsackMake ?? "",
+      chemical.knapsackMake ??
+      DEFAULT_EQUIPMENT.knapsackMake,
 
     knapsackModel:
-      chemical.knapsackModel ?? "",
+      chemical.knapsackModel ??
+      DEFAULT_EQUIPMENT.knapsackModel,
 
     tankCapacityLitres:
-      chemical.tankCapacityLitres ??
-      0,
+      toSafeNumber(
+        chemical.tankCapacityLitres,
+        DEFAULT_EQUIPMENT
+          .tankCapacityLitres,
+      ),
 
     walkingSpeedKph:
-      chemical.walkingSpeedKph ?? 0,
+      toSafeNumber(
+        chemical.walkingSpeedKph,
+        DEFAULT_EQUIPMENT
+          .walkingSpeedKph,
+      ),
 
     flowRateLitresPerMinute:
-      chemical.flowRateLitresPerMinute ??
-      0,
+      toSafeNumber(
+        chemical.flowRateLitresPerMinute,
+        DEFAULT_EQUIPMENT
+          .flowRateLitresPerMinute,
+      ),
+
+    sprayWidthMetres:
+      toSafeNumber(
+        chemical.sprayWidthMetres,
+        DEFAULT_EQUIPMENT
+          .sprayWidthMetres,
+      ),
 
     pressureBar:
-      chemical.pressureBar ?? 0,
+      toSafeNumber(
+        chemical.pressureBar,
+        DEFAULT_EQUIPMENT
+          .pressureBar,
+      ),
 
     ppeRequirements:
       chemical.ppeRequirements ?? "",
@@ -678,6 +812,117 @@ function normaliseChemical(
   };
 }
 
+function calculateChemicalApplication(
+  chemical: ChemicalRecord,
+  areaSquareMetres: number,
+): ApplicationCalculation {
+  const safeArea =
+    Math.max(
+      0,
+      areaSquareMetres,
+    );
+
+  const areaHectares =
+    safeArea / 10000;
+
+  const hasValidCalibration =
+    chemical.flowRateLitresPerMinute >
+      0 &&
+    chemical.walkingSpeedKph > 0 &&
+    chemical.sprayWidthMetres > 0;
+
+  const calibratedWaterVolumePerHectare =
+    hasValidCalibration
+      ? (600 *
+          chemical.flowRateLitresPerMinute) /
+        (chemical.walkingSpeedKph *
+          chemical.sprayWidthMetres)
+      : Math.max(
+          0,
+          chemical.waterVolumePerHectare,
+        );
+
+  let productRequired = 0;
+
+  if (
+    chemical.applicationRateUnit ===
+      "kg/ha" ||
+    chemical.applicationRateUnit ===
+      "L/ha"
+  ) {
+    productRequired =
+      chemical.applicationRate *
+      areaHectares;
+  } else {
+    productRequired =
+      chemical.applicationRate *
+      safeArea;
+  }
+
+  const waterRequiredLitres =
+    calibratedWaterVolumePerHectare *
+    areaHectares;
+
+  const tankFills =
+    chemical.tankCapacityLitres > 0
+      ? waterRequiredLitres /
+        chemical.tankCapacityLitres
+      : 0;
+
+  const productPerTank =
+    tankFills > 0
+      ? productRequired /
+        tankFills
+      : productRequired;
+
+  const productCost =
+    chemical.packSize > 0
+      ? (productRequired /
+          chemical.packSize) *
+        chemical.costPerPack
+      : 0;
+
+  return {
+    productRequired:
+      roundToThreeDecimals(
+        productRequired,
+      ),
+
+    productUnit:
+      rateUnitToChemicalUnit(
+        chemical.applicationRateUnit,
+      ),
+
+    calibratedWaterVolumePerHectare:
+      roundToThreeDecimals(
+        calibratedWaterVolumePerHectare,
+      ),
+
+    waterRequiredLitres:
+      roundToThreeDecimals(
+        waterRequiredLitres,
+      ),
+
+    tankFills:
+      roundToThreeDecimals(
+        tankFills,
+      ),
+
+    productPerTank:
+      roundToThreeDecimals(
+        productPerTank,
+      ),
+
+    productCost:
+      roundToTwoDecimals(
+        productCost,
+      ),
+
+    calibrationUsed:
+      hasValidCalibration,
+  };
+}
+
 function rateUnitToChemicalUnit(
   rateUnit: ApplicationRateUnit,
 ): ChemicalUnit {
@@ -696,18 +941,97 @@ function rateUnitToChemicalUnit(
   return "L";
 }
 
-function roundNumber(
-  value: number,
-) {
-  return Math.round(
-    (value + Number.EPSILON) * 1000,
-  ) / 1000;
+function convertChemicalAmount(
+  amount: number,
+  fromUnit: ChemicalUnit,
+  toUnit: ChemicalUnit,
+): number | null {
+  if (fromUnit === toUnit) {
+    return amount;
+  }
+
+  if (
+    fromUnit === "ml" &&
+    toUnit === "L"
+  ) {
+    return amount / 1000;
+  }
+
+  if (
+    fromUnit === "L" &&
+    toUnit === "ml"
+  ) {
+    return amount * 1000;
+  }
+
+  if (
+    fromUnit === "g" &&
+    toUnit === "kg"
+  ) {
+    return amount / 1000;
+  }
+
+  if (
+    fromUnit === "kg" &&
+    toUnit === "g"
+  ) {
+    return amount * 1000;
+  }
+
+  return null;
 }
 
-function roundCurrency(
+function cloneDemoChemicals() {
+  return demoChemicals.map(
+    (chemical) => ({
+      ...chemical,
+    }),
+  );
+}
+
+function createChemicalId() {
+  return `chemical-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function toSafeNumber(
+  value: number | undefined,
+  fallback = 0,
+) {
+  if (
+    typeof value !== "number" ||
+    Number.isNaN(value)
+  ) {
+    return fallback;
+  }
+
+  return Math.max(
+    0,
+    value,
+  );
+}
+
+function roundToThreeDecimals(
   value: number,
 ) {
-  return Math.round(
-    (value + Number.EPSILON) * 100,
-  ) / 100;
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        1000,
+    ) / 1000
+  );
+}
+
+function roundToTwoDecimals(
+  value: number,
+) {
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        100,
+    ) / 100
+  );
 }

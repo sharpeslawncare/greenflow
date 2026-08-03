@@ -2,762 +2,533 @@
 
 import Link from "next/link";
 import {
+  type FormEvent,
   type ReactNode,
-  useEffect,
   useMemo,
   useState,
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import {
+  type ApplicationRateUnit,
+  type ChemicalRecord,
+  type ChemicalUnit,
+  useChemicalStore,
+} from "@/components/chemical-store";
 import { useCustomerStore } from "@/components/customer-store";
 import {
-  type CustomerProgramme,
   type ProgrammeVisit,
   useProgrammeStore,
 } from "@/components/programme-store";
-import { useSettingsStore } from "@/components/settings-store";
 import {
   type TreatmentRecord,
   type TreatmentStatus,
   useTreatmentStore,
 } from "@/components/treatment-store";
-import type { Customer } from "@/lib/demo-customers";
 
-type WorkingJob = {
-  key: string;
-  programmeId: string;
-  visitId: string;
+type ScheduledJob = {
+  id: string;
   customerNumber: string;
-  selected: boolean;
-  fertiliser: string;
-  herbicide: string;
-  otherMaterials: string;
-  notes: string;
-};
+  customerName: string;
+  address: string;
+  postcode: string;
 
-type ScheduledItem = {
-  programme: CustomerProgramme;
+  groupNumber: number;
+  vanNumber: number;
+
+  lawnSize: number;
+  treatmentPrice: number;
+
+  lockedGate: boolean;
+  dogOnProperty: boolean;
+
+  programmeId: string;
   visit: ProgrammeVisit;
 };
 
-type ValidJob = {
-  job: WorkingJob;
-  programme: CustomerProgramme;
-  visit: ProgrammeVisit;
-  customer: Customer;
+type ApplicationCalculation = {
+  productRequired: number;
+  productUnit: ChemicalUnit;
+
+  calibratedWaterVolumePerHectare: number;
+  waterRequiredLitres: number;
+
+  tankFills: number;
+  productPerTank: number;
+
+  estimatedProductCost: number;
+  calibrationUsed: boolean;
 };
 
-const fertiliserOptions = [
-  "ProTurf Spring",
-  "ProTurf Summer",
-  "ProTurf Autumn",
-  "Moss Control Granules",
-  "None",
-];
-
-const herbicideOptions = [
-  "Pastor Pro",
-  "Dicophar",
-  "Hurler",
-  "None",
+const treatmentStatuses: TreatmentStatus[] = [
+  "Completed",
+  "Needs Rescheduling",
+  "Cancelled",
 ];
 
 export default function JobsPage() {
   const {
     customers,
     ready: customersReady,
-    updateCustomer,
   } = useCustomerStore();
 
   const {
     programmes,
     ready: programmesReady,
-    saveProgramme,
   } = useProgrammeStore();
 
   const {
-    addTreatments,
+    treatments,
     ready: treatmentsReady,
+    addTreatment,
   } = useTreatmentStore();
 
   const {
-    ready: settingsReady,
-    reserveInvoiceNumbers,
-  } = useSettingsStore();
+  chemicals,
+  ready: chemicalsReady,
+  deductChemicalStock,
+} = useChemicalStore();
 
   const availableDates = useMemo(() => {
+    const dates = programmes.flatMap(
+      (programme) =>
+        programme.visits
+          .filter(
+            (visit) =>
+              visit.status ===
+                "Scheduled" ||
+              visit.status === "Planned",
+          )
+          .map(
+            (visit) =>
+              visit.scheduledDate,
+          ),
+    );
+
     return Array.from(
-      new Set(
-        programmes.flatMap((programme) =>
-          programme.visits
-            .filter(
-              (visit) =>
-                visit.status === "Scheduled" ||
-                visit.status === "Planned",
-            )
-            .map(
-              (visit) => visit.scheduledDate,
-            ),
-        ),
-      ),
+      new Set(dates),
     ).sort();
   }, [programmes]);
 
   const [selectedDate, setSelectedDate] =
-    useState("");
+    useState(() => {
+      const today = toDateValue(
+        new Date(),
+      );
 
-  const [selectedGroup, setSelectedGroup] =
-    useState("All");
-
-  const [selectedVan, setSelectedVan] =
-    useState("All");
-
-  const [jobs, setJobs] =
-    useState<WorkingJob[]>([]);
+      return today;
+    });
 
   const [
-    defaultFertiliser,
-    setDefaultFertiliser,
-  ] = useState("ProTurf Spring");
-
-  const [
-    defaultHerbicide,
-    setDefaultHerbicide,
-  ] = useState("Pastor Pro");
-
-  const [
-    defaultOtherMaterials,
-    setDefaultOtherMaterials,
+    selectedJobId,
+    setSelectedJobId,
   ] = useState("");
 
-  const [defaultNotes, setDefaultNotes] =
+  const [status, setStatus] =
+    useState<TreatmentStatus>(
+      "Completed",
+    );
+
+  const [
+    selectedChemicalId,
+    setSelectedChemicalId,
+  ] = useState("");
+
+  const [
+    treatmentArea,
+    setTreatmentArea,
+  ] = useState(0);
+
+  const [fertiliser, setFertiliser] =
     useState("");
 
-  const [rescheduleDate, setRescheduleDate] =
+  const [herbicide, setHerbicide] =
     useState("");
+
+  const [
+    otherMaterials,
+    setOtherMaterials,
+  ] = useState("");
+
+  const [notes, setNotes] =
+    useState("");
+
+  const [
+    nextVisitDate,
+    setNextVisitDate,
+  ] = useState("");
 
   const [message, setMessage] =
     useState("");
 
-  useEffect(() => {
-    if (
-      selectedDate ||
-      availableDates.length === 0
-    ) {
-      return;
+  const jobs = useMemo(() => {
+    if (!selectedDate) {
+      return [];
     }
 
-    const today = toDateValue(new Date());
-
-    const nextAvailableDate =
-      availableDates.find(
-        (date) => date >= today,
-      ) ?? availableDates[0];
-
-    setSelectedDate(nextAvailableDate);
-    setRescheduleDate(nextAvailableDate);
-  }, [availableDates, selectedDate]);
-
-  const scheduledItems =
-    useMemo<ScheduledItem[]>(() => {
-      if (!selectedDate) {
-        return [];
-      }
-
-      return programmes.flatMap(
-        (programme) =>
-          programme.visits
-            .filter(
-              (visit) =>
-                visit.scheduledDate ===
-                  selectedDate &&
-                (visit.status ===
-                  "Scheduled" ||
-                  visit.status ===
-                    "Planned"),
-            )
-            .map((visit) => ({
-              programme,
-              visit,
-            })),
-      );
-    }, [programmes, selectedDate]);
-
-  const filteredItems =
-    useMemo<ScheduledItem[]>(() => {
-      return scheduledItems.filter(
-        ({ programme }) => {
-          const customer = customers.find(
-            (item) =>
-              item.customerNumber ===
-              programme.customerNumber,
-          );
-
-          if (!customer) {
-            return false;
-          }
-
-          const matchesGroup =
-            selectedGroup === "All" ||
-            customer.groupNumber ===
-              Number(selectedGroup);
-
-          const matchesVan =
-            selectedVan === "All" ||
-            customer.vanNumber ===
-              Number(selectedVan);
-
-          return (
-            customer.status === "Active" &&
-            matchesGroup &&
-            matchesVan
-          );
-        },
-      );
-    }, [
-      scheduledItems,
-      customers,
-      selectedGroup,
-      selectedVan,
-    ]);
-
-  useEffect(() => {
-    setJobs((currentJobs) =>
-      filteredItems.map(
-        ({ programme, visit }) => {
-          const key = createJobKey(
-            programme.id,
-            visit.id,
-          );
-
-          const existingJob =
-            currentJobs.find(
-              (job) => job.key === key,
-            );
-
-          if (existingJob) {
-            return existingJob;
-          }
-
-          return {
-            key,
-            programmeId: programme.id,
-            visitId: visit.id,
-            customerNumber:
-              programme.customerNumber,
-            selected: false,
-            fertiliser:
-              defaultFertiliser,
-            herbicide:
-              defaultHerbicide,
-            otherMaterials: "",
-            notes: "",
-          };
-        },
-      ),
-    );
-  }, [
-    filteredItems,
-    defaultFertiliser,
-    defaultHerbicide,
-  ]);
-
-  const selectedJobs = jobs.filter(
-    (job) => job.selected,
-  );
-
-  const displayedCustomers = jobs
-    .map((job) =>
-      customers.find(
-        (customer) =>
-          customer.customerNumber ===
-          job.customerNumber,
-      ),
-    )
-    .filter(
-      (customer): customer is Customer =>
-        Boolean(customer),
-    );
-
-  const totalArea =
-    displayedCustomers.reduce(
-      (total, customer) =>
-        total + customer.lawnSize,
-      0,
-    );
-
-  const selectedArea =
-    selectedJobs.reduce(
-      (total, job) => {
-        const customer = customers.find(
-          (item) =>
-            item.customerNumber ===
-            job.customerNumber,
-        );
-
-        return (
-          total +
-          (customer?.lawnSize ?? 0)
-        );
-      },
-      0,
-    );
-
-  const expectedValue =
-    displayedCustomers.reduce(
-      (total, customer) =>
-        total + customer.treatmentPrice,
-      0,
-    );
-
-  const groups = useMemo(() => {
-    return Array.from(
-      new Set(
-        customers
+    return programmes
+      .flatMap((programme) =>
+        programme.visits
           .filter(
-            (customer) =>
-              customer.status === "Active",
+            (visit) =>
+              visit.scheduledDate ===
+                selectedDate &&
+              (visit.status ===
+                "Scheduled" ||
+                visit.status ===
+                  "Planned"),
           )
-          .map(
-            (customer) =>
-              customer.groupNumber,
-          ),
-      ),
-    ).sort(
-      (first, second) =>
-        first - second,
-    );
-  }, [customers]);
+          .map((visit) => {
+            const customer =
+              customers.find(
+                (item) =>
+                  item.customerNumber ===
+                  programme.customerNumber,
+              );
 
-  const allSelected =
-    jobs.length > 0 &&
-    jobs.every((job) => job.selected);
-
-  function toggleAllJobs() {
-    setJobs((current) =>
-      current.map((job) => ({
-        ...job,
-        selected: !allSelected,
-      })),
-    );
-  }
-
-  function toggleJob(jobKey: string) {
-    setJobs((current) =>
-      current.map((job) =>
-        job.key === jobKey
-          ? {
-              ...job,
-              selected: !job.selected,
+            if (
+              !customer ||
+              customer.status !== "Active"
+            ) {
+              return null;
             }
-          : job,
-      ),
-    );
-  }
 
-  function applyProductsToSelected() {
-    if (selectedJobs.length === 0) {
-      showMessage(
-        "Select at least one job first.",
-      );
-      return;
-    }
+            const alreadyRecorded =
+              treatments.some(
+                (treatment) =>
+                  treatment.customerNumber ===
+                    customer.customerNumber &&
+                  treatment.scheduledDate ===
+                    visit.scheduledDate &&
+                  treatment.treatmentName ===
+                    visit.treatmentName,
+              );
 
-    setJobs((current) =>
-      current.map((job) =>
-        job.selected
-          ? {
-              ...job,
-              fertiliser:
-                defaultFertiliser,
-              herbicide:
-                defaultHerbicide,
-              otherMaterials:
-                defaultOtherMaterials,
-              notes: defaultNotes,
+            if (alreadyRecorded) {
+              return null;
             }
-          : job,
-      ),
-    );
 
-    showMessage(
-      `Products applied to ${
-        selectedJobs.length
-      } selected job${
-        selectedJobs.length === 1
-          ? ""
-          : "s"
-      }.`,
-    );
-  }
+            const job: ScheduledJob = {
+              id: `${programme.id}-${visit.id}`,
 
-  function completeSelectedJobs() {
-    processSelectedJobs("Completed");
-  }
+              customerNumber:
+                customer.customerNumber,
 
-  function cancelSelectedJobs() {
-    processSelectedJobs("Cancelled");
-  }
+              customerName:
+                customer.fullName,
 
-  function processSelectedJobs(
-    status: TreatmentStatus,
-  ) {
-    if (selectedJobs.length === 0) {
-      showMessage(
-        "Select at least one job first.",
-      );
-      return;
-    }
+              address:
+                customer.address,
 
-    const validJobs: ValidJob[] =
-      selectedJobs.flatMap((job) => {
-        const programme =
-          programmes.find(
-            (item) =>
-              item.id ===
-              job.programmeId,
-          );
+              postcode:
+                customer.postcode,
 
-        const visit =
-          programme?.visits.find(
-            (item) =>
-              item.id === job.visitId,
-          );
+              groupNumber:
+                customer.groupNumber,
 
-        const customer =
-          customers.find(
-            (item) =>
-              item.customerNumber ===
-              job.customerNumber,
-          );
+              vanNumber:
+                customer.vanNumber,
 
+              lawnSize:
+                customer.lawnSize,
+
+              treatmentPrice:
+                customer.treatmentPrice,
+
+              lockedGate:
+                customer.lockedGate,
+
+              dogOnProperty:
+                customer.dogOnProperty,
+
+              programmeId:
+                programme.id,
+
+              visit,
+            };
+
+            return job;
+          }),
+      )
+      .filter(
+        (
+          job,
+        ): job is ScheduledJob =>
+          Boolean(job),
+      )
+      .sort((first, second) => {
         if (
-          !programme ||
-          !visit ||
-          !customer
+          first.vanNumber !==
+          second.vanNumber
         ) {
-          return [];
+          return (
+            first.vanNumber -
+            second.vanNumber
+          );
         }
 
-        return [
-          {
-            job,
-            programme,
-            visit,
-            customer,
-          },
-        ];
-      });
-
-    if (validJobs.length === 0) {
-      showMessage(
-        "The selected jobs could not be processed.",
-      );
-      return;
-    }
-
-    const invoiceNumbers =
-      status === "Completed"
-        ? reserveInvoiceNumbers(
-            validJobs.length,
-          )
-        : [];
-
-    const now = new Date();
-    const today = toDateValue(now);
-
-    const records: TreatmentRecord[] =
-      validJobs.map(
-        (
-          {
-            job,
-            programme,
-            visit,
-            customer,
-          },
-          index,
-        ) => {
-          const updatedProgramme =
-            updateProgrammeVisitStatus(
-              programme,
-              visit.id,
-              status === "Completed"
-                ? "Completed"
-                : "Skipped",
-            );
-
-          saveProgramme(
-            updatedProgramme,
+        if (
+          first.groupNumber !==
+          second.groupNumber
+        ) {
+          return (
+            first.groupNumber -
+            second.groupNumber
           );
+        }
 
-          const nextVisitDate =
-            findNextVisitDate(
-              updatedProgramme,
-              visit,
-            );
+        return first.customerName.localeCompare(
+          second.customerName,
+        );
+      });
+  }, [
+    programmes,
+    customers,
+    treatments,
+    selectedDate,
+  ]);
 
-          if (status === "Completed") {
-            updateCustomer({
-              ...customer,
-              lastVisit:
-                formatLongDate(today),
-              nextVisit:
-                nextVisitDate,
-            });
-          }
+  const selectedJob =
+    jobs.find(
+      (job) =>
+        job.id === selectedJobId,
+    ) ??
+    jobs[0] ??
+    null;
 
-          return {
-            id: createTreatmentId(
-              customer.customerNumber,
-              visit.visitNumber,
-              index,
-            ),
+  const selectedChemical =
+    chemicals.find(
+      (chemical) =>
+        chemical.id ===
+        selectedChemicalId,
+    ) ?? null;
 
-            invoiceNumber:
-              status === "Completed"
-                ? invoiceNumbers[index] ??
-                  ""
-                : "",
-
-            customerNumber:
-              customer.customerNumber,
-
-            scheduledDate:
-              visit.scheduledDate,
-
-            recordedDate:
-              now.toISOString(),
-
-            completedDate:
-              status === "Completed"
-                ? today
-                : "",
-
-            status,
-
-            treatmentName:
-              visit.treatmentName,
-
-            fertiliser:
-              job.fertiliser,
-
-            herbicide:
-              job.herbicide,
-
-            otherMaterials:
-              job.otherMaterials,
-
-            notes:
-              job.notes,
-
-            nextVisitDate,
-          };
-        },
-      );
-
-    addTreatments(records);
-
-    const selectedKeys = new Set(
-      selectedJobs.map(
-        (job) => job.key,
-      ),
+  const activeChemicals =
+    chemicals.filter(
+      (chemical) =>
+        chemical.active,
     );
 
-    setJobs((current) =>
-      current.filter(
-        (job) =>
-          !selectedKeys.has(job.key),
-      ),
+  const calculation =
+    selectedChemical
+      ? calculateApplication(
+          selectedChemical,
+          treatmentArea,
+        )
+      : null;
+
+  const completedOnDate =
+    treatments.filter(
+      (treatment) =>
+        treatment.scheduledDate ===
+          selectedDate &&
+        treatment.status ===
+          "Completed",
     );
 
-    if (status === "Completed") {
-      const firstInvoice =
-        records[0]?.invoiceNumber ??
-        "";
+  const rescheduledOnDate =
+    treatments.filter(
+      (treatment) =>
+        treatment.scheduledDate ===
+          selectedDate &&
+        treatment.status ===
+          "Needs Rescheduling",
+    );
 
-      const lastInvoice =
-        records[
-          records.length - 1
-        ]?.invoiceNumber ?? "";
+  const cancelledOnDate =
+    treatments.filter(
+      (treatment) =>
+        treatment.scheduledDate ===
+          selectedDate &&
+        treatment.status ===
+          "Cancelled",
+    );
 
-      if (records.length === 1) {
-        showMessage(
-          `1 job completed. Invoice ${firstInvoice} was assigned.`,
-        );
-      } else {
-        showMessage(
-          `${records.length} jobs completed. Invoices ${firstInvoice} to ${lastInvoice} were assigned.`,
-        );
-      }
+  const expectedIncome =
+    jobs.reduce(
+      (total, job) =>
+        total +
+        job.treatmentPrice,
+      0,
+    );
 
-      return;
-    }
+  function selectJob(
+    job: ScheduledJob,
+  ) {
+    setSelectedJobId(job.id);
 
-    showMessage(
-      `${records.length} job${
-        records.length === 1
-          ? ""
-          : "s"
-      } recorded as ${status.toLowerCase()}.`,
+    setTreatmentArea(
+      job.lawnSize,
+    );
+
+    setStatus("Completed");
+
+    setSelectedChemicalId("");
+
+    setFertiliser("");
+    setHerbicide("");
+    setOtherMaterials("");
+    setNotes("");
+
+    setNextVisitDate(
+      findNextProgrammeVisitDate(
+        programmes,
+        job.customerNumber,
+        job.visit.scheduledDate,
+      ),
     );
   }
 
-  function rescheduleSelectedJobs() {
-    if (selectedJobs.length === 0) {
+  function saveTreatment(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (!selectedJob) {
       showMessage(
-        "Select at least one job first.",
+        "Select a scheduled job first.",
       );
       return;
     }
 
-    if (!rescheduleDate) {
+    if (
+      status === "Completed" &&
+      treatmentArea <= 0
+    ) {
       showMessage(
-        "Choose a new visit date.",
+        "Enter the treatment area.",
       );
       return;
     }
 
-    const now = new Date();
+    const chemicalValues =
+      selectedChemical &&
+      calculation
+        ? createChemicalTreatmentValues(
+            selectedChemical,
+            calculation,
+          )
+        : createEmptyChemicalTreatmentValues();
 
-    const records: TreatmentRecord[] =
-      [];
+    if (
+  status === "Completed" &&
+  selectedChemical &&
+  calculation
+) {
+  const stockResult =
+    deductChemicalStock(
+      selectedChemical.id,
+      calculation.productRequired,
+      calculation.productUnit,
+    );
 
-    selectedJobs.forEach((job) => {
-      const programme =
-        programmes.find(
-          (item) =>
-            item.id ===
-            job.programmeId,
-        );
+  if (!stockResult.success) {
+    showMessage(
+      stockResult.message,
+    );
+    return;
+  }
+}    
 
-      const visit =
-        programme?.visits.find(
-          (item) =>
-            item.id === job.visitId,
-        );
+    const treatment: TreatmentRecord =
+      {
+        id: createTreatmentId(),
 
-      const customer =
-        customers.find(
-          (item) =>
-            item.customerNumber ===
-            job.customerNumber,
-        );
-
-      if (
-        !programme ||
-        !visit ||
-        !customer
-      ) {
-        return;
-      }
-
-      records.push({
-        id: `treatment-${Date.now()}-${job.customerNumber}-reschedule`,
-
-        invoiceNumber: "",
+        invoiceNumber:
+          status === "Completed"
+            ? createInvoiceNumber()
+            : "",
 
         customerNumber:
-          customer.customerNumber,
+          selectedJob.customerNumber,
 
         scheduledDate:
-          visit.scheduledDate,
+          selectedJob.visit
+            .scheduledDate,
 
         recordedDate:
-          now.toISOString(),
+          new Date().toISOString(),
 
-        completedDate: "",
+        completedDate:
+          status === "Completed"
+            ? toDateValue(new Date())
+            : "",
 
-        status:
-          "Needs Rescheduling",
+        status,
 
         treatmentName:
-          visit.treatmentName,
+          selectedJob.visit
+            .treatmentName,
 
         fertiliser:
-          job.fertiliser,
+          fertiliser.trim(),
 
         herbicide:
-          job.herbicide,
+          herbicide.trim(),
 
         otherMaterials:
-          job.otherMaterials,
+          otherMaterials.trim(),
 
-        notes:
-          job.notes ||
-          `Visit moved to ${formatLongDate(
-            rescheduleDate,
-          )}.`,
+        ...chemicalValues,
+
+        treatmentAreaSquareMetres:
+          treatmentArea,
+
+        notes: notes.trim(),
 
         nextVisitDate:
-          formatLongDate(
-            rescheduleDate,
-          ),
-      });
+          status ===
+          "Needs Rescheduling"
+            ? nextVisitDate
+            : nextVisitDate,
+      };
 
-      const updatedProgramme =
-        updateProgrammeVisitDate(
-          programme,
-          visit.id,
-          rescheduleDate,
-        );
+    addTreatment(treatment);
 
-      saveProgramme(
-        updatedProgramme,
-      );
+    const customerName =
+      selectedJob.customerName;
 
-      updateCustomer({
-        ...customer,
-        nextVisit:
-          formatLongDate(
-            rescheduleDate,
-          ),
-      });
-    });
-
-    addTreatments(records);
-
-    const selectedKeys = new Set(
-      selectedJobs.map(
-        (job) => job.key,
-      ),
-    );
-
-    setJobs((current) =>
-      current.filter(
-        (job) =>
-          !selectedKeys.has(job.key),
-      ),
-    );
+    setSelectedJobId("");
+    setSelectedChemicalId("");
+    setFertiliser("");
+    setHerbicide("");
+    setOtherMaterials("");
+    setNotes("");
+    setTreatmentArea(0);
+    setNextVisitDate("");
+    setStatus("Completed");
 
     showMessage(
-      `${records.length} job${
-        records.length === 1
-          ? ""
-          : "s"
-      } moved to ${formatLongDate(
-        rescheduleDate,
-      )}.`,
+      status === "Completed"
+        ? `${customerName}'s treatment has been completed and saved.`
+        : status ===
+            "Needs Rescheduling"
+          ? `${customerName}'s visit has been marked for rescheduling.`
+          : `${customerName}'s visit has been cancelled.`,
     );
   }
 
-  function showMessage(text: string) {
+  function showMessage(
+    text: string,
+  ) {
     setMessage(text);
 
     window.setTimeout(() => {
       setMessage("");
-    }, 3000);
+    }, 3500);
   }
 
-  if (
-    !customersReady ||
-    !programmesReady ||
-    !treatmentsReady ||
-    !settingsReady
-  ) {
+  const ready =
+    customersReady &&
+    programmesReady &&
+    treatmentsReady &&
+    chemicalsReady;
+
+  if (!ready) {
     return (
       <AppShell>
         <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
             Loading scheduled jobs...
           </div>
         </main>
@@ -768,23 +539,65 @@ export default function JobsPage() {
   return (
     <AppShell>
       <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5">
-            <Link
-              href="/"
-              className="text-sm font-semibold text-[#176b37] hover:underline"
-            >
-              ← Dashboard
-            </Link>
+        <div className="mx-auto max-w-[1650px]">
+          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <Link
+                href="/"
+                className="text-sm font-semibold text-[#176b37] hover:underline"
+              >
+                ← Dashboard
+              </Link>
 
-            <h1 className="mt-2 text-3xl font-bold">
-              Today&apos;s Jobs
-            </h1>
+              <h1 className="mt-2 text-3xl font-bold">
+                Today&apos;s Jobs
+              </h1>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Daily work generated from saved
-              customer annual programmes.
-            </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Complete scheduled treatments,
+                calculate chemical requirements and
+                record visits that need rearranging.
+              </p>
+            </div>
+
+            <Field label="Working date">
+              <select
+                value={selectedDate}
+                onChange={(event) => {
+                  setSelectedDate(
+                    event.target.value,
+                  );
+
+                  setSelectedJobId("");
+                }}
+                className="min-w-[280px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+              >
+                {!availableDates.includes(
+                  selectedDate,
+                ) && (
+                  <option
+                    value={selectedDate}
+                  >
+                    {formatDate(
+                      selectedDate,
+                    )}
+                  </option>
+                )}
+
+                {availableDates.map(
+                  (date) => (
+                    <option
+                      key={date}
+                      value={date}
+                    >
+                      {formatDateWithDay(
+                        date,
+                      )}
+                    </option>
+                  ),
+                )}
+              </select>
+            </Field>
           </header>
 
           {message && (
@@ -793,464 +606,595 @@ export default function JobsPage() {
             </div>
           )}
 
-          {programmes.length === 0 && (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-              No annual programmes have been
-              saved yet. Create customer
-              schedules in{" "}
-              <Link
-                href="/programmes"
-                className="font-bold underline"
-              >
-                Annual Programmes
-              </Link>
-              .
-            </div>
-          )}
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="grid gap-3 lg:grid-cols-[1fr_180px_150px_150px] lg:items-end">
-              <Field label="Scheduled date">
-                <select
-                  value={selectedDate}
-                  onChange={(event) => {
-                    setSelectedDate(
-                      event.target.value,
-                    );
-
-                    setRescheduleDate(
-                      event.target.value,
-                    );
-                  }}
-                  className={inputClass}
-                >
-                  {availableDates.length ===
-                  0 ? (
-                    <option value="">
-                      No scheduled dates
-                    </option>
-                  ) : (
-                    availableDates.map(
-                      (date) => (
-                        <option
-                          key={date}
-                          value={date}
-                        >
-                          {formatDateWithDay(
-                            date,
-                          )}
-                        </option>
-                      ),
-                    )
-                  )}
-                </select>
-              </Field>
-
-              <Field label="Customer group">
-                <select
-                  value={selectedGroup}
-                  onChange={(event) =>
-                    setSelectedGroup(
-                      event.target.value,
-                    )
-                  }
-                  className={inputClass}
-                >
-                  <option value="All">
-                    All groups
-                  </option>
-
-                  {groups.map(
-                    (groupNumber) => (
-                      <option
-                        key={groupNumber}
-                        value={groupNumber}
-                      >
-                        Group {groupNumber}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </Field>
-
-              <Field label="Van">
-                <select
-                  value={selectedVan}
-                  onChange={(event) =>
-                    setSelectedVan(
-                      event.target.value,
-                    )
-                  }
-                  className={inputClass}
-                >
-                  <option value="All">
-                    All vans
-                  </option>
-
-                  <option value="1">
-                    Van 1
-                  </option>
-
-                  <option value="2">
-                    Van 2
-                  </option>
-
-                  <option value="3">
-                    Van 3
-                  </option>
-                </select>
-              </Field>
-
-              <Link
-                href="/programmes"
-                className="rounded-xl border border-[#338b45] px-4 py-2.5 text-center text-sm font-semibold text-[#176b37] hover:bg-green-50"
-              >
-                Annual programmes
-              </Link>
-            </div>
-          </section>
-
-          <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
-              label="Scheduled jobs"
-              value={String(jobs.length)}
-              detail={
-                selectedDate
-                  ? formatShortDate(
-                      selectedDate,
-                    )
-                  : "No date selected"
+              label="Remaining jobs"
+              value={String(
+                jobs.length,
+              )}
+              detail={formatDate(
+                selectedDate,
+              )}
+            />
+
+            <SummaryCard
+              label="Completed"
+              value={String(
+                completedOnDate.length,
+              )}
+              detail="Saved treatments"
+            />
+
+            <SummaryCard
+              label="Rescheduling"
+              value={String(
+                rescheduledOnDate.length,
+              )}
+              detail="Replacement visit needed"
+              warning={
+                rescheduledOnDate.length >
+                0
               }
             />
 
             <SummaryCard
-              label="Total area"
-              value={`${totalArea.toLocaleString()} m²`}
-              detail={`${selectedArea.toLocaleString()} m² selected`}
+              label="Cancelled"
+              value={String(
+                cancelledOnDate.length,
+              )}
+              detail="Visits not completed"
             />
 
             <SummaryCard
-              label="Expected value"
-              value={`£${expectedValue.toFixed(
+              label="Remaining value"
+              value={`£${expectedIncome.toFixed(
                 2,
               )}`}
-              detail="Standard treatment prices"
-            />
-
-            <SummaryCard
-              label="Selected"
-              value={String(
-                selectedJobs.length,
-              )}
-              detail="Ready to process"
+              detail="Unrecorded scheduled jobs"
             />
           </section>
 
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr_1fr_auto] xl:items-end">
-              <Field label="Fertiliser">
-                <select
-                  value={
-                    defaultFertiliser
-                  }
-                  onChange={(event) =>
-                    setDefaultFertiliser(
-                      event.target.value,
-                    )
-                  }
-                  className={inputClass}
-                >
-                  {fertiliserOptions.map(
-                    (option) => (
-                      <option key={option}>
-                        {option}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </Field>
+          <section className="mt-4 grid gap-4 xl:grid-cols-[390px_1fr]">
+            <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div>
+                <h2 className="text-lg font-bold">
+                  Scheduled customers
+                </h2>
 
-              <Field label="Herbicide">
-                <select
-                  value={
-                    defaultHerbicide
-                  }
-                  onChange={(event) =>
-                    setDefaultHerbicide(
-                      event.target.value,
-                    )
-                  }
-                  className={inputClass}
-                >
-                  {herbicideOptions.map(
-                    (option) => (
-                      <option key={option}>
-                        {option}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </Field>
+                <p className="mt-1 text-sm text-slate-500">
+                  Select a customer to record the
+                  visit.
+                </p>
+              </div>
 
-              <Field label="Other materials">
-                <input
-                  value={
-                    defaultOtherMaterials
-                  }
-                  onChange={(event) =>
-                    setDefaultOtherMaterials(
-                      event.target.value,
-                    )
-                  }
-                  placeholder="Optional"
-                  className={inputClass}
-                />
-              </Field>
-
-              <Field label="Treatment notes">
-                <input
-                  value={defaultNotes}
-                  onChange={(event) =>
-                    setDefaultNotes(
-                      event.target.value,
-                    )
-                  }
-                  placeholder="Optional"
-                  className={inputClass}
-                />
-              </Field>
-
-              <button
-                type="button"
-                onClick={
-                  applyProductsToSelected
-                }
-                className="rounded-xl border border-[#338b45] px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
-              >
-                Apply to selected
-              </button>
-            </div>
-          </section>
-
-          <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-[42px_85px_1.15fr_1.5fr_1.25fr_85px_85px_1.25fr] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleAllJobs}
-                className="h-4 w-4"
-                aria-label="Select all displayed jobs"
-              />
-
-              <span>Number</span>
-              <span>Customer</span>
-              <span>Address</span>
-              <span>Treatment</span>
-              <span>Area</span>
-              <span>Group</span>
-              <span>Products</span>
-            </div>
-
-            <div className="max-h-[40vh] overflow-y-auto">
-              {jobs.length === 0 ? (
-                <div className="p-12 text-center">
-                  <div className="font-bold">
-                    No jobs scheduled
+              <div className="mt-4 max-h-[72vh] space-y-2 overflow-y-auto pr-1">
+                {jobs.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                    All scheduled jobs for this date
+                    have been recorded, or no
+                    programme visits are scheduled.
                   </div>
+                ) : (
+                  jobs.map((job) => {
+                    const isSelected =
+                      selectedJob?.id ===
+                      job.id;
 
-                  <p className="mt-2 text-sm text-slate-500">
-                    No active customer programme
-                    visits match the selected date,
-                    group and van.
-                  </p>
-                </div>
-              ) : (
-                jobs.map((job) => {
-                  const customer =
-                    customers.find(
-                      (item) =>
-                        item.customerNumber ===
-                        job.customerNumber,
-                    );
-
-                  const programme =
-                    programmes.find(
-                      (item) =>
-                        item.id ===
-                        job.programmeId,
-                    );
-
-                  const visit =
-                    programme?.visits.find(
-                      (item) =>
-                        item.id ===
-                        job.visitId,
-                    );
-
-                  if (
-                    !customer ||
-                    !programme ||
-                    !visit
-                  ) {
-                    return null;
-                  }
-
-                  const products = [
-                    job.fertiliser,
-                    job.herbicide,
-                    job.otherMaterials,
-                  ]
-                    .filter(
-                      (product) =>
-                        product &&
-                        product !== "None",
-                    )
-                    .join(", ");
-
-                  return (
-                    <div
-                      key={job.key}
-                      className="grid grid-cols-[42px_85px_1.15fr_1.5fr_1.25fr_85px_85px_1.25fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-0 hover:bg-green-50/40"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={
-                          job.selected
+                    return (
+                      <button
+                        key={job.id}
+                        type="button"
+                        onClick={() =>
+                          selectJob(job)
                         }
-                        onChange={() =>
-                          toggleJob(job.key)
-                        }
-                        className="h-4 w-4"
-                        aria-label={`Select ${customer.fullName}`}
-                      />
-
-                      <Link
-                        href={`/customers/${customer.customerNumber}`}
-                        className="font-bold text-[#176b37] hover:underline"
+                        className={`w-full rounded-xl border p-4 text-left transition ${
+                          isSelected
+                            ? "border-[#338b45] bg-green-50"
+                            : "border-slate-200 hover:bg-slate-50"
+                        }`}
                       >
-                        {
-                          customer.customerNumber
-                        }
-                      </Link>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-bold">
+                              {job.customerName}
+                            </div>
 
-                      <div>
-                        <div className="font-semibold">
-                          {customer.fullName}
+                            <div className="mt-1 text-xs text-slate-500">
+                              Customer{" "}
+                              {
+                                job.customerNumber
+                              }
+                            </div>
+                          </div>
+
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                            Van{" "}
+                            {job.vanNumber}
+                          </span>
                         </div>
 
-                        <div className="mt-0.5 flex gap-2 text-xs">
-                          {customer.lockedGate && (
-                            <span className="font-bold text-red-600">
+                        <div className="mt-3 text-sm text-slate-600">
+                          {job.address},{" "}
+                          {job.postcode}
+                        </div>
+
+                        <div className="mt-3 font-semibold text-slate-800">
+                          {
+                            job.visit
+                              .treatmentName
+                          }
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                          <span className="rounded-full bg-blue-100 px-2 py-1 font-semibold text-blue-800">
+                            Group{" "}
+                            {
+                              job.groupNumber
+                            }
+                          </span>
+
+                          <span className="rounded-full bg-green-100 px-2 py-1 font-semibold text-green-800">
+                            {job.lawnSize} m²
+                          </span>
+
+                          {job.lockedGate && (
+                            <span className="rounded-full bg-red-100 px-2 py-1 font-bold text-red-700">
                               Locked gate
                             </span>
                           )}
 
-                          {customer.dogOnProperty && (
-                            <span className="font-bold text-amber-700">
+                          {job.dogOnProperty && (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-800">
                               Dog
                             </span>
                           )}
                         </div>
-                      </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </aside>
 
-                      <span className="text-slate-600">
-                        {customer.address},{" "}
-                        {customer.postcode}
-                      </span>
+            <section className="min-w-0">
+              {!selectedJob ? (
+                <article className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+                  <h2 className="text-xl font-bold">
+                    Select a scheduled customer
+                  </h2>
 
+                  <p className="mt-2 text-sm text-slate-500">
+                    Choose a job from the left to
+                    record the treatment.
+                  </p>
+                </article>
+              ) : (
+                <form
+                  onSubmit={saveTreatment}
+                  className="space-y-4"
+                >
+                  <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <div className="font-semibold">
-                          {
-                            visit.treatmentName
-                          }
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h2 className="text-2xl font-bold">
+                            {
+                              selectedJob.customerName
+                            }
+                          </h2>
+
+                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+                            {
+                              selectedJob.visit
+                                .treatmentName
+                            }
+                          </span>
                         </div>
 
-                        <div className="mt-1 text-xs text-slate-500">
-                          Visit{" "}
-                          {visit.visitNumber} of{" "}
+                        <p className="mt-2 text-sm text-slate-500">
+                          Customer{" "}
                           {
-                            programme.visits
-                              .length
+                            selectedJob.customerNumber
+                          }{" "}
+                          · Group{" "}
+                          {
+                            selectedJob.groupNumber
+                          }{" "}
+                          · Van{" "}
+                          {
+                            selectedJob.vanNumber
                           }
-                        </div>
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-600">
+                          {selectedJob.address},{" "}
+                          {
+                            selectedJob.postcode
+                          }
+                        </p>
                       </div>
 
-                      <span className="font-semibold">
-                        {customer.lawnSize} m²
-                      </span>
-
-                      <span>
-                        {customer.groupNumber}
-                      </span>
-
-                      <span className="truncate text-xs text-slate-600">
-                        {products ||
-                          "Not selected"}
-                      </span>
+                      <Link
+                        href={`/customers/${selectedJob.customerNumber}`}
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                      >
+                        Open customer
+                      </Link>
                     </div>
-                  );
-                })
+                  </article>
+
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    <Panel>
+                      <SectionHeading
+                        title="Visit outcome"
+                        description="Record whether the job was completed, needs rearranging or was cancelled."
+                      />
+
+                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                        <Field label="Visit status">
+                          <select
+                            value={status}
+                            onChange={(
+                              event,
+                            ) =>
+                              setStatus(
+                                event.target
+                                  .value as TreatmentStatus,
+                              )
+                            }
+                            className={
+                              inputClass
+                            }
+                          >
+                            {treatmentStatuses.map(
+                              (
+                                treatmentStatus,
+                              ) => (
+                                <option
+                                  key={
+                                    treatmentStatus
+                                  }
+                                  value={
+                                    treatmentStatus
+                                  }
+                                >
+                                  {
+                                    treatmentStatus
+                                  }
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </Field>
+
+                        <Field label="Next visit / replacement date">
+                          <input
+                            type="date"
+                            value={
+                              nextVisitDate
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              setNextVisitDate(
+                                event.target
+                                  .value,
+                              )
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+
+                        <NumberField
+                          label="Treatment area (m²)"
+                          value={
+                            treatmentArea
+                          }
+                          step="1"
+                          onChange={
+                            setTreatmentArea
+                          }
+                        />
+
+                        <ResultBox
+                          label="Treatment price"
+                          value={`£${selectedJob.treatmentPrice.toFixed(
+                            2,
+                          )}`}
+                          detail={`${selectedJob.lawnSize} m² customer lawn`}
+                        />
+                      </div>
+
+                      {selectedJob.lockedGate && (
+                        <WarningBox tone="red">
+                          This customer has a locked
+                          gate. Confirm access before
+                          beginning the treatment.
+                        </WarningBox>
+                      )}
+
+                      {selectedJob.dogOnProperty && (
+                        <WarningBox tone="amber">
+                          A dog may be present at this
+                          property. Confirm the garden
+                          is safe before entering.
+                        </WarningBox>
+                      )}
+                    </Panel>
+
+                    <Panel>
+                      <SectionHeading
+                        title="Chemical selection"
+                        description="Choose a product from the Chemical Centre to calculate the exact dose and water required."
+                      />
+
+                      <div className="mt-5">
+                        <Field label="Chemical or product">
+                          <select
+                            value={
+                              selectedChemicalId
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              setSelectedChemicalId(
+                                event.target
+                                  .value,
+                              )
+                            }
+                            disabled={
+                              status !==
+                              "Completed"
+                            }
+                            className={
+                              inputClass
+                            }
+                          >
+                            <option value="">
+                              No chemical selected
+                            </option>
+
+                            {activeChemicals.map(
+                              (chemical) => (
+                                <option
+                                  key={
+                                    chemical.id
+                                  }
+                                  value={
+                                    chemical.id
+                                  }
+                                >
+                                  {chemical.name} —{" "}
+                                  {
+                                    chemical.applicationRate
+                                  }{" "}
+                                  {
+                                    chemical.applicationRateUnit
+                                  }
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </Field>
+                      </div>
+
+                      {selectedChemical &&
+                        calculation && (
+                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <ResultBox
+                              label="Product required"
+                              value={formatApplicationAmount(
+                                calculation.productRequired,
+                                calculation.productUnit,
+                              )}
+                              detail={`${selectedChemical.applicationRate} ${selectedChemical.applicationRateUnit}`}
+                            />
+
+                            <ResultBox
+                              label="Water required"
+                              value={`${calculation.waterRequiredLitres.toFixed(
+                                3,
+                              )} L`}
+                              detail={`${calculation.calibratedWaterVolumePerHectare.toFixed(
+                                2,
+                              )} L/ha`}
+                            />
+
+                            <ResultBox
+                              label="Tank fills"
+                              value={calculation.tankFills.toFixed(
+                                3,
+                              )}
+                              detail={`${selectedChemical.tankCapacityLitres} L tank`}
+                            />
+
+                            <ResultBox
+                              label="Product per tank"
+                              value={formatApplicationAmount(
+                                calculation.productPerTank,
+                                calculation.productUnit,
+                              )}
+                              detail="Per full-equivalent tank"
+                            />
+
+                            <ResultBox
+                              label="Chemical cost"
+                              value={`£${calculation.estimatedProductCost.toFixed(
+                                2,
+                              )}`}
+                              detail="Based on pack cost"
+                            />
+
+                            <ResultBox
+                              label="Equipment"
+                              value={`${selectedChemical.nozzleColour} ${selectedChemical.nozzleType}`}
+                              detail={`${selectedChemical.knapsackMake} ${selectedChemical.knapsackModel}`}
+                            />
+                          </div>
+                        )}
+
+                      {selectedChemical && (
+                        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                          <div className="font-bold">
+                            {
+                              selectedChemical.name
+                            }
+                          </div>
+
+                          <div className="mt-2">
+                            Active ingredients:{" "}
+                            {selectedChemical.activeIngredients ||
+                              "Not recorded"}
+                          </div>
+
+                          {selectedChemical.registrationNumber && (
+                            <div className="mt-1">
+                              Registration:{" "}
+                              {
+                                selectedChemical.registrationNumber
+                              }
+                            </div>
+                          )}
+
+                          <Link
+                            href={`/chemicals/${selectedChemical.id}`}
+                            className="mt-3 inline-flex font-bold text-blue-800 hover:underline"
+                          >
+                            Open chemical sheet →
+                          </Link>
+                        </div>
+                      )}
+                    </Panel>
+                  </section>
+
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    <Panel>
+                      <SectionHeading
+                        title="Other products and materials"
+                        description="Use these fields for granular fertilisers, seed or materials not selected through the Chemical Centre."
+                      />
+
+                      <div className="mt-5 space-y-4">
+                        <Field label="Fertiliser">
+                          <input
+                            value={fertiliser}
+                            onChange={(
+                              event,
+                            ) =>
+                              setFertiliser(
+                                event.target
+                                  .value,
+                              )
+                            }
+                            disabled={
+                              status !==
+                              "Completed"
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+
+                        <Field label="Herbicide">
+                          <input
+                            value={herbicide}
+                            onChange={(
+                              event,
+                            ) =>
+                              setHerbicide(
+                                event.target
+                                  .value,
+                              )
+                            }
+                            disabled={
+                              status !==
+                              "Completed"
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+
+                        <Field label="Other materials">
+                          <input
+                            value={
+                              otherMaterials
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              setOtherMaterials(
+                                event.target
+                                  .value,
+                              )
+                            }
+                            disabled={
+                              status !==
+                              "Completed"
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </Panel>
+
+                    <Panel>
+                      <SectionHeading
+                        title="Treatment notes"
+                        description="Record observations, access problems, lawn condition and advice for the next visit."
+                      />
+
+                      <div className="mt-5">
+                        <Field label="Notes">
+                          <textarea
+                            rows={9}
+                            value={notes}
+                            onChange={(
+                              event,
+                            ) =>
+                              setNotes(
+                                event.target
+                                  .value,
+                              )
+                            }
+                            placeholder="Record information about the visit and any preparation needed before the next treatment."
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </Panel>
+                  </section>
+
+                  <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="text-sm text-slate-500">
+                      Saving this visit removes it
+                      from the remaining scheduled
+                      jobs list.
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-[#176b37] px-6 py-3 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                    >
+                      {status === "Completed"
+                        ? "Complete and save treatment"
+                        : status ===
+                            "Needs Rescheduling"
+                          ? "Save for rescheduling"
+                          : "Save cancellation"}
+                    </button>
+                  </section>
+                </form>
               )}
-            </div>
-          </section>
-
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div className="text-sm text-slate-600">
-                <strong>
-                  {selectedJobs.length}
-                </strong>{" "}
-                selected ·{" "}
-                <strong>
-                  {selectedArea.toLocaleString()} m²
-                </strong>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-2">
-                <Field label="New date">
-                  <input
-                    type="date"
-                    value={rescheduleDate}
-                    onChange={(event) =>
-                      setRescheduleDate(
-                        event.target.value,
-                      )
-                    }
-                    className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-                  />
-                </Field>
-
-                <button
-                  type="button"
-                  onClick={
-                    rescheduleSelectedJobs
-                  }
-                  className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-100"
-                >
-                  Reschedule selected
-                </button>
-
-                <button
-                  type="button"
-                  onClick={
-                    cancelSelectedJobs
-                  }
-                  className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-                >
-                  Cancel selected
-                </button>
-
-                <button
-                  type="button"
-                  onClick={
-                    completeSelectedJobs
-                  }
-                  className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
-                >
-                  Complete selected
-                </button>
-              </div>
-            </div>
+            </section>
           </section>
         </div>
       </main>
@@ -1258,102 +1202,336 @@ export default function JobsPage() {
   );
 }
 
-function updateProgrammeVisitStatus(
-  programme: CustomerProgramme,
-  visitId: string,
-  status: ProgrammeVisit["status"],
-): CustomerProgramme {
-  return {
-    ...programme,
-
-    visits: programme.visits.map(
-      (visit) =>
-        visit.id === visitId
-          ? {
-              ...visit,
-              status,
-            }
-          : visit,
-    ),
-  };
-}
-
-function updateProgrammeVisitDate(
-  programme: CustomerProgramme,
-  visitId: string,
-  newDate: string,
-): CustomerProgramme {
-  return {
-    ...programme,
-
-    visits: programme.visits.map(
-      (visit) =>
-        visit.id === visitId
-          ? {
-              ...visit,
-              scheduledDate: newDate,
-              status: "Scheduled",
-            }
-          : visit,
-    ),
-  };
-}
-
-function findNextVisitDate(
-  programme: CustomerProgramme,
-  currentVisit: ProgrammeVisit,
-) {
-  const nextVisit =
-    programme.visits
-      .filter(
-        (visit) =>
-          visit.visitNumber >
-            currentVisit.visitNumber &&
-          visit.status !== "Completed" &&
-          visit.status !== "Skipped",
-      )
-      .sort(
-        (first, second) =>
-          first.visitNumber -
-          second.visitNumber,
-      )[0];
-
-  return nextVisit
-    ? formatLongDate(
-        nextVisit.scheduledDate,
-      )
-    : "Programme complete";
-}
-
-function createJobKey(
-  programmeId: string,
-  visitId: string,
-) {
-  return `${programmeId}:${visitId}`;
-}
-
-function createTreatmentId(
-  customerNumber: string,
-  visitNumber: number,
-  index: number,
-) {
-  return `treatment-${Date.now()}-${customerNumber}-${visitNumber}-${index}`;
-}
-
-function parseDate(value: string) {
-  const [year, month, day] = value
-    .split("-")
-    .map(Number);
-
-  return new Date(
-    year,
-    month - 1,
-    day,
+function calculateApplication(
+  chemical: ChemicalRecord,
+  areaSquareMetres: number,
+): ApplicationCalculation {
+  const safeArea = Math.max(
+    0,
+    areaSquareMetres,
   );
+
+  const areaHectares =
+    safeArea / 10000;
+
+  const calibrationUsed =
+    chemical.flowRateLitresPerMinute >
+      0 &&
+    chemical.walkingSpeedKph > 0 &&
+    chemical.sprayWidthMetres > 0;
+
+  const calibratedWaterVolumePerHectare =
+    calibrationUsed
+      ? (600 *
+          chemical.flowRateLitresPerMinute) /
+        (chemical.walkingSpeedKph *
+          chemical.sprayWidthMetres)
+      : Math.max(
+          0,
+          chemical.waterVolumePerHectare,
+        );
+
+  const productRequired =
+    chemical.applicationRateUnit ===
+      "kg/ha" ||
+    chemical.applicationRateUnit ===
+      "L/ha"
+      ? chemical.applicationRate *
+        areaHectares
+      : chemical.applicationRate *
+        safeArea;
+
+  const waterRequiredLitres =
+    calibratedWaterVolumePerHectare *
+    areaHectares;
+
+  const tankFills =
+    chemical.tankCapacityLitres > 0
+      ? waterRequiredLitres /
+        chemical.tankCapacityLitres
+      : 0;
+
+  const productPerTank =
+    tankFills > 0
+      ? productRequired /
+        tankFills
+      : productRequired;
+
+  const estimatedProductCost =
+    chemical.packSize > 0
+      ? (productRequired /
+          chemical.packSize) *
+        chemical.costPerPack
+      : 0;
+
+  return {
+    productRequired:
+      roundToThreeDecimals(
+        productRequired,
+      ),
+
+    productUnit:
+      getProductUnit(
+        chemical.applicationRateUnit,
+      ),
+
+    calibratedWaterVolumePerHectare:
+      roundToThreeDecimals(
+        calibratedWaterVolumePerHectare,
+      ),
+
+    waterRequiredLitres:
+      roundToThreeDecimals(
+        waterRequiredLitres,
+      ),
+
+    tankFills:
+      roundToThreeDecimals(
+        tankFills,
+      ),
+
+    productPerTank:
+      roundToThreeDecimals(
+        productPerTank,
+      ),
+
+    estimatedProductCost:
+      roundToTwoDecimals(
+        estimatedProductCost,
+      ),
+
+    calibrationUsed,
+  };
 }
 
-function toDateValue(date: Date) {
-  const year = date.getFullYear();
+function createChemicalTreatmentValues(
+  chemical: ChemicalRecord,
+  calculation: ApplicationCalculation,
+) {
+  return {
+    chemicalId: chemical.id,
+    chemicalName: chemical.name,
+    chemicalType: chemical.type,
+
+    activeIngredients:
+      chemical.activeIngredients,
+
+    registrationNumber:
+      chemical.registrationNumber,
+
+    applicationRate:
+      chemical.applicationRate,
+
+    applicationRateUnit:
+      chemical.applicationRateUnit,
+
+    productRequired:
+      calculation.productRequired,
+
+    productUnit:
+      calculation.productUnit,
+
+    calibratedWaterVolumePerHectare:
+      calculation.calibratedWaterVolumePerHectare,
+
+    waterRequiredLitres:
+      calculation.waterRequiredLitres,
+
+    tankCapacityLitres:
+      chemical.tankCapacityLitres,
+
+    tankFills:
+      calculation.tankFills,
+
+    productPerTank:
+      calculation.productPerTank,
+
+    estimatedProductCost:
+      calculation.estimatedProductCost,
+
+    nozzleColour:
+      chemical.nozzleColour,
+
+    nozzleType:
+      chemical.nozzleType,
+
+    knapsackMake:
+      chemical.knapsackMake,
+
+    knapsackModel:
+      chemical.knapsackModel,
+
+    walkingSpeedKph:
+      chemical.walkingSpeedKph,
+
+    flowRateLitresPerMinute:
+      chemical.flowRateLitresPerMinute,
+
+    sprayWidthMetres:
+      chemical.sprayWidthMetres,
+
+    pressureBar:
+      chemical.pressureBar,
+  };
+}
+
+function createEmptyChemicalTreatmentValues() {
+  return {
+    chemicalId: "",
+    chemicalName: "",
+    chemicalType: "",
+
+    activeIngredients: "",
+    registrationNumber: "",
+
+    applicationRate: 0,
+    applicationRateUnit: "",
+
+    productRequired: 0,
+    productUnit: "",
+
+    calibratedWaterVolumePerHectare:
+      0,
+
+    waterRequiredLitres: 0,
+
+    tankCapacityLitres: 0,
+    tankFills: 0,
+    productPerTank: 0,
+
+    estimatedProductCost: 0,
+
+    nozzleColour: "",
+    nozzleType: "",
+
+    knapsackMake: "",
+    knapsackModel: "",
+
+    walkingSpeedKph: 0,
+    flowRateLitresPerMinute: 0,
+    sprayWidthMetres: 0,
+    pressureBar: 0,
+  };
+}
+
+function findNextProgrammeVisitDate(
+  programmes: Array<{
+    customerNumber: string;
+    visits: ProgrammeVisit[];
+  }>,
+  customerNumber: string,
+  currentDate: string,
+) {
+  return programmes
+    .filter(
+      (programme) =>
+        programme.customerNumber ===
+        customerNumber,
+    )
+    .flatMap(
+      (programme) =>
+        programme.visits,
+    )
+    .map(
+      (visit) =>
+        visit.scheduledDate,
+    )
+    .filter(
+      (date) =>
+        date > currentDate,
+    )
+    .sort()[0] ?? "";
+}
+
+function getProductUnit(
+  rateUnit: ApplicationRateUnit,
+): ChemicalUnit {
+  if (rateUnit === "kg/ha") {
+    return "kg";
+  }
+
+  if (rateUnit === "g/m²") {
+    return "g";
+  }
+
+  if (rateUnit === "ml/m²") {
+    return "ml";
+  }
+
+  return "L";
+}
+
+function formatApplicationAmount(
+  amount: number,
+  unit: ChemicalUnit,
+) {
+  if (
+    unit === "L" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} ml`;
+  }
+
+  if (
+    unit === "kg" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} g`;
+  }
+
+  return `${amount.toFixed(
+    3,
+  )} ${unit}`;
+}
+
+function createTreatmentId() {
+  return `treatment-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function createInvoiceNumber() {
+  const now = new Date();
+
+  const year =
+    now.getFullYear();
+
+  const datePart = [
+    String(
+      now.getMonth() + 1,
+    ).padStart(2, "0"),
+
+    String(
+      now.getDate(),
+    ).padStart(2, "0"),
+  ].join("");
+
+  const timePart = [
+    String(
+      now.getHours(),
+    ).padStart(2, "0"),
+
+    String(
+      now.getMinutes(),
+    ).padStart(2, "0"),
+
+    String(
+      now.getSeconds(),
+    ).padStart(2, "0"),
+  ].join("");
+
+  return `INV-${year}-${datePart}-${timePart}`;
+}
+
+function toDateValue(
+  date: Date,
+) {
+  const year =
+    date.getFullYear();
 
   const month = String(
     date.getMonth() + 1,
@@ -1366,12 +1544,33 @@ function toDateValue(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function formatLongDate(value: string) {
+function parseDate(
+  value: string,
+) {
+  const [year, month, day] =
+    value
+      .split("-")
+      .map(Number);
+
+  return new Date(
+    year,
+    month - 1,
+    day,
+  );
+}
+
+function formatDate(
+  value: string,
+) {
+  if (!value) {
+    return "No date selected";
+  }
+
   return new Intl.DateTimeFormat(
     "en-GB",
     {
       day: "numeric",
-      month: "long",
+      month: "short",
       year: "numeric",
     },
   ).format(parseDate(value));
@@ -1391,21 +1590,44 @@ function formatDateWithDay(
   ).format(parseDate(value));
 }
 
-function formatShortDate(
-  value: string,
+function roundToThreeDecimals(
+  value: number,
 ) {
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    },
-  ).format(parseDate(value));
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        1000,
+    ) / 1000
+  );
+}
+
+function roundToTwoDecimals(
+  value: number,
+) {
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        100,
+    ) / 100
+  );
 }
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+
+function Panel({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      {children}
+    </article>
+  );
+}
 
 function Field({
   label,
@@ -1425,18 +1647,77 @@ function Field({
   );
 }
 
+function NumberField({
+  label,
+  value,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  step: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <Field label={label}>
+      <input
+        type="number"
+        min="0"
+        step={step}
+        value={value}
+        onChange={(event) =>
+          onChange(
+            Number(
+              event.target.value,
+            ) || 0,
+          )
+        }
+        className={inputClass}
+      />
+    </Field>
+  );
+}
+
+function SectionHeading({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div>
+      <h2 className="text-lg font-bold">
+        {title}
+      </h2>
+
+      <p className="mt-1 text-sm leading-6 text-slate-500">
+        {description}
+      </p>
+    </div>
+  );
+}
+
 function SummaryCard({
   label,
   value,
   detail,
+  warning = false,
 }: {
   label: string;
   value: string;
   detail: string;
+  warning?: boolean;
 }) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 h-1.5 w-10 rounded-full bg-[#338b45]" />
+      <div
+        className={`mb-3 h-1.5 w-10 rounded-full ${
+          warning
+            ? "bg-amber-500"
+            : "bg-[#338b45]"
+        }`}
+      />
 
       <div className="text-sm font-semibold text-slate-500">
         {label}
@@ -1450,5 +1731,52 @@ function SummaryCard({
         {detail}
       </div>
     </article>
+  );
+}
+
+function ResultBox({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="text-xs font-semibold text-slate-500">
+        {label}
+      </div>
+
+      <div className="mt-1 text-xl font-bold">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-500">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function WarningBox({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: "red" | "amber";
+}) {
+  const styles =
+    tone === "red"
+      ? "border-red-200 bg-red-50 text-red-900"
+      : "border-amber-200 bg-amber-50 text-amber-900";
+
+  return (
+    <div
+      className={`mt-4 rounded-xl border p-4 text-sm font-semibold ${styles}`}
+    >
+      {children}
+    </div>
   );
 }
