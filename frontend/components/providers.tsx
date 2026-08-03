@@ -7,6 +7,7 @@ import { EnquiryStoreProvider } from "@/components/enquiry-store";
 import { ProgrammeStoreProvider } from "@/components/programme-store";
 import { SettingsStoreProvider } from "@/components/settings-store";
 import { TreatmentStoreProvider } from "@/components/treatment-store";
+import { ChemicalStoreProvider } from "@/components/chemical-store";
 
 export function Providers({
   children,
@@ -15,15 +16,17 @@ export function Providers({
 }) {
   return (
     <SettingsStoreProvider>
-      <CustomerStoreProvider>
-        <EnquiryStoreProvider>
-          <ProgrammeStoreProvider>
-            <TreatmentStoreProvider>
-              {children}
-            </TreatmentStoreProvider>
-          </ProgrammeStoreProvider>
-        </EnquiryStoreProvider>
-      </CustomerStoreProvider>
-    </SettingsStoreProvider>
+  <ChemicalStoreProvider>
+    <CustomerStoreProvider>
+      <EnquiryStoreProvider>
+        <ProgrammeStoreProvider>
+          <TreatmentStoreProvider>
+            {children}
+          </TreatmentStoreProvider>
+        </ProgrammeStoreProvider>
+      </EnquiryStoreProvider>
+    </CustomerStoreProvider>
+  </ChemicalStoreProvider>
+</SettingsStoreProvider>
   );
 }

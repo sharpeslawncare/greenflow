@@ -10,6 +10,7 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
+import { useEnquiryStore } from "@/components/enquiry-store";
 import { useProgrammeStore } from "@/components/programme-store";
 import { useTreatmentStore } from "@/components/treatment-store";
 
@@ -28,14 +29,20 @@ type StockData = {
 
 type CommunicationRecord = {
   id: string;
-  status: "Queued" | "Sent" | "Failed" | "Cancelled";
+  status:
+    | "Queued"
+    | "Sent"
+    | "Failed"
+    | "Cancelled";
 };
 
 type CommunicationsData = {
   records: CommunicationRecord[];
 };
 
-const STOCK_STORAGE_KEY = "greenflow-stock-v1";
+const STOCK_STORAGE_KEY =
+  "greenflow-stock-v1";
+
 const COMMUNICATIONS_STORAGE_KEY =
   "greenflow-communications-v1";
 
@@ -44,6 +51,11 @@ export default function DashboardPage() {
     customers,
     ready: customersReady,
   } = useCustomerStore();
+
+  const {
+    enquiries,
+    ready: enquiriesReady,
+  } = useEnquiryStore();
 
   const {
     programmes,
@@ -124,6 +136,10 @@ export default function DashboardPage() {
           products: [],
         });
       }
+    } else {
+      setStockData({
+        products: [],
+      });
     }
 
     const savedCommunications =
@@ -152,6 +168,10 @@ export default function DashboardPage() {
           records: [],
         });
       }
+    } else {
+      setCommunicationsData({
+        records: [],
+      });
     }
   }
 
@@ -212,10 +232,12 @@ export default function DashboardPage() {
   ]);
 
   const scheduledVisits = useMemo(() => {
-    if (!selectedDate) return [];
+    if (!selectedDate) {
+      return [];
+    }
 
-    return programmes.flatMap(
-      (programme) =>
+    return programmes
+      .flatMap((programme) =>
         programme.visits
           .filter(
             (visit) =>
@@ -235,13 +257,13 @@ export default function DashboardPage() {
                   customer.customerNumber ===
                   programme.customerNumber,
               ),
-          }))
-          .filter(
-            (item) =>
-              item.customer?.status ===
-              "Active",
-          ),
-    );
+          })),
+      )
+      .filter(
+        (item) =>
+          item.customer?.status ===
+          "Active",
+      );
   }, [
     programmes,
     customers,
@@ -250,7 +272,9 @@ export default function DashboardPage() {
 
   const selectedDateTreatments =
     useMemo(() => {
-      if (!selectedDate) return [];
+      if (!selectedDate) {
+        return [];
+      }
 
       return treatments.filter(
         (treatment) =>
@@ -336,6 +360,51 @@ export default function DashboardPage() {
         ),
     );
 
+  const newEnquiries = enquiries.filter(
+    (enquiry) =>
+      enquiry.status === "New Enquiry",
+  );
+
+  const arrangedSiteVisits =
+    enquiries.filter(
+      (enquiry) =>
+        enquiry.status ===
+        "Visit Arranged",
+    );
+
+  const outstandingQuotes =
+    enquiries.filter(
+      (enquiry) =>
+        enquiry.quoteStatus ===
+          "Draft" ||
+        enquiry.quoteStatus ===
+          "Presented",
+    );
+
+  const acceptedEnquiries =
+    enquiries.filter(
+      (enquiry) =>
+        enquiry.status ===
+          "Quote Accepted" &&
+        !enquiry.convertedCustomerNumber,
+    );
+
+  const recentEnquiries = useMemo(
+    () =>
+      [...enquiries]
+        .sort(
+          (first, second) =>
+            new Date(
+              second.updatedAt,
+            ).getTime() -
+            new Date(
+              first.updatedAt,
+            ).getTime(),
+        )
+        .slice(0, 5),
+    [enquiries],
+  );
+
   const recentTreatments = useMemo(
     () =>
       [...treatments]
@@ -386,14 +455,21 @@ export default function DashboardPage() {
       .slice(0, 6);
   }, [programmes]);
 
+  const enquiryAttentionCount =
+    newEnquiries.length +
+    outstandingQuotes.length +
+    acceptedEnquiries.length;
+
   const totalAttentionItems =
     reschedulingRecords.length +
     lowStockProducts.length +
     customersWithoutProgramme.length +
-    queuedMessages.length;
+    queuedMessages.length +
+    enquiryAttentionCount;
 
   const ready =
     customersReady &&
+    enquiriesReady &&
     programmesReady &&
     treatmentsReady;
 
@@ -424,9 +500,9 @@ export default function DashboardPage() {
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Welcome back, Rob. Here is
-                GreenFlow&apos;s current
-                operational picture.
+                Customers, enquiries,
+                scheduled work and business
+                activity in one place.
               </p>
             </div>
 
@@ -462,6 +538,13 @@ export default function DashboardPage() {
                   )}
                 </select>
               </Field>
+
+              <Link
+                href="/enquiries"
+                className="rounded-xl border border-[#338b45] bg-white px-5 py-2.5 text-sm font-semibold text-[#176b37] transition hover:bg-green-50"
+              >
+                New Enquiry
+              </Link>
 
               <Link
                 href="/jobs"
@@ -504,7 +587,10 @@ export default function DashboardPage() {
 
             <MetricCard
               label="Completed"
-              value={`${completedOnSelectedDate}/${scheduledVisits.length + completedOnSelectedDate}`}
+              value={`${completedOnSelectedDate}/${
+                scheduledVisits.length +
+                completedOnSelectedDate
+              }`}
               detail="Recorded on selected date"
             />
 
@@ -522,6 +608,49 @@ export default function DashboardPage() {
                 2,
               )}`}
               detail="Standard treatment prices"
+            />
+          </section>
+
+          <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              label="New enquiries"
+              value={String(
+                newEnquiries.length,
+              )}
+              detail="Awaiting first action"
+              accent="blue"
+            />
+
+            <MetricCard
+              label="Site visits arranged"
+              value={String(
+                arrangedSiteVisits.length,
+              )}
+              detail="Measurements planned"
+              accent="amber"
+            />
+
+            <MetricCard
+              label="Quotes outstanding"
+              value={String(
+                outstandingQuotes.length,
+              )}
+              detail="Draft or presented"
+              accent="blue"
+            />
+
+            <MetricCard
+              label="Ready to convert"
+              value={String(
+                acceptedEnquiries.length,
+              )}
+              detail="Accepted enquiries"
+              accent={
+                acceptedEnquiries.length >
+                0
+                  ? "green"
+                  : "default"
+              }
             />
           </section>
 
@@ -694,6 +823,31 @@ export default function DashboardPage() {
 
               <div className="mt-5 space-y-3">
                 <AttentionItem
+                  title="New enquiries"
+                  count={newEnquiries.length}
+                  href="/enquiries"
+                  severity="information"
+                />
+
+                <AttentionItem
+                  title="Outstanding quotes"
+                  count={
+                    outstandingQuotes.length
+                  }
+                  href="/enquiries"
+                  severity="warning"
+                />
+
+                <AttentionItem
+                  title="Accepted quotes to convert"
+                  count={
+                    acceptedEnquiries.length
+                  }
+                  href="/enquiries"
+                  severity="information"
+                />
+
+                <AttentionItem
                   title="Visits need rescheduling"
                   count={
                     reschedulingRecords.length
@@ -741,6 +895,53 @@ export default function DashboardPage() {
           </section>
 
           <section className="mt-4 grid gap-4 xl:grid-cols-3">
+            <DashboardPanel
+              title="Recent enquiries"
+              description="Latest enquiry and quotation activity."
+              actionLabel="Open enquiries"
+              actionHref="/enquiries"
+            >
+              <div className="space-y-2">
+                {recentEnquiries.length ===
+                0 ? (
+                  <EmptyState>
+                    No enquiries have been
+                    recorded.
+                  </EmptyState>
+                ) : (
+                  recentEnquiries.map(
+                    (enquiry) => (
+                      <Link
+                        key={enquiry.id}
+                        href="/enquiries"
+                        className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 p-3 transition hover:border-[#338b45] hover:bg-green-50"
+                      >
+                        <div>
+                          <div className="font-semibold">
+                            {enquiry.fullName ||
+                              "Unnamed enquiry"}
+                          </div>
+
+                          <div className="mt-1 text-xs text-slate-500">
+                            {
+                              enquiry.enquiryNumber
+                            }{" "}
+                            · {enquiry.source}
+                          </div>
+                        </div>
+
+                        <EnquiryStatusBadge
+                          status={
+                            enquiry.status
+                          }
+                        />
+                      </Link>
+                    ),
+                  )
+                )}
+              </div>
+            </DashboardPanel>
+
             <DashboardPanel
               title="Upcoming visits"
               description="The next scheduled programme work."
@@ -796,8 +997,8 @@ export default function DashboardPage() {
             </DashboardPanel>
 
             <DashboardPanel
-              title="Recent activity"
-              description="Latest treatment records."
+              title="Recent treatment activity"
+              description="Latest completed and changed visits."
               actionLabel="View documents"
               actionHref="/documents"
             >
@@ -848,7 +1049,9 @@ export default function DashboardPage() {
                 )}
               </div>
             </DashboardPanel>
+          </section>
 
+          <section className="mt-4 grid gap-4 xl:grid-cols-2">
             <DashboardPanel
               title="Stock overview"
               description="Current products requiring attention."
@@ -908,6 +1111,49 @@ export default function DashboardPage() {
                 )}
               </div>
             </DashboardPanel>
+
+            <DashboardPanel
+              title="Enquiry pipeline"
+              description="Current position of prospective customers."
+              actionLabel="Manage pipeline"
+              actionHref="/enquiries"
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <PipelineCard
+                  label="New"
+                  value={newEnquiries.length}
+                  detail="Awaiting action"
+                />
+
+                <PipelineCard
+                  label="Site visits"
+                  value={
+                    arrangedSiteVisits.length
+                  }
+                  detail="Arranged"
+                />
+
+                <PipelineCard
+                  label="Quotes"
+                  value={
+                    outstandingQuotes.length
+                  }
+                  detail="Outstanding"
+                />
+
+                <PipelineCard
+                  label="Conversions"
+                  value={
+                    acceptedEnquiries.length
+                  }
+                  detail="Ready now"
+                  highlight={
+                    acceptedEnquiries.length >
+                    0
+                  }
+                />
+              </div>
+            </DashboardPanel>
           </section>
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -922,10 +1168,16 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <QuickAction
-                label="Add customer"
-                detail="Create a new record"
+                label="New enquiry"
+                detail="Record prospective work"
+                href="/enquiries"
+              />
+
+              <QuickAction
+                label="Customers"
+                detail="Open customer records"
                 href="/customers"
               />
 
@@ -1041,14 +1293,31 @@ function MetricCard({
   label,
   value,
   detail,
+  accent = "default",
 }: {
   label: string;
   value: string;
   detail: string;
+  accent?:
+    | "default"
+    | "green"
+    | "blue"
+    | "amber";
 }) {
+  const accentClass =
+    accent === "green"
+      ? "bg-green-500"
+      : accent === "blue"
+        ? "bg-blue-500"
+        : accent === "amber"
+          ? "bg-amber-500"
+          : "bg-[#338b45]";
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 h-1.5 w-10 rounded-full bg-[#338b45]" />
+      <div
+        className={`mb-3 h-1.5 w-10 rounded-full ${accentClass}`}
+      />
 
       <div className="text-sm font-semibold text-slate-500">
         {label}
@@ -1201,6 +1470,78 @@ function TreatmentStatusBadge({
     >
       {status}
     </span>
+  );
+}
+
+function EnquiryStatusBadge({
+  status,
+}: {
+  status:
+    | "New Enquiry"
+    | "Visit Arranged"
+    | "Quote Prepared"
+    | "Quote Accepted"
+    | "Quote Declined"
+    | "Converted to Customer"
+    | "Closed";
+}) {
+  const styles =
+    status ===
+      "Converted to Customer" ||
+    status === "Quote Accepted"
+      ? "bg-green-100 text-green-800"
+      : status ===
+            "Quote Declined" ||
+          status === "Closed"
+        ? "bg-red-100 text-red-700"
+        : status ===
+            "Quote Prepared"
+          ? "bg-blue-100 text-blue-800"
+          : status ===
+              "Visit Arranged"
+            ? "bg-amber-100 text-amber-800"
+            : "bg-slate-100 text-slate-700";
+
+  return (
+    <span
+      className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${styles}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function PipelineCard({
+  label,
+  value,
+  detail,
+  highlight = false,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        highlight
+          ? "border-green-200 bg-green-50"
+          : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="text-xs font-semibold text-slate-500">
+        {label}
+      </div>
+
+      <div className="mt-1 text-2xl font-bold">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-500">
+        {detail}
+      </div>
+    </div>
   );
 }
 
