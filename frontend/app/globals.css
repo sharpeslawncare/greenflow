@@ -24,3 +24,138 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* GreenFlow A4 treatment document */
+
+.treatment-document {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 12mm;
+  font-size: 10.5pt;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.variable-document-text {
+  font-size: 10pt;
+}
+
+.document-density-compact {
+  padding: 10mm;
+  font-size: 10pt;
+}
+
+.document-density-compact section {
+  margin-top: 4mm;
+}
+
+.document-density-compact .variable-document-text {
+  font-size: 9.25pt;
+  line-height: 1.28;
+}
+
+.document-density-compact header {
+  padding-bottom: 3mm;
+}
+
+.document-density-very-compact {
+  padding: 8mm 10mm;
+  font-size: 9.5pt;
+  line-height: 1.22;
+}
+
+.document-density-very-compact section {
+  margin-top: 3mm;
+}
+
+.document-density-very-compact .variable-document-text {
+  font-size: 8.6pt;
+  line-height: 1.2;
+}
+
+.document-density-very-compact header {
+  padding-bottom: 2.5mm;
+}
+
+.print-avoid {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+@media screen {
+  .treatment-document {
+    margin-bottom: 24px;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  body {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .treatment-document {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .treatment-document header,
+  .treatment-document section,
+  .treatment-document footer,
+  .treatment-document article {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .treatment-document p,
+  .treatment-document div,
+  .treatment-document span {
+    orphans: 2;
+    widows: 2;
+  }
+}
+
+  html,
+  body {
+    background: white !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .treatment-document {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: auto !important;
+    box-shadow: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .treatment-document article,
+  .treatment-document section {
+    break-inside: avoid;
+  }

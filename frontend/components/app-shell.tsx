@@ -7,12 +7,13 @@ const navigation = [
   { label: "Customers", href: "/customers" },
   { label: "Groups & Routes", href: "/routes" },
   { label: "Season Planner", href: "/season-planner" },
+  { label: "Annual Programmes", href: "/programmes" },
   { label: "Chemical Centre", href: "/chemicals" },
   { label: "Stock & Purchasing", href: "/stock" },
   { label: "Communications", href: "/communications" },
   { label: "Documents", href: "/documents" },
   { label: "Reports", href: "/reports" },
-  { label: "Settings", href: "/settings" },
+  { label: "BusinessSettings", href: "/settings" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
