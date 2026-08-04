@@ -16,6 +16,7 @@ import {
   type ProgrammeVisitStatus,
   useProgrammeStore,
 } from "@/components/programme-store";
+import { STANDARD_TREATMENTS } from "@/lib/standard-treatments";
 
 type GeneratorSettings = {
   customerNumber: string;
@@ -29,14 +30,6 @@ type GeneratorSettings = {
   avoidWednesdays: boolean;
   avoidWeekends: boolean;
 };
-
-const treatmentNames = [
-  "Early winter moss control",
-  "Spring weed and feed",
-  "Summer weed and feed",
-  "Autumn weed and feed",
-  "Winter moss control",
-];
 
 export default function ProgrammesPage() {
   const {
@@ -83,10 +76,18 @@ export default function ProgrammesPage() {
       programmeName:
         "Standard annual programme",
       startDate: `${currentYear}-01-15`,
-      gap1: 70,
-      gap2: 70,
-      gap3: 70,
-      gap4: 70,
+      gap1:
+        STANDARD_TREATMENTS[1]
+          .gapAfterPreviousDays,
+      gap2:
+        STANDARD_TREATMENTS[2]
+          .gapAfterPreviousDays,
+      gap3:
+        STANDARD_TREATMENTS[3]
+          .gapAfterPreviousDays,
+      gap4:
+        STANDARD_TREATMENTS[4]
+          .gapAfterPreviousDays,
       avoidWednesdays: true,
       avoidWeekends: true,
     });
@@ -143,7 +144,9 @@ export default function ProgrammesPage() {
             programme.customerNumber,
         );
 
-        if (!query) return true;
+        if (!query) {
+          return true;
+        }
 
         return [
           programme.customerNumber,
@@ -221,16 +224,24 @@ export default function ProgrammesPage() {
         existingProgramme.avoidWeekends,
       gap1:
         existingProgramme.visits[1]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[1]
+          .gapAfterPreviousDays,
       gap2:
         existingProgramme.visits[2]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[2]
+          .gapAfterPreviousDays,
       gap3:
         existingProgramme.visits[3]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[3]
+          .gapAfterPreviousDays,
       gap4:
         existingProgramme.visits[4]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[4]
+          .gapAfterPreviousDays,
     }));
 
     setDraftVisits(
@@ -379,7 +390,9 @@ export default function ProgrammesPage() {
       `Delete the ${existingProgramme.year} programme for ${selectedCustomer?.fullName}?`,
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     deleteProgramme(
       existingProgramme.id,
@@ -404,16 +417,24 @@ export default function ProgrammesPage() {
       startDate: programme.startDate,
       gap1:
         programme.visits[1]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[1]
+          .gapAfterPreviousDays,
       gap2:
         programme.visits[2]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[2]
+          .gapAfterPreviousDays,
       gap3:
         programme.visits[3]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[3]
+          .gapAfterPreviousDays,
       gap4:
         programme.visits[4]
-          ?.gapAfterPreviousDays ?? 70,
+          ?.gapAfterPreviousDays ??
+        STANDARD_TREATMENTS[4]
+          .gapAfterPreviousDays,
       avoidWednesdays:
         programme.avoidWednesdays,
       avoidWeekends:
@@ -595,9 +616,9 @@ export default function ProgrammesPage() {
                   </Field>
 
                   <div className="rounded-xl bg-green-50 p-4 text-sm text-green-900">
-                    Standard visits are generated
-                    approximately ten weeks apart.
-                    Each gap remains editable.
+                    Standard visits use the shared
+                    treatment template. Each gap
+                    remains editable.
                   </div>
 
                   <GapInput
@@ -716,7 +737,7 @@ export default function ProgrammesPage() {
 
             <section className="min-w-0 space-y-4">
               <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-bold">
                       {selectedCustomer
@@ -743,9 +764,9 @@ export default function ProgrammesPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {existingProgramme && (
-                      <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+                      <span className="inline-flex h-11 items-center rounded-xl bg-green-100 px-4 text-sm font-bold text-green-800">
                         Saved programme
                       </span>
                     )}
@@ -759,7 +780,7 @@ export default function ProgrammesPage() {
                         draftVisits.length ===
                         0
                       }
-                      className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                      className="h-11 rounded-xl bg-[#176b37] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                     >
                       Save programme
                     </button>
@@ -772,7 +793,7 @@ export default function ProgrammesPage() {
                       disabled={
                         !existingProgramme
                       }
-                      className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="h-11 rounded-xl border border-red-300 bg-red-50 px-4 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Delete
                     </button>
@@ -1056,7 +1077,8 @@ function buildProgrammeVisits(
 
   for (
     let index = 0;
-    index < treatmentNames.length;
+    index <
+    STANDARD_TREATMENTS.length;
     index += 1
   ) {
     if (index > 0) {
@@ -1075,14 +1097,18 @@ function buildProgrammeVisits(
 
     visits.push({
       id: `programme-visit-${settings.customerNumber}-${settings.programmeYear}-${index + 1}`,
-      visitNumber: index + 1,
+      visitNumber:
+        STANDARD_TREATMENTS[index]
+          .visitNumber,
       treatmentName:
-        treatmentNames[index],
+        STANDARD_TREATMENTS[index]
+          .treatmentName,
       scheduledDate:
         toDateValue(adjustedDate),
       gapAfterPreviousDays:
         gaps[index],
-      status: "Scheduled",
+      status:
+        "Scheduled" as ProgrammeVisitStatus,
       notes: "",
     });
 

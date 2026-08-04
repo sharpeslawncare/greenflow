@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+
 import {
   type ReactNode,
   useEffect,
@@ -9,10 +10,17 @@ import {
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
+
 import { useCustomerStore } from "@/components/customer-store";
+
 import { useEnquiryStore } from "@/components/enquiry-store";
+
 import { useProgrammeStore } from "@/components/programme-store";
-import { useTreatmentStore } from "@/components/treatment-store";
+
+import {
+  type TreatmentStatus,
+  useTreatmentStore,
+} from "@/components/treatment-store";
 
 type StockProduct = {
   id: string;
@@ -29,6 +37,7 @@ type StockData = {
 
 type CommunicationRecord = {
   id: string;
+
   status:
     | "Queued"
     | "Sent"
@@ -67,10 +76,12 @@ export default function DashboardPage() {
     ready: treatmentsReady,
   } = useTreatmentStore();
 
-  const [stockData, setStockData] =
-    useState<StockData>({
-      products: [],
-    });
+  const [
+    stockData,
+    setStockData,
+  ] = useState<StockData>({
+    products: [],
+  });
 
   const [
     communicationsData,
@@ -79,8 +90,10 @@ export default function DashboardPage() {
     records: [],
   });
 
-  const [selectedDate, setSelectedDate] =
-    useState("");
+  const [
+    selectedDate,
+    setSelectedDate,
+  ] = useState("");
 
   useEffect(() => {
     loadLocalModules();
@@ -120,16 +133,19 @@ export default function DashboardPage() {
 
     if (savedStock) {
       try {
-        const parsedStock = JSON.parse(
-          savedStock,
-        ) as StockData;
+        const parsedStock =
+          JSON.parse(
+            savedStock,
+          ) as StockData;
 
         if (
           Array.isArray(
             parsedStock.products,
           )
         ) {
-          setStockData(parsedStock);
+          setStockData(
+            parsedStock,
+          );
         }
       } catch {
         setStockData({
@@ -175,53 +191,58 @@ export default function DashboardPage() {
     }
   }
 
-  const activeCustomers = useMemo(
-    () =>
-      customers.filter(
-        (customer) =>
-          customer.status === "Active",
-      ),
-    [customers],
-  );
-
-  const availableDates = useMemo(() => {
-    return Array.from(
-      new Set(
-        programmes.flatMap(
-          (programme) =>
-            programme.visits
-              .filter(
-                (visit) =>
-                  visit.status ===
-                    "Scheduled" ||
-                  visit.status ===
-                    "Planned",
-              )
-              .map(
-                (visit) =>
-                  visit.scheduledDate,
-              ),
+  const activeCustomers =
+    useMemo(
+      () =>
+        customers.filter(
+          (customer) =>
+            customer.status ===
+            "Active",
         ),
-      ),
-    ).sort();
-  }, [programmes]);
+      [customers],
+    );
+
+  const availableDates =
+    useMemo(() => {
+      return Array.from(
+        new Set(
+          programmes.flatMap(
+            (programme) =>
+              programme.visits
+                .filter(
+                  (visit) =>
+                    visit.status ===
+                      "Scheduled" ||
+                    visit.status ===
+                      "Planned",
+                )
+                .map(
+                  (visit) =>
+                    visit.scheduledDate,
+                ),
+          ),
+        ),
+      ).sort();
+    }, [programmes]);
 
   useEffect(() => {
     if (
       selectedDate ||
-      availableDates.length === 0
+      availableDates.length ===
+        0
     ) {
       return;
     }
 
-    const today = toDateValue(
-      new Date(),
-    );
+    const today =
+      toDateValue(new Date());
 
     const nextAvailableDate =
       availableDates.find(
-        (date) => date >= today,
-      ) ?? availableDates[0];
+        (date) =>
+          date >= today,
+      ) ??
+      availableDates[0];
 
     setSelectedDate(
       nextAvailableDate,
@@ -231,44 +252,46 @@ export default function DashboardPage() {
     selectedDate,
   ]);
 
-  const scheduledVisits = useMemo(() => {
-    if (!selectedDate) {
-      return [];
-    }
+  const scheduledVisits =
+    useMemo(() => {
+      if (!selectedDate) {
+        return [];
+      }
 
-    return programmes
-      .flatMap((programme) =>
-        programme.visits
-          .filter(
-            (visit) =>
-              visit.scheduledDate ===
-                selectedDate &&
-              (visit.status ===
-                "Scheduled" ||
-                visit.status ===
-                  "Planned"),
-          )
-          .map((visit) => ({
-            programme,
-            visit,
-            customer:
-              customers.find(
-                (customer) =>
-                  customer.customerNumber ===
-                  programme.customerNumber,
-              ),
-          })),
-      )
-      .filter(
-        (item) =>
-          item.customer?.status ===
-          "Active",
-      );
-  }, [
-    programmes,
-    customers,
-    selectedDate,
-  ]);
+      return programmes
+        .flatMap((programme) =>
+          programme.visits
+            .filter(
+              (visit) =>
+                visit.scheduledDate ===
+                  selectedDate &&
+                (visit.status ===
+                  "Scheduled" ||
+                  visit.status ===
+                    "Planned"),
+            )
+            .map((visit) => ({
+              programme,
+              visit,
+
+              customer:
+                customers.find(
+                  (customer) =>
+                    customer.customerNumber ===
+                    programme.customerNumber,
+                ),
+            })),
+        )
+        .filter(
+          (item) =>
+            item.customer?.status ===
+            "Active",
+        );
+    }, [
+      programmes,
+      customers,
+      selectedDate,
+    ]);
 
   const selectedDateTreatments =
     useMemo(() => {
@@ -360,10 +383,12 @@ export default function DashboardPage() {
         ),
     );
 
-  const newEnquiries = enquiries.filter(
-    (enquiry) =>
-      enquiry.status === "New Enquiry",
-  );
+  const newEnquiries =
+    enquiries.filter(
+      (enquiry) =>
+        enquiry.status ===
+        "New Enquiry",
+    );
 
   const arrangedSiteVisits =
     enquiries.filter(
@@ -389,71 +414,75 @@ export default function DashboardPage() {
         !enquiry.convertedCustomerNumber,
     );
 
-  const recentEnquiries = useMemo(
-    () =>
-      [...enquiries]
-        .sort(
-          (first, second) =>
-            new Date(
-              second.updatedAt,
-            ).getTime() -
-            new Date(
-              first.updatedAt,
-            ).getTime(),
-        )
-        .slice(0, 5),
-    [enquiries],
-  );
-
-  const recentTreatments = useMemo(
-    () =>
-      [...treatments]
-        .sort(
-          (first, second) =>
-            new Date(
-              second.recordedDate,
-            ).getTime() -
-            new Date(
-              first.recordedDate,
-            ).getTime(),
-        )
-        .slice(0, 5),
-    [treatments],
-  );
-
-  const upcomingVisits = useMemo(() => {
-    const today = toDateValue(
-      new Date(),
+  const recentEnquiries =
+    useMemo(
+      () =>
+        [...enquiries]
+          .sort(
+            (first, second) =>
+              new Date(
+                second.updatedAt,
+              ).getTime() -
+              new Date(
+                first.updatedAt,
+              ).getTime(),
+          )
+          .slice(0, 5),
+      [enquiries],
     );
 
-    return programmes
-      .flatMap((programme) =>
-        programme.visits
-          .filter(
-            (visit) =>
-              visit.scheduledDate >=
-                today &&
-              (visit.status ===
-                "Scheduled" ||
-                visit.status ===
-                  "Planned"),
+  const recentTreatments =
+    useMemo(
+      () =>
+        [...treatments]
+          .sort(
+            (first, second) =>
+              new Date(
+                second.recordedDate,
+              ).getTime() -
+              new Date(
+                first.recordedDate,
+              ).getTime(),
           )
-          .map((visit) => ({
-            customerNumber:
-              programme.customerNumber,
-            treatmentName:
-              visit.treatmentName,
-            scheduledDate:
-              visit.scheduledDate,
-          })),
-      )
-      .sort((first, second) =>
-        first.scheduledDate.localeCompare(
-          second.scheduledDate,
-        ),
-      )
-      .slice(0, 6);
-  }, [programmes]);
+          .slice(0, 5),
+      [treatments],
+    );
+
+  const upcomingVisits =
+    useMemo(() => {
+      const today =
+        toDateValue(new Date());
+
+      return programmes
+        .flatMap((programme) =>
+          programme.visits
+            .filter(
+              (visit) =>
+                visit.scheduledDate >=
+                  today &&
+                (visit.status ===
+                  "Scheduled" ||
+                  visit.status ===
+                    "Planned"),
+            )
+            .map((visit) => ({
+              customerNumber:
+                programme.customerNumber,
+
+              treatmentName:
+                visit.treatmentName,
+
+              scheduledDate:
+                visit.scheduledDate,
+            })),
+        )
+        .sort((first, second) =>
+          first.scheduledDate.localeCompare(
+            second.scheduledDate,
+          ),
+        )
+        .slice(0, 6);
+    }, [programmes]);
 
   const enquiryAttentionCount =
     newEnquiries.length +
@@ -478,7 +507,8 @@ export default function DashboardPage() {
       <AppShell>
         <main className="p-6">
           <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading GreenFlow dashboard...
+            Loading GreenFlow
+            dashboard...
           </div>
         </main>
       </AppShell>
@@ -501,8 +531,9 @@ export default function DashboardPage() {
 
               <p className="mt-1 text-sm text-slate-500">
                 Customers, enquiries,
-                scheduled work and business
-                activity in one place.
+                scheduled work and
+                business activity in one
+                place.
               </p>
             </div>
 
@@ -555,11 +586,12 @@ export default function DashboardPage() {
             </div>
           </header>
 
-          {availableDates.length === 0 && (
+          {availableDates.length ===
+            0 && (
             <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-              No scheduled programme dates
-              are available. Create customer
-              schedules in{" "}
+              No scheduled programme
+              dates are available. Create
+              customer schedules in{" "}
               <Link
                 href="/programmes"
                 className="font-bold underline"
@@ -663,15 +695,18 @@ export default function DashboardPage() {
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    Customer programme visits
-                    for the selected date.
+                    Customer programme
+                    visits for the selected
+                    date.
                   </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   <SummaryPill
                     label="Locked gates"
-                    value={lockedGateCount}
+                    value={
+                      lockedGateCount
+                    }
                     warning={
                       lockedGateCount > 0
                     }
@@ -706,8 +741,9 @@ export default function DashboardPage() {
                   {scheduledVisits.length ===
                   0 ? (
                     <div className="p-10 text-center text-sm text-slate-500">
-                      No active visits match
-                      the selected date.
+                      No active visits
+                      match the selected
+                      date.
                     </div>
                   ) : (
                     scheduledVisits.map(
@@ -757,8 +793,13 @@ export default function DashboardPage() {
                             </div>
 
                             <span className="text-slate-600">
-                              {customer.address},{" "}
-                              {customer.postcode}
+                              {
+                                customer.address
+                              }
+                              ,{" "}
+                              {
+                                customer.postcode
+                              }
                             </span>
 
                             <span className="font-semibold">
@@ -812,7 +853,8 @@ export default function DashboardPage() {
 
                 <span
                   className={`rounded-full px-3 py-1 text-sm font-bold ${
-                    totalAttentionItems > 0
+                    totalAttentionItems >
+                    0
                       ? "bg-red-100 text-red-700"
                       : "bg-green-100 text-green-800"
                   }`}
@@ -824,7 +866,9 @@ export default function DashboardPage() {
               <div className="mt-5 space-y-3">
                 <AttentionItem
                   title="New enquiries"
-                  count={newEnquiries.length}
+                  count={
+                    newEnquiries.length
+                  }
                   href="/enquiries"
                   severity="information"
                 />
@@ -852,7 +896,7 @@ export default function DashboardPage() {
                   count={
                     reschedulingRecords.length
                   }
-                  href="/documents"
+                  href="/jobs?view=reschedule"
                   severity="warning"
                 />
 
@@ -884,7 +928,8 @@ export default function DashboardPage() {
                 />
               </div>
 
-              {totalAttentionItems === 0 && (
+              {totalAttentionItems ===
+                0 && (
                 <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
                   There are currently no
                   outstanding operational
@@ -1006,8 +1051,8 @@ export default function DashboardPage() {
                 {recentTreatments.length ===
                 0 ? (
                   <EmptyState>
-                    No treatment activity has
-                    been recorded.
+                    No treatment activity
+                    has been recorded.
                   </EmptyState>
                 ) : (
                   recentTreatments.map(
@@ -1062,9 +1107,9 @@ export default function DashboardPage() {
                 {stockData.products.length ===
                 0 ? (
                   <EmptyState>
-                    Open Stock & Purchasing to
-                    create or restore stock
-                    records.
+                    Open Stock &
+                    Purchasing to create or
+                    restore stock records.
                   </EmptyState>
                 ) : lowStockProducts.length ===
                   0 ? (
@@ -1121,7 +1166,9 @@ export default function DashboardPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <PipelineCard
                   label="New"
-                  value={newEnquiries.length}
+                  value={
+                    newEnquiries.length
+                  }
                   detail="Awaiting action"
                 />
 
@@ -1157,16 +1204,14 @@ export default function DashboardPage() {
           </section>
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div>
-              <h2 className="text-lg font-bold">
-                Quick actions
-              </h2>
+            <h2 className="text-lg font-bold">
+              Quick actions
+            </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Open the GreenFlow workflows
-                used most often.
-              </p>
-            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              Open the GreenFlow
+              workflows used most often.
+            </p>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <QuickAction
@@ -1188,6 +1233,12 @@ export default function DashboardPage() {
               />
 
               <QuickAction
+                label="Reschedule"
+                detail="Resolve failed visits"
+                href="/jobs?view=reschedule"
+              />
+
+              <QuickAction
                 label="Generate programme"
                 detail="Create annual visits"
                 href="/programmes"
@@ -1204,12 +1255,6 @@ export default function DashboardPage() {
                 detail="Usage and purchasing"
                 href="/stock"
               />
-
-              <QuickAction
-                label="Documents"
-                detail="Invoices and reports"
-                href="/documents"
-              />
             </div>
           </section>
         </div>
@@ -1218,8 +1263,11 @@ export default function DashboardPage() {
   );
 }
 
-function toDateValue(date: Date) {
-  const year = date.getFullYear();
+function toDateValue(
+  date: Date,
+) {
+  const year =
+    date.getFullYear();
 
   const month = String(
     date.getMonth() + 1,
@@ -1232,10 +1280,13 @@ function toDateValue(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function parseDate(value: string) {
-  const [year, month, day] = value
-    .split("-")
-    .map(Number);
+function parseDate(
+  value: string,
+) {
+  const [year, month, day] =
+    value
+      .split("-")
+      .map(Number);
 
   return new Date(
     year,
@@ -1298,6 +1349,7 @@ function MetricCard({
   label: string;
   value: string;
   detail: string;
+
   accent?:
     | "default"
     | "green"
@@ -1365,6 +1417,7 @@ function AttentionItem({
   title: string;
   count: number;
   href: string;
+
   severity:
     | "danger"
     | "warning"
@@ -1451,18 +1504,17 @@ function EmptyState({
 function TreatmentStatusBadge({
   status,
 }: {
-  status:
-    | "Completed"
-    | "Needs Rescheduling"
-    | "Cancelled";
+  status: TreatmentStatus;
 }) {
   const styles =
     status === "Completed"
       ? "bg-green-100 text-green-800"
-      : status ===
-          "Needs Rescheduling"
-        ? "bg-amber-100 text-amber-800"
-        : "bg-red-100 text-red-700";
+      : status === "Rescheduled"
+        ? "bg-blue-100 text-blue-800"
+        : status ===
+            "Needs Rescheduling"
+          ? "bg-amber-100 text-amber-800"
+          : "bg-red-100 text-red-700";
 
   return (
     <span

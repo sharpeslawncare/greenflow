@@ -2,12 +2,13 @@
 
 import type { ReactNode } from "react";
 
+import { ChemicalStoreProvider } from "@/components/chemical-store";
 import { CustomerStoreProvider } from "@/components/customer-store";
 import { EnquiryStoreProvider } from "@/components/enquiry-store";
 import { ProgrammeStoreProvider } from "@/components/programme-store";
+import { SeasonStoreProvider } from "@/components/season-store";
 import { SettingsStoreProvider } from "@/components/settings-store";
 import { TreatmentStoreProvider } from "@/components/treatment-store";
-import { ChemicalStoreProvider } from "@/components/chemical-store";
 
 export function Providers({
   children,
@@ -16,17 +17,19 @@ export function Providers({
 }) {
   return (
     <SettingsStoreProvider>
-  <ChemicalStoreProvider>
-    <CustomerStoreProvider>
-      <EnquiryStoreProvider>
-        <ProgrammeStoreProvider>
-          <TreatmentStoreProvider>
-            {children}
-          </TreatmentStoreProvider>
-        </ProgrammeStoreProvider>
-      </EnquiryStoreProvider>
-    </CustomerStoreProvider>
-  </ChemicalStoreProvider>
-</SettingsStoreProvider>
+      <CustomerStoreProvider>
+        <EnquiryStoreProvider>
+          <SeasonStoreProvider>
+            <ProgrammeStoreProvider>
+              <ChemicalStoreProvider>
+                <TreatmentStoreProvider>
+                  {children}
+                </TreatmentStoreProvider>
+              </ChemicalStoreProvider>
+            </ProgrammeStoreProvider>
+          </SeasonStoreProvider>
+        </EnquiryStoreProvider>
+      </CustomerStoreProvider>
+    </SettingsStoreProvider>
   );
 }

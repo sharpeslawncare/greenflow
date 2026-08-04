@@ -12,10 +12,14 @@ import {
 export type TreatmentStatus =
   | "Completed"
   | "Needs Rescheduling"
+  | "Rescheduled"
   | "Cancelled";
 
 export type TreatmentRecord = {
   id: string;
+
+  programmeId: string;
+  programmeVisitId: string;
 
   invoiceNumber: string;
 
@@ -105,29 +109,41 @@ const demoTreatments: TreatmentRecord[] = [
   {
     id: "treatment-demo-1",
 
+    programmeId: "",
+    programmeVisitId: "",
+
     invoiceNumber:
       "INV-2026-0001",
 
     customerNumber: "1001",
 
     scheduledDate: "2026-07-10",
+
     recordedDate:
       "2026-07-10T15:30:00.000Z",
+
     completedDate: "2026-07-10",
 
     status: "Completed",
+
     treatmentName:
       "Summer weed and feed",
 
     fertiliser:
       "ProTurf Spring 21-5-6",
+
     herbicide: "Pastor Pro",
+
     otherMaterials: "",
 
     chemicalId:
       "chemical-demo-2",
-    chemicalName: "Pastor Pro",
-    chemicalType: "Herbicide",
+
+    chemicalName:
+      "Pastor Pro",
+
+    chemicalType:
+      "Herbicide",
 
     activeIngredients:
       "Fluroxypyr, clopyralid and triclopyr",
@@ -136,54 +152,80 @@ const demoTreatments: TreatmentRecord[] = [
       "MAPP 18092",
 
     applicationRate: 2,
-    applicationRateUnit: "L/ha",
 
-    treatmentAreaSquareMetres: 250,
+    applicationRateUnit:
+      "L/ha",
+
+    treatmentAreaSquareMetres:
+      250,
 
     productRequired: 0.05,
+
     productUnit: "L",
 
     calibratedWaterVolumePerHectare:
       215.385,
 
-    waterRequiredLitres: 5.385,
+    waterRequiredLitres:
+      5.385,
 
     tankCapacityLitres: 16,
+
     tankFills: 0.337,
+
     productPerTank: 0.148,
 
-    estimatedProductCost: 3.2,
+    estimatedProductCost:
+      3.2,
 
     nozzleColour: "Grey",
-    nozzleType: "Deflector Tip",
 
-    knapsackMake: "Berthoud",
-    knapsackModel: "Vermorel 2000",
+    nozzleType:
+      "Deflector Tip",
+
+    knapsackMake:
+      "Berthoud",
+
+    knapsackModel:
+      "Vermorel 2000",
 
     walkingSpeedKph: 3,
-    flowRateLitresPerMinute: 1.4,
+
+    flowRateLitresPerMinute:
+      1.4,
+
     sprayWidthMetres: 1.3,
+
     pressureBar: 1,
 
     notes:
       "Treatment completed successfully. Lawn condition satisfactory.",
 
-    nextVisitDate: "2026-09-18",
+    nextVisitDate:
+      "2026-09-18",
   },
 
   {
     id: "treatment-demo-2",
 
+    programmeId: "",
+    programmeVisitId: "",
+
     invoiceNumber: "",
 
     customerNumber: "1002",
 
-    scheduledDate: "2026-07-11",
+    scheduledDate:
+      "2026-07-11",
+
     recordedDate:
       "2026-07-11T09:15:00.000Z",
+
     completedDate: "",
 
-    status: "Needs Rescheduling",
+    status:
+      "Needs Rescheduling",
+
     treatmentName:
       "Summer weed and feed",
 
@@ -201,7 +243,8 @@ const demoTreatments: TreatmentRecord[] = [
     applicationRate: 0,
     applicationRateUnit: "",
 
-    treatmentAreaSquareMetres: 0,
+    treatmentAreaSquareMetres:
+      0,
 
     productRequired: 0,
     productUnit: "",
@@ -224,14 +267,19 @@ const demoTreatments: TreatmentRecord[] = [
     knapsackModel: "",
 
     walkingSpeedKph: 0,
-    flowRateLitresPerMinute: 0,
+
+    flowRateLitresPerMinute:
+      0,
+
     sprayWidthMetres: 0,
+
     pressureBar: 0,
 
     notes:
       "Unable to gain access through the locked gate.",
 
-    nextVisitDate: "2026-07-15",
+    nextVisitDate:
+      "2026-07-15",
   },
 ];
 
@@ -245,8 +293,12 @@ export function TreatmentStoreProvider({
 }: {
   children: ReactNode;
 }) {
-  const [treatments, setTreatments] =
-    useState<TreatmentRecord[]>([]);
+  const [
+    treatments,
+    setTreatments,
+  ] = useState<TreatmentRecord[]>(
+    [],
+  );
 
   const [ready, setReady] =
     useState(false);
@@ -437,6 +489,13 @@ function normaliseTreatmentRecord(
       treatment.id ??
       createTreatmentId(),
 
+    programmeId:
+      treatment.programmeId ?? "",
+
+    programmeVisitId:
+      treatment.programmeVisitId ??
+      "",
+
     invoiceNumber:
       treatment.invoiceNumber ?? "",
 
@@ -454,8 +513,9 @@ function normaliseTreatmentRecord(
       treatment.completedDate ?? "",
 
     status:
-      treatment.status ??
-      "Completed",
+      normaliseTreatmentStatus(
+        treatment.status,
+      ),
 
     treatmentName:
       treatment.treatmentName ?? "",
@@ -490,7 +550,8 @@ function normaliseTreatmentRecord(
       ),
 
     applicationRateUnit:
-      treatment.applicationRateUnit ?? "",
+      treatment.applicationRateUnit ??
+      "",
 
     treatmentAreaSquareMetres:
       safeNumber(
@@ -573,6 +634,25 @@ function normaliseTreatmentRecord(
     nextVisitDate:
       treatment.nextVisitDate ?? "",
   };
+}
+
+function normaliseTreatmentStatus(
+  status:
+    | TreatmentStatus
+    | string
+    | undefined,
+): TreatmentStatus {
+  if (
+    status === "Completed" ||
+    status ===
+      "Needs Rescheduling" ||
+    status === "Rescheduled" ||
+    status === "Cancelled"
+  ) {
+    return status;
+  }
+
+  return "Completed";
 }
 
 function cloneDemoTreatments() {
