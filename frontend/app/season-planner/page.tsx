@@ -1,160 +1,269 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { AppShell } from "@/components/app-shell";
+import {
+  type SeasonCalendar,
+  useSeasonStore,
+} from "@/components/season-store";
+import { STANDARD_TREATMENTS } from "@/lib/standard-treatments";
 
-type Visit = {
-  number: number;
-  name: string;
-  plannedDate: string;
-  adjustedDate: string;
-};
-
-type PlannerSettings = {
-  seasonStart: string;
-  gap1: number;
-  gap2: number;
-  gap3: number;
-  gap4: number;
-  avoidWednesdays: boolean;
-  avoidWeekends: boolean;
-};
-
-const STORAGE_KEY = "greenflow-season-planner-v1";
-
-const defaultSettings: PlannerSettings = {
-  seasonStart: "2028-03-30",
-  gap1: 70,
-  gap2: 70,
-  gap3: 70,
-  gap4: 70,
-  avoidWednesdays: true,
-  avoidWeekends: true,
-};
-
-const visitNames = [
-  "Early winter moss control",
-  "Spring weed and feed",
-  "Summer weed and feed",
-  "Autumn weed and feed",
-  "Winter moss control",
-];
+const inputClass =
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export default function SeasonPlannerPage() {
-  const [settings, setSettings] =
-    useState<PlannerSettings>(defaultSettings);
+  const {
+    seasons,
+    ready,
+    saveSeason,
+    createSeason,
+    restoreDefaultSeason,
+  } = useSeasonStore();
 
-  const [manualAdjustments, setManualAdjustments] =
-    useState<Record<number, number>>({});
+  const currentYear =
+    new Date().getFullYear();
 
-  const [message, setMessage] = useState("");
+  const [selectedYear, setSelectedYear] =
+    useState(currentYear);
+
+  const [draft, setDraft] =
+    useState<SeasonCalendar | null>(
+      null,
+    );
+
+  const [excludedDate, setExcludedDate] =
+    useState("");
+
+  const [message, setMessage] =
+    useState("");
+
+  const selectedSeason =
+    seasons.find(
+      (season) =>
+        season.year === selectedYear,
+    ) ?? null;
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-
-    if (!saved) return;
-
-    try {
-      const parsed = JSON.parse(saved) as {
-        settings?: PlannerSettings;
-        manualAdjustments?: Record<number, number>;
-      };
-
-      if (parsed.settings) {
-        setSettings(parsed.settings);
-      }
-
-      if (parsed.manualAdjustments) {
-        setManualAdjustments(parsed.manualAdjustments);
-      }
-    } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+    if (!ready) {
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        settings,
-        manualAdjustments,
-      }),
-    );
-  }, [settings, manualAdjustments]);
+    if (selectedSeason) {
+      setDraft(
+        cloneSeason(selectedSeason),
+      );
+      return;
+    }
 
-  const visits = useMemo(
-    () =>
-      buildVisits(
-        settings,
-        manualAdjustments,
-      ),
-    [settings, manualAdjustments],
-  );
-
-  function updateGap(
-    field: "gap1" | "gap2" | "gap3" | "gap4",
-    value: number,
-  ) {
-    setSettings((current) => ({
-      ...current,
-      [field]: Math.max(1, value),
-    }));
-  }
-
-  function moveVisit(
-    visitNumber: number,
-    numberOfDays: number,
-  ) {
-    setManualAdjustments((current) => ({
-      ...current,
-      [visitNumber]:
-        (current[visitNumber] ?? 0) + numberOfDays,
-    }));
-
-    showMessage(
-      `Visit ${visitNumber} moved ${
-        numberOfDays > 0 ? "forward" : "back"
-      } by ${Math.abs(numberOfDays)} day.`,
-    );
-  }
-
-  function resetVisit(visitNumber: number) {
-    setManualAdjustments((current) => {
-      const updated = { ...current };
-      delete updated[visitNumber];
-      return updated;
+    const created = createSeason({
+      year: selectedYear,
     });
 
-    showMessage(`Visit ${visitNumber} restored.`);
-  }
+    setDraft(
+      cloneSeason(created),
+    );
+  }, [
+    ready,
+    selectedYear,
+    selectedSeason,
+    createSeason,
+  ]);
 
-  function resetPlanner() {
-    const confirmed = window.confirm(
-      "Restore the original GreenFlow demo season settings?",
+  const sortedGroupDates =
+    useMemo(
+      () =>
+        [...(draft?.groupDates ?? [])].sort(
+          (first, second) =>
+            first.groupNumber -
+            second.groupNumber,
+        ),
+      [draft],
     );
 
-    if (!confirmed) return;
-
-    setSettings(defaultSettings);
-    setManualAdjustments({});
-    window.localStorage.removeItem(STORAGE_KEY);
-    showMessage("Season planner restored.");
+  function updateDraft(
+    updater: (
+      current: SeasonCalendar,
+    ) => SeasonCalendar,
+  ) {
+    setDraft((current) =>
+      current
+        ? updater(current)
+        : current,
+    );
   }
 
-  function showMessage(text: string) {
+  function updateRoundName(
+    roundIndex: number,
+    value: string,
+  ) {
+    updateDraft((current) => ({
+      ...current,
+
+      treatmentRounds:
+        current.treatmentRounds.map(
+          (round, index) =>
+            index === roundIndex
+              ? {
+                  ...round,
+                  treatmentName: value,
+                }
+              : round,
+        ) as SeasonCalendar["treatmentRounds"],
+    }));
+  }
+
+  function updateRoundGap(
+    roundIndex: number,
+    value: number,
+  ) {
+    updateDraft((current) => ({
+      ...current,
+
+      treatmentRounds:
+        current.treatmentRounds.map(
+          (round, index) =>
+            index === roundIndex
+              ? {
+                  ...round,
+
+                  gapAfterPreviousDays:
+                    index === 0
+                      ? 0
+                      : Math.max(
+                          1,
+                          Math.floor(
+                            value,
+                          ),
+                        ),
+                }
+              : round,
+        ) as SeasonCalendar["treatmentRounds"],
+    }));
+  }
+
+  function addExcludedDate() {
+    if (
+      !draft ||
+      !isDateValue(excludedDate)
+    ) {
+      showMessage(
+        "Choose a valid excluded date.",
+      );
+      return;
+    }
+
+    if (
+      draft.excludedDates.includes(
+        excludedDate,
+      )
+    ) {
+      showMessage(
+        "That date is already excluded.",
+      );
+      return;
+    }
+
+    updateDraft((current) => ({
+      ...current,
+
+      excludedDates: [
+        ...current.excludedDates,
+        excludedDate,
+      ].sort(),
+    }));
+
+    setExcludedDate("");
+  }
+
+  function removeExcludedDate(
+    date: string,
+  ) {
+    updateDraft((current) => ({
+      ...current,
+
+      excludedDates:
+        current.excludedDates.filter(
+          (item) =>
+            item !== date,
+        ),
+    }));
+  }
+
+  function savePlanner() {
+    if (!draft) {
+      return;
+    }
+
+    if (
+      !isDateValue(
+        draft.firstGroupStartDate,
+      )
+    ) {
+      showMessage(
+        "Choose a valid Group 1 start date.",
+      );
+      return;
+    }
+
+    saveSeason(draft);
+
+    showMessage(
+      `${draft.year} group calendar saved and regenerated.`,
+    );
+  }
+
+  function restoreDefaults() {
+    const confirmed =
+      window.confirm(
+        `Restore the default five-treatment calendar for ${selectedYear}?`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    restoreDefaultSeason(
+      selectedYear,
+    );
+
+    showMessage(
+      `${selectedYear} defaults restored.`,
+    );
+  }
+
+  function showMessage(
+    text: string,
+  ) {
     setMessage(text);
 
     window.setTimeout(() => {
       setMessage("");
-    }, 2500);
+    }, 3200);
+  }
+
+  if (!ready || !draft) {
+    return (
+      <AppShell>
+        <main className="p-6">
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+            Loading season planner...
+          </div>
+        </main>
+      </AppShell>
+    );
   }
 
   return (
     <AppShell>
       <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1500px]">
+        <div className="mx-auto max-w-[1700px]">
           <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
               <Link
@@ -168,18 +277,49 @@ export default function SeasonPlannerPage() {
                 Season Planner
               </h1>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Generate and adjust the annual treatment programme.
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                Set Group 1&apos;s first date once.
+                GreenFlow then assigns each later
+                group to the next permitted working
+                day and generates all five treatment
+                rounds from the editable gaps.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={resetPlanner}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-            >
-              Restore demo settings
-            </button>
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Season year">
+                <input
+                  type="number"
+                  min="2020"
+                  max="2100"
+                  value={selectedYear}
+                  onChange={(event) =>
+                    setSelectedYear(
+                      Number(
+                        event.target.value,
+                      ) || currentYear,
+                    )
+                  }
+                  className="w-32 rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                />
+              </Field>
+
+              <button
+                type="button"
+                onClick={restoreDefaults}
+                className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold hover:bg-slate-50"
+              >
+                Restore defaults
+              </button>
+
+              <button
+                type="button"
+                onClick={savePlanner}
+                className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+              >
+                Save and regenerate
+              </button>
+            </div>
           </header>
 
           {message && (
@@ -188,245 +328,387 @@ export default function SeasonPlannerPage() {
             </div>
           )}
 
-          <section className="grid gap-4 xl:grid-cols-[380px_1fr]">
-            <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-bold">
-                Programme settings
-              </h2>
+          <section className="grid gap-4 xl:grid-cols-[400px_1fr]">
+            <aside className="space-y-4">
+              <Panel
+                title="Calendar settings"
+                description="These settings control the schedule inherited by every customer in each group."
+              >
+                <div className="space-y-4">
+                  <Field label="Calendar name">
+                    <input
+                      value={draft.name}
+                      onChange={(event) =>
+                        updateDraft(
+                          (current) => ({
+                            ...current,
+                            name:
+                              event.target
+                                .value,
+                          }),
+                        )
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
 
-              <div className="mt-5 space-y-4">
-                <Field label="Season start date">
+                  <Field label="Group 1 — Treatment 1 start date">
+                    <input
+                      type="date"
+                      value={
+                        draft.firstGroupStartDate
+                      }
+                      onChange={(event) =>
+                        updateDraft(
+                          (current) => ({
+                            ...current,
+
+                            firstGroupStartDate:
+                              event.target
+                                .value,
+                          }),
+                        )
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <NumberField
+                      label="Number of groups"
+                      value={
+                        draft.groupCount
+                      }
+                      min={1}
+                      onChange={(value) =>
+                        updateDraft(
+                          (current) => ({
+                            ...current,
+                            groupCount:
+                              value,
+                          }),
+                        )
+                      }
+                    />
+
+                    <NumberField
+                      label="Groups per day"
+                      value={
+                        draft.groupsPerWorkingDay
+                      }
+                      min={1}
+                      onChange={(value) =>
+                        updateDraft(
+                          (current) => ({
+                            ...current,
+
+                            groupsPerWorkingDay:
+                              value,
+                          }),
+                        )
+                      }
+                    />
+                  </div>
+
+                  <OptionToggle
+                    label="Avoid weekends"
+                    description="Saturday and Sunday are skipped."
+                    checked={
+                      draft.avoidWeekends
+                    }
+                    onChange={(checked) =>
+                      updateDraft(
+                        (current) => ({
+                          ...current,
+                          avoidWeekends:
+                            checked,
+                        }),
+                      )
+                    }
+                  />
+
+                  <OptionToggle
+                    label="Reserve Wednesdays"
+                    description="Wednesday is skipped when enabled."
+                    checked={
+                      draft.avoidWednesdays
+                    }
+                    onChange={(checked) =>
+                      updateDraft(
+                        (current) => ({
+                          ...current,
+
+                          avoidWednesdays:
+                            checked,
+                        }),
+                      )
+                    }
+                  />
+                </div>
+              </Panel>
+
+              <Panel
+                title="Standard treatments"
+                description="This is the shared five-treatment template. Gaps default to 70 days and remain editable."
+              >
+                <div className="space-y-3">
+                  {draft.treatmentRounds.map(
+                    (round, index) => (
+                      <div
+                        key={
+                          round.visitNumber
+                        }
+                        className="rounded-xl border border-slate-200 p-4"
+                      >
+                        <div className="mb-3 flex items-center gap-3">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#176b37] text-sm font-bold text-white">
+                            {
+                              round.visitNumber
+                            }
+                          </span>
+
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Treatment{" "}
+                            {
+                              round.visitNumber
+                            }
+                          </div>
+                        </div>
+
+                        <Field label="Treatment name">
+                          <input
+                            value={
+                              round.treatmentName
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              updateRoundName(
+                                index,
+                                event.target
+                                  .value,
+                              )
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+
+                        {index > 0 && (
+                          <div className="mt-3">
+                            <NumberField
+                              label="Gap after previous round"
+                              value={
+                                round.gapAfterPreviousDays
+                              }
+                              min={1}
+                              suffix="days"
+                              onChange={(
+                                value,
+                              ) =>
+                                updateRoundGap(
+                                  index,
+                                  value,
+                                )
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ),
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+                  The five initial names come from{" "}
+                  <code className="rounded bg-white px-1.5 py-0.5 text-xs">
+                    lib/standard-treatments.ts
+                  </code>
+                  . Saved season edits are then used
+                  throughout scheduling.
+                </div>
+              </Panel>
+
+              <Panel
+                title="Excluded dates"
+                description="Add bank holidays, closures or any date on which work must not be scheduled."
+              >
+                <div className="flex gap-2">
                   <input
                     type="date"
-                    value={settings.seasonStart}
+                    value={excludedDate}
                     onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        seasonStart: event.target.value,
-                      }))
+                      setExcludedDate(
+                        event.target.value,
+                      )
                     }
                     className={inputClass}
                   />
-                </Field>
 
-                <div className="rounded-xl bg-green-50 p-4">
-                  <p className="text-sm font-semibold text-green-900">
-                    Standard programme
-                  </p>
-
-                  <p className="mt-1 text-sm text-green-800">
-                    Five visits, normally around ten weeks apart.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={addExcludedDate}
+                    className="rounded-xl border border-[#338b45] px-4 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                  >
+                    Add
+                  </button>
                 </div>
 
-                <GapField
-                  label="Visit 1 → Visit 2"
-                  value={settings.gap1}
-                  onChange={(value) =>
-                    updateGap("gap1", value)
-                  }
-                />
-
-                <GapField
-                  label="Visit 2 → Visit 3"
-                  value={settings.gap2}
-                  onChange={(value) =>
-                    updateGap("gap2", value)
-                  }
-                />
-
-                <GapField
-                  label="Visit 3 → Visit 4"
-                  value={settings.gap3}
-                  onChange={(value) =>
-                    updateGap("gap3", value)
-                  }
-                />
-
-                <GapField
-                  label="Visit 4 → Visit 5"
-                  value={settings.gap4}
-                  onChange={(value) =>
-                    updateGap("gap4", value)
-                  }
-                />
-
-                <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
-                  <div>
-                    <div className="font-semibold">
-                      Reserve Wednesdays
+                <div className="mt-3 space-y-2">
+                  {draft.excludedDates.length ===
+                  0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
+                      No excluded dates.
                     </div>
-
-                    <div className="mt-1 text-xs text-slate-500">
-                      Move generated work to the next available day.
-                    </div>
-                  </div>
-
-                  <input
-                    type="checkbox"
-                    checked={settings.avoidWednesdays}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        avoidWednesdays:
-                          event.target.checked,
-                      }))
-                    }
-                    className="h-5 w-5"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
-                  <div>
-                    <div className="font-semibold">
-                      Avoid weekends
-                    </div>
-
-                    <div className="mt-1 text-xs text-slate-500">
-                      Saturday and Sunday are moved forward.
-                    </div>
-                  </div>
-
-                  <input
-                    type="checkbox"
-                    checked={settings.avoidWeekends}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        avoidWeekends:
-                          event.target.checked,
-                      }))
-                    }
-                    className="h-5 w-5"
-                  />
-                </label>
-              </div>
-            </aside>
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold">
-                    Generated programme
-                  </h2>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    Dates update automatically whenever a setting changes.
-                  </p>
-                </div>
-
-                <div className="rounded-full bg-green-100 px-4 py-2 text-sm font-bold text-green-800">
-                  5 visits
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {visits.map((visit, index) => {
-                  const adjustment =
-                    manualAdjustments[visit.number] ?? 0;
-
-                  return (
-                    <article
-                      key={visit.number}
-                      className="grid gap-4 rounded-xl border border-slate-200 p-4 lg:grid-cols-[70px_1.4fr_1fr_1fr_auto] lg:items-center"
-                    >
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#176b37] font-bold text-white">
-                        {visit.number}
-                      </div>
-
-                      <div>
-                        <div className="font-bold">
-                          {visit.name}
-                        </div>
-
-                        <div className="mt-1 text-xs text-slate-500">
-                          Treatment cycle {visit.number} of 5
-                        </div>
-                      </div>
-
-                      <DateDetail
-                        label="Calculated date"
-                        value={formatDate(
-                          visit.plannedDate,
-                        )}
-                      />
-
-                      <DateDetail
-                        label="Scheduled date"
-                        value={formatDate(
-                          visit.adjustedDate,
-                        )}
-                        highlight
-                      />
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            moveVisit(visit.number, -1)
-                          }
-                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                  ) : (
+                    draft.excludedDates.map(
+                      (date) => (
+                        <div
+                          key={date}
+                          className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
                         >
-                          −1 day
-                        </button>
+                          <span className="text-sm font-semibold">
+                            {formatDate(
+                              date,
+                            )}
+                          </span>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            moveVisit(visit.number, 1)
-                          }
-                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50"
-                        >
-                          +1 day
-                        </button>
-
-                        {adjustment !== 0 && (
                           <button
                             type="button"
                             onClick={() =>
-                              resetVisit(visit.number)
+                              removeExcludedDate(
+                                date,
+                              )
                             }
-                            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800"
+                            className="text-xs font-bold text-red-700 hover:underline"
                           >
-                            Reset
+                            Remove
                           </button>
-                        )}
+                        </div>
+                      ),
+                    )
+                  )}
+                </div>
+              </Panel>
+            </aside>
+
+            <section className="min-w-0 space-y-4">
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      Group calendar preview
+                    </h2>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      Group 1 starts on{" "}
+                      {formatDate(
+                        draft.firstGroupStartDate,
+                      )}
+                      . Each following group uses the
+                      next permitted working date.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+                    {draft.groupCount} groups ·{" "}
+                    {
+                      STANDARD_TREATMENTS.length
+                    }{" "}
+                    treatments
+                  </span>
+                </div>
+
+                <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+                  <div className="min-w-[1050px]">
+                    <div className="grid grid-cols-[90px_repeat(5,minmax(175px,1fr))] gap-0 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                      <div className="border-r border-slate-200 px-4 py-3">
+                        Group
                       </div>
 
-                      {index < visits.length - 1 && (
-                        <div className="hidden lg:col-span-5 lg:block">
-                          <div className="ml-[21px] h-4 border-l-2 border-dashed border-green-200" />
-                        </div>
+                      {draft.treatmentRounds.map(
+                        (round) => (
+                          <div
+                            key={
+                              round.visitNumber
+                            }
+                            className="border-r border-slate-200 px-4 py-3 last:border-r-0"
+                          >
+                            T
+                            {
+                              round.visitNumber
+                            }
+                            <div className="mt-1 normal-case tracking-normal text-slate-700">
+                              {
+                                round.treatmentName
+                              }
+                            </div>
+                          </div>
+                        ),
                       )}
-                    </article>
-                  );
-                })}
-              </div>
+                    </div>
+
+                    {sortedGroupDates.map(
+                      (group) => (
+                        <div
+                          key={
+                            group.groupNumber
+                          }
+                          className="grid grid-cols-[90px_repeat(5,minmax(175px,1fr))] border-t border-slate-100 text-sm hover:bg-green-50/40"
+                        >
+                          <div className="border-r border-slate-200 px-4 py-3 font-bold text-[#176b37]">
+                            {
+                              group.groupNumber
+                            }
+                          </div>
+
+                          {group.treatmentDates.map(
+                            (
+                              date,
+                              index,
+                            ) => (
+                              <div
+                                key={`${group.groupNumber}-${index}`}
+                                className="border-r border-slate-100 px-4 py-3 last:border-r-0"
+                              >
+                                <div className="font-semibold">
+                                  {formatShortDate(
+                                    date,
+                                  )}
+                                </div>
+
+                                <div className="mt-0.5 text-xs text-slate-500">
+                                  {formatWeekday(
+                                    date,
+                                  )}
+                                </div>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </article>
+
+              <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950 shadow-sm">
+                <h2 className="font-bold">
+                  Phase 1 scheduling rule
+                </h2>
+
+                <p className="mt-1">
+                  This page is now the only calendar
+                  generator. The former independent
+                  planner storage key is no longer
+                  used. Customers inherit these dates
+                  from their assigned group; only
+                  customer-specific reschedules should
+                  create overrides.
+                </p>
+              </article>
             </section>
-          </section>
-
-          <section className="mt-4 grid gap-4 md:grid-cols-3">
-            <SummaryCard
-              label="Programme begins"
-              value={formatDate(
-                visits[0]?.adjustedDate,
-              )}
-            />
-
-            <SummaryCard
-              label="Programme finishes"
-              value={formatDate(
-                visits[4]?.adjustedDate,
-              )}
-            />
-
-            <SummaryCard
-              label="Total programme length"
-              value={`${daysBetween(
-                visits[0]?.adjustedDate,
-                visits[4]?.adjustedDate,
-              )} days`}
-            />
           </section>
         </div>
       </main>
@@ -434,149 +716,146 @@ export default function SeasonPlannerPage() {
   );
 }
 
-function buildVisits(
-  settings: PlannerSettings,
-  manualAdjustments: Record<number, number>,
-): Visit[] {
-  const gaps = [
-    0,
-    settings.gap1,
-    settings.gap2,
-    settings.gap3,
-    settings.gap4,
-  ];
+function cloneSeason(
+  season: SeasonCalendar,
+): SeasonCalendar {
+  return {
+    ...season,
 
-  const visits: Visit[] = [];
-  let currentDate = parseDate(settings.seasonStart);
+    excludedDates: [
+      ...season.excludedDates,
+    ],
 
-  for (let index = 0; index < 5; index += 1) {
-    if (index > 0) {
-      currentDate = addDays(currentDate, gaps[index]);
-    }
+    treatmentRounds:
+      season.treatmentRounds.map(
+        (round) => ({
+          ...round,
+        }),
+      ) as SeasonCalendar["treatmentRounds"],
 
-    const plannedDate = toDateInputValue(currentDate);
+    groupDates:
+      season.groupDates.map(
+        (group) => ({
+          ...group,
 
-    let adjusted = moveToWorkingDay(
-      currentDate,
-      settings.avoidWednesdays,
-      settings.avoidWeekends,
-    );
-
-    const manualAdjustment =
-      manualAdjustments[index + 1] ?? 0;
-
-    adjusted = addDays(
-      adjusted,
-      manualAdjustment,
-    );
-
-    adjusted = moveToWorkingDay(
-      adjusted,
-      settings.avoidWednesdays,
-      settings.avoidWeekends,
-    );
-
-    visits.push({
-      number: index + 1,
-      name: visitNames[index],
-      plannedDate,
-      adjustedDate: toDateInputValue(adjusted),
-    });
-  }
-
-  return visits;
+          treatmentDates: [
+            ...group.treatmentDates,
+          ] as typeof group.treatmentDates,
+        }),
+      ),
+  };
 }
 
-function moveToWorkingDay(
-  date: Date,
-  avoidWednesdays: boolean,
-  avoidWeekends: boolean,
+function parseDate(
+  value: string,
 ) {
-  let result = new Date(date);
+  const [year, month, day] =
+    value
+      .split("-")
+      .map(Number);
 
-  while (true) {
-    const day = result.getDay();
-
-    const isWednesday =
-      avoidWednesdays && day === 3;
-
-    const isWeekend =
-      avoidWeekends && (day === 0 || day === 6);
-
-    if (!isWednesday && !isWeekend) {
-      return result;
-    }
-
-    result = addDays(result, 1);
-  }
-}
-
-function parseDate(value: string) {
-  const [year, month, day] = value
-    .split("-")
-    .map(Number);
-
-  return new Date(year, month - 1, day);
-}
-
-function addDays(date: Date, days: number) {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-}
-
-function toDateInputValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
-  const day = String(date.getDate()).padStart(
-    2,
-    "0",
-  );
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatDate(value?: string) {
-  if (!value) return "Not available";
-
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(parseDate(value));
-}
-
-function daysBetween(
-  start?: string,
-  finish?: string,
-) {
-  if (!start || !finish) return 0;
-
-  const milliseconds =
-    parseDate(finish).getTime() -
-    parseDate(start).getTime();
-
-  return Math.round(
-    milliseconds / (1000 * 60 * 60 * 24),
+  return new Date(
+    year,
+    month - 1,
+    day,
   );
 }
 
-const inputClass =
-  "w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+function isDateValue(
+  value: string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const date = parseDate(value);
+
+  return !Number.isNaN(
+    date.getTime(),
+  );
+}
+
+function formatDate(
+  value: string,
+) {
+  if (!isDateValue(value)) {
+    return "No date selected";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    },
+  ).format(parseDate(value));
+}
+
+function formatShortDate(
+  value: string,
+) {
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    },
+  ).format(parseDate(value));
+}
+
+function formatWeekday(
+  value: string,
+) {
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      weekday: "long",
+    },
+  ).format(parseDate(value));
+}
+
+function Panel({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-bold">
+        {title}
+      </h2>
+
+      <p className="mt-1 text-sm leading-6 text-slate-500">
+        {description}
+      </p>
+
+      <div className="mt-5">
+        {children}
+      </div>
+    </article>
+  );
+}
 
 function Field({
   label,
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-semibold">
+      <span className="mb-1.5 block text-sm font-semibold text-slate-700">
         {label}
       </span>
 
@@ -585,13 +864,17 @@ function Field({
   );
 }
 
-function GapField({
+function NumberField({
   label,
   value,
+  min,
+  suffix,
   onChange,
 }: {
   label: string;
   value: number;
+  min: number;
+  suffix?: string;
   onChange: (value: number) => void;
 }) {
   return (
@@ -599,68 +882,64 @@ function GapField({
       <div className="flex items-center gap-2">
         <input
           type="number"
-          min="1"
+          min={min}
           value={value}
           onChange={(event) =>
             onChange(
-              Number(event.target.value) || 1,
+              Math.max(
+                min,
+                Number(
+                  event.target.value,
+                ) || min,
+              ),
             )
           }
           className={inputClass}
         />
 
-        <span className="text-sm font-semibold text-slate-500">
-          days
-        </span>
+        {suffix && (
+          <span className="text-sm font-semibold text-slate-500">
+            {suffix}
+          </span>
+        )}
       </div>
     </Field>
   );
 }
 
-function DateDetail({
+function OptionToggle({
   label,
-  value,
-  highlight = false,
+  description,
+  checked,
+  onChange,
 }: {
   label: string;
-  value: string;
-  highlight?: boolean;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
 }) {
   return (
-    <div>
-      <div className="text-xs text-slate-500">
-        {label}
+    <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
+      <div>
+        <div className="font-semibold">
+          {label}
+        </div>
+
+        <div className="mt-1 text-xs text-slate-500">
+          {description}
+        </div>
       </div>
 
-      <div
-        className={`mt-1 font-semibold ${
-          highlight
-            ? "text-[#176b37]"
-            : "text-slate-700"
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="text-sm font-semibold text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-2 text-xl font-bold">
-        {value}
-      </div>
-    </article>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) =>
+          onChange(
+            event.target.checked,
+          )
+        }
+        className="h-5 w-5"
+      />
+    </label>
   );
 }

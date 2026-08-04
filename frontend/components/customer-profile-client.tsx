@@ -1,14 +1,24 @@
 "use client";
 
-import { CustomerTreatmentHistory } from "@/components/customer-treatment-history";
+import Link from "next/link";
 import {
   type ReactNode,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
-import { useCustomerStore } from "@/components/customer-store";
-import type { Customer } from "@/lib/demo-customers";
+import { CustomerTreatmentHistory } from "@/components/customer-treatment-history";
+import {
+  type StoredCustomer,
+  useCustomerStore,
+} from "@/components/customer-store";
+import {
+  type ProgrammeVisitStatus,
+  useProgrammeStore,
+} from "@/components/programme-store";
+import { useSeasonStore } from "@/components/season-store";
+import { useTreatmentStore } from "@/components/treatment-store";
 
 type CustomerProfileClientProps = {
   customerNumber: string;
@@ -21,65 +31,305 @@ type TabId =
   | "pricing"
   | "notes";
 
-const tabs: Array<{ id: TabId; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "programme", label: "Programme" },
-  { id: "history", label: "History" },
-  { id: "pricing", label: "Pricing" },
-  { id: "notes", label: "Notes" },
+const tabs: Array<{
+  id: TabId;
+  label: string;
+}> = [
+  {
+    id: "overview",
+    label: "Overview",
+  },
+  {
+    id: "programme",
+    label: "Programme",
+  },
+  {
+    id: "history",
+    label: "History",
+  },
+  {
+    id: "pricing",
+    label: "Pricing",
+  },
+  {
+    id: "notes",
+    label: "Notes",
+  },
 ];
+
+const inputClass =
+  "w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export function CustomerProfileClient({
   customerNumber,
 }: CustomerProfileClientProps) {
-  const { getCustomer, updateCustomer } =
-    useCustomerStore();
+  const {
+    getCustomer,
+    updateCustomer,
+    ready: customersReady,
+  } = useCustomerStore();
 
-  const customer = getCustomer(customerNumber);
+  const {
+    programmes,
+    ready: programmesReady,
+  } = useProgrammeStore();
+
+  const {
+    seasons,
+    ready: seasonsReady,
+  } = useSeasonStore();
+
+  const {
+    treatments,
+    ready: treatmentsReady,
+  } = useTreatmentStore();
+
+  const customer =
+    getCustomer(customerNumber);
 
   const [activeTab, setActiveTab] =
     useState<TabId>("overview");
 
   const [draft, setDraft] =
-    useState<Customer | null>(customer ?? null);
+    useState<StoredCustomer | null>(
+      customer ?? null,
+    );
 
-  const [editing, setEditing] = useState(false);
-  const [savedMessage, setSavedMessage] =
-    useState("");
+  const [editing, setEditing] =
+    useState(false);
+
+  const [
+    savedMessage,
+    setSavedMessage,
+  ] = useState("");
 
   useEffect(() => {
-    if (!customer) return;
+    if (!customer) {
+      return;
+    }
 
-    setDraft({ ...customer });
+    setDraft({
+      ...customer,
+    });
+
     setEditing(false);
     setActiveTab("overview");
-  }, [customerNumber, customer]);
+  }, [
+    customerNumber,
+    customer,
+  ]);
 
-  if (!customer) {
-    return null;
+  const customerProgrammes =
+    useMemo(
+      () =>
+        programmes
+          .filter(
+            (programme) =>
+              programme.customerNumber ===
+              customerNumber,
+          )
+          .sort(
+            (first, second) =>
+              second.year -
+              first.year,
+          ),
+      [
+        programmes,
+        customerNumber,
+      ],
+    );
+
+  const selectedProgramme =
+    useMemo(() => {
+      const today =
+        toDateValue(new Date());
+
+      const programmeWithFutureVisit =
+        customerProgrammes.find(
+          (programme) =>
+            programme.visits.some(
+              (visit) =>
+                (visit.status ===
+                  "Scheduled" ||
+                  visit.status ===
+                    "Planned") &&
+                visit.scheduledDate >=
+                  today,
+            ),
+        );
+
+      return (
+        programmeWithFutureVisit ??
+        customerProgrammes[0] ??
+        null
+      );
+    }, [customerProgrammes]);
+
+  const selectedSeason =
+    selectedProgramme
+      ? seasons.find(
+          (season) =>
+            season.year ===
+            selectedProgramme.year,
+        ) ?? null
+      : null;
+
+  const customerTreatments =
+    useMemo(
+      () =>
+        treatments
+          .filter(
+            (treatment) =>
+              treatment.customerNumber ===
+              customerNumber,
+          )
+          .sort(
+            (first, second) =>
+              getTreatmentDate(
+                second,
+              ).localeCompare(
+                getTreatmentDate(
+                  first,
+                ),
+              ),
+          ),
+      [
+        treatments,
+        customerNumber,
+      ],
+    );
+
+  const nextProgrammeVisit =
+    useMemo(() => {
+      const today =
+        toDateValue(new Date());
+
+      return customerProgrammes
+        .flatMap(
+          (programme) =>
+            programme.visits.map(
+              (visit) => ({
+                ...visit,
+                programmeYear:
+                  programme.year,
+              }),
+            ),
+        )
+        .filter(
+          (visit) =>
+            (visit.status ===
+              "Scheduled" ||
+              visit.status ===
+                "Planned") &&
+            visit.scheduledDate >=
+              today,
+        )
+        .sort(
+          (first, second) =>
+            first.scheduledDate.localeCompare(
+              second.scheduledDate,
+            ),
+        )[0];
+    }, [customerProgrammes]);
+
+  const lastCompletedTreatment =
+    customerTreatments.find(
+      (treatment) =>
+        treatment.status ===
+        "Completed",
+    );
+
+  const ready =
+    customersReady &&
+    programmesReady &&
+    seasonsReady &&
+    treatmentsReady;
+
+  if (!ready) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+        Loading customer profile...
+      </div>
+    );
   }
 
-  function beginEditing(customerToEdit: Customer) {
-  setDraft({ ...customerToEdit });
+  if (!customer) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center text-red-800">
+        Customer {customerNumber} could not
+        be found.
+      </div>
+    );
+  }
+
+  function beginEditing() {
+  const currentCustomer =
+    getCustomer(customerNumber);
+
+  if (!currentCustomer) {
+    setSavedMessage(
+      "The customer record could not be loaded.",
+    );
+    return;
+  }
+
+  setDraft({
+    ...currentCustomer,
+  });
+
   setEditing(true);
   setSavedMessage("");
 }
 
-function cancelEditing(customerToRestore: Customer) {
-  setDraft({ ...customerToRestore });
+function cancelEditing() {
+  const currentCustomer =
+    getCustomer(customerNumber);
+
+  if (currentCustomer) {
+    setDraft({
+      ...currentCustomer,
+    });
+  }
+
   setEditing(false);
 }
 
   function saveCustomer() {
-    if (!draft) return;
+    if (!draft) {
+      return;
+    }
 
-    updateCustomer(draft);
+    if (
+      draft.groupNumber < 1
+    ) {
+      setSavedMessage(
+        "Group number must be at least 1.",
+      );
+      return;
+    }
+
+    updateCustomer({
+      ...draft,
+
+      fullName:
+        draft.fullName.trim() ||
+        [
+          draft.firstName.trim(),
+          draft.surname.trim(),
+        ]
+          .filter(Boolean)
+          .join(" "),
+    });
+
     setEditing(false);
-    setSavedMessage("Customer changes saved.");
+
+    setSavedMessage(
+      "Customer changes saved. Their programme will automatically follow the dates assigned to the selected group.",
+    );
 
     window.setTimeout(() => {
       setSavedMessage("");
-    }, 2500);
+    }, 3500);
   }
 
   const aerationPrice =
@@ -90,14 +340,13 @@ function cancelEditing(customerToRestore: Customer) {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-9rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex h-[calc(100vh-9rem)] min-h-[590px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {savedMessage && (
-          <div className="border-b border-green-200 bg-green-50 px-5 py-2 text-sm font-semibold text-green-800">
+          <div className="border-b border-green-200 bg-green-50 px-5 py-3 text-sm font-semibold text-green-800">
             {savedMessage}
           </div>
         )}
 
-        {/* Compact customer header */}
         <section className="border-b border-slate-200 px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -106,30 +355,59 @@ function cancelEditing(customerToRestore: Customer) {
                   {customer.fullName}
                 </h1>
 
-                <StatusBadge status={customer.status} />
+                <StatusBadge
+                  status={
+                    customer.status
+                  }
+                />
+
+                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800">
+                  Group{" "}
+                  {
+                    customer.groupNumber
+                  }
+                </span>
               </div>
 
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
                 <span>
-                  Customer #{customer.customerNumber}
+                  Customer #
+                  {
+                    customer.customerNumber
+                  }
                 </span>
 
                 <span>
-                  {customer.address}, {customer.postcode}
+                  {customer.address},{" "}
+                  {customer.postcode}
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-7 gap-y-1 text-right sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-x-7 gap-y-2 text-right sm:grid-cols-4">
               <HeaderStat
                 label="Next visit"
-                value={customer.nextVisit}
+                value={
+                  nextProgrammeVisit
+                    ? formatDate(
+                        nextProgrammeVisit.scheduledDate,
+                      )
+                    : "None scheduled"
+                }
                 highlight
               />
 
               <HeaderStat
-                label="Group"
-                value={`${customer.groupNumber}`}
+                label="Last completed"
+                value={
+                  lastCompletedTreatment
+                    ? formatDate(
+                        getTreatmentDate(
+                          lastCompletedTreatment,
+                        ),
+                      )
+                    : "No history"
+                }
               />
 
               <HeaderStat
@@ -141,60 +419,68 @@ function cancelEditing(customerToRestore: Customer) {
 
               <HeaderStat
                 label="Lawn"
-                value={`${customer.lawnSize.toLocaleString()} m²`}
+                value={`${customer.lawnSize.toLocaleString(
+                  "en-GB",
+                )} m²`}
               />
             </div>
           </div>
         </section>
 
-        {/* Actions */}
         <section className="border-b border-slate-200 bg-slate-50 px-5 py-3">
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Link
+              href={
+                nextProgrammeVisit
+                  ? `/jobs?date=${nextProgrammeVisit.scheduledDate}`
+                  : "/jobs"
+              }
               className="rounded-lg bg-[#176b37] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#125b2f]"
             >
-              Complete treatment
-            </button>
+              Open jobs
+            </Link>
 
-            <button
-              type="button"
+            <Link
+              href="/programmes"
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
             >
-              Add service
-            </button>
+              Review programme
+            </Link>
 
             <button
               type="button"
-              onClick={() => beginEditing(customer)}
+              onClick={beginEditing}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
             >
               Edit customer
             </button>
 
-            <button
-              type="button"
+            <Link
+              href="/documents"
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
             >
-              Print report
-            </button>
+              Documents
+            </Link>
 
-            <button
-              type="button"
+            <Link
+              href="/communications"
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
             >
-              Send message
-            </button>
+              Communications
+            </Link>
           </div>
         </section>
 
-        {/* Tabs */}
         <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 px-5">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() =>
+                setActiveTab(
+                  tab.id,
+                )
+              }
               className={`border-b-2 px-4 py-3 text-sm font-semibold transition ${
                 activeTab === tab.id
                   ? "border-[#176b37] text-[#176b37]"
@@ -206,30 +492,65 @@ function cancelEditing(customerToRestore: Customer) {
           ))}
         </nav>
 
-        {/* Selected tab */}
         <section className="min-h-0 flex-1 overflow-auto p-5">
-          {activeTab === "overview" && (
-            <OverviewTab customer={customer} />
+          {activeTab ===
+            "overview" && (
+            <OverviewTab
+              customer={customer}
+              nextVisit={
+                nextProgrammeVisit
+                  ? formatDate(
+                      nextProgrammeVisit.scheduledDate,
+                    )
+                  : "None scheduled"
+              }
+              lastVisit={
+                lastCompletedTreatment
+                  ? formatDate(
+                      getTreatmentDate(
+                        lastCompletedTreatment,
+                      ),
+                    )
+                  : "No completed treatment"
+              }
+              hasProgramme={
+                customerProgrammes.length >
+                0
+              }
+            />
           )}
 
-          {activeTab === "programme" && (
-            <ProgrammeTab customer={customer} />
+          {activeTab ===
+            "programme" && (
+            <ProgrammeTab
+              customer={customer}
+              programme={
+                selectedProgramme
+              }
+              season={
+                selectedSeason
+              }
+            />
           )}
 
-          {activeTab === "history" && (
-  <CustomerTreatmentHistory
-    customerNumber={
-      customer.customerNumber
-    }
-  />
-)}
+          {activeTab ===
+            "history" && (
+            <CustomerTreatmentHistory
+              customerNumber={
+                customer.customerNumber
+              }
+            />
+          )}
 
-          {activeTab === "pricing" && (
+          {activeTab ===
+            "pricing" && (
             <PricingTab
               treatmentPrice={
                 customer.treatmentPrice
               }
-              aerationPrice={aerationPrice}
+              aerationPrice={
+                aerationPrice
+              }
               scarificationPrice={
                 scarificationPrice
               }
@@ -237,12 +558,13 @@ function cancelEditing(customerToRestore: Customer) {
           )}
 
           {activeTab === "notes" && (
-            <NotesTab notes={customer.notes} />
+            <NotesTab
+              notes={customer.notes}
+            />
           )}
         </section>
       </div>
 
-      {/* Edit customer modal */}
       {editing && draft && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
@@ -253,13 +575,18 @@ function cancelEditing(customerToRestore: Customer) {
                 </h2>
 
                 <p className="text-sm text-slate-500">
-                  Customer #{customer.customerNumber}
+                  Customer #
+                  {
+                    customer.customerNumber
+                  }
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => cancelEditing(customer)}
+                onClick={
+                  cancelEditing
+                }
                 className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100"
               >
                 Close
@@ -273,7 +600,9 @@ function cancelEditing(customerToRestore: Customer) {
                   onChange={(event) =>
                     setDraft({
                       ...draft,
-                      firstName: event.target.value,
+                      firstName:
+                        event.target
+                          .value,
                     })
                   }
                   className={inputClass}
@@ -286,20 +615,24 @@ function cancelEditing(customerToRestore: Customer) {
                   onChange={(event) =>
                     setDraft({
                       ...draft,
-                      surname: event.target.value,
+                      surname:
+                        event.target
+                          .value,
                     })
                   }
                   className={inputClass}
                 />
               </FormField>
 
-              <FormField label="Full name">
+              <FormField label="Display name">
                 <input
                   value={draft.fullName}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
-                      fullName: event.target.value,
+                      fullName:
+                        event.target
+                          .value,
                     })
                   }
                   className={inputClass}
@@ -312,9 +645,10 @@ function cancelEditing(customerToRestore: Customer) {
                   onChange={(event) =>
                     setDraft({
                       ...draft,
+
                       status:
                         event.target
-                          .value as Customer["status"],
+                          .value as StoredCustomer["status"],
                     })
                   }
                   className={inputClass}
@@ -322,27 +656,33 @@ function cancelEditing(customerToRestore: Customer) {
                   <option value="Active">
                     Active
                   </option>
+
                   <option value="Paused">
                     Paused
                   </option>
+
                   <option value="Inactive">
                     Inactive
                   </option>
                 </select>
               </FormField>
 
-              <FormField label="Address">
-                <input
-                  value={draft.address}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      address: event.target.value,
-                    })
-                  }
-                  className={inputClass}
-                />
-              </FormField>
+              <div className="md:col-span-2">
+                <FormField label="Address">
+                  <input
+                    value={draft.address}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        address:
+                          event.target
+                            .value,
+                      })
+                    }
+                    className={inputClass}
+                  />
+                </FormField>
+              </div>
 
               <FormField label="Postcode">
                 <input
@@ -351,7 +691,8 @@ function cancelEditing(customerToRestore: Customer) {
                     setDraft({
                       ...draft,
                       postcode:
-                        event.target.value.toUpperCase(),
+                        event.target
+                          .value,
                     })
                   }
                   className={inputClass}
@@ -365,7 +706,9 @@ function cancelEditing(customerToRestore: Customer) {
                   onChange={(event) =>
                     setDraft({
                       ...draft,
-                      email: event.target.value,
+                      email:
+                        event.target
+                          .value,
                     })
                   }
                   className={inputClass}
@@ -374,12 +717,16 @@ function cancelEditing(customerToRestore: Customer) {
 
               <FormField label="Mobile phone">
                 <input
-                  value={draft.mobilePhone}
+                  value={
+                    draft.mobilePhone
+                  }
                   onChange={(event) =>
                     setDraft({
                       ...draft,
+
                       mobilePhone:
-                        event.target.value,
+                        event.target
+                          .value,
                     })
                   }
                   className={inputClass}
@@ -392,7 +739,9 @@ function cancelEditing(customerToRestore: Customer) {
                   onChange={(event) =>
                     setDraft({
                       ...draft,
-                      homePhone: event.target.value,
+                      homePhone:
+                        event.target
+                          .value,
                     })
                   }
                   className={inputClass}
@@ -401,25 +750,89 @@ function cancelEditing(customerToRestore: Customer) {
 
               <FormField label="Preferred contact">
                 <select
-                  value={draft.preferredContact}
+                  value={
+                    draft.preferredContact
+                  }
                   onChange={(event) =>
                     setDraft({
                       ...draft,
+
                       preferredContact:
                         event.target
-                          .value as Customer["preferredContact"],
+                          .value as StoredCustomer["preferredContact"],
                     })
                   }
                   className={inputClass}
                 >
-                  <option value="SMS">SMS</option>
+                  <option value="SMS">
+                    SMS
+                  </option>
+
                   <option value="Email">
                     Email
                   </option>
+
                   <option value="Telephone">
                     Telephone
                   </option>
                 </select>
+              </FormField>
+
+              <FormField label="Assigned group">
+                <input
+                  type="number"
+                  min="1"
+                  value={
+                    draft.groupNumber
+                  }
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+
+                      groupNumber:
+                        Math.max(
+                          1,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 1,
+                        ),
+                    })
+                  }
+                  className={inputClass}
+                />
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Changing this automatically moves
+                  the customer onto the dates assigned
+                  to the new group.
+                </p>
+              </FormField>
+
+              <FormField label="Programme eligibility date">
+                <input
+                  type="date"
+                  value={
+                    draft.programmeStartDate
+                  }
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+
+                      programmeStartDate:
+                        event.target
+                          .value,
+                    })
+                  }
+                  className={inputClass}
+                />
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Leave blank for an established
+                  customer. For a new customer, past
+                  treatment rounds before this date
+                  are excluded.
+                </p>
               </FormField>
 
               <FormField label="Lawn size (m²)">
@@ -430,9 +843,15 @@ function cancelEditing(customerToRestore: Customer) {
                   onChange={(event) =>
                     setDraft({
                       ...draft,
+
                       lawnSize:
-                        Number(event.target.value) ||
-                        0,
+                        Math.max(
+                          0,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 0,
+                        ),
                     })
                   }
                   className={inputClass}
@@ -443,32 +862,22 @@ function cancelEditing(customerToRestore: Customer) {
                 <input
                   type="number"
                   min="0"
-                  step="0.5"
-                  value={draft.treatmentPrice}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      treatmentPrice:
-                        Number(event.target.value) ||
-                        0,
-                    })
+                  step="0.01"
+                  value={
+                    draft.treatmentPrice
                   }
-                  className={inputClass}
-                />
-              </FormField>
-
-              <FormField label="Group number">
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={draft.groupNumber}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
-                      groupNumber:
-                        Number(event.target.value) ||
-                        1,
+
+                      treatmentPrice:
+                        Math.max(
+                          0,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 0,
+                        ),
                     })
                   }
                   className={inputClass}
@@ -483,88 +892,64 @@ function cancelEditing(customerToRestore: Customer) {
                   onChange={(event) =>
                     setDraft({
                       ...draft,
+
                       vanNumber:
-                        Number(event.target.value) ||
-                        1,
+                        Math.max(
+                          1,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 1,
+                        ),
                     })
                   }
                   className={inputClass}
                 />
               </FormField>
 
-              <FormField label="Next visit">
-                <input
-                  value={draft.nextVisit}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      nextVisit: event.target.value,
-                    })
-                  }
-                  className={inputClass}
-                />
+              <FormField label="Access and property alerts">
+                <div className="space-y-2 rounded-xl border border-slate-200 p-4">
+                  <CheckboxField
+                    label="Locked gate"
+                    checked={
+                      draft.lockedGate
+                    }
+                    onChange={(checked) =>
+                      setDraft({
+                        ...draft,
+                        lockedGate:
+                          checked,
+                      })
+                    }
+                  />
+
+                  <CheckboxField
+                    label="Dog on property"
+                    checked={
+                      draft.dogOnProperty
+                    }
+                    onChange={(checked) =>
+                      setDraft({
+                        ...draft,
+                        dogOnProperty:
+                          checked,
+                      })
+                    }
+                  />
+                </div>
               </FormField>
-
-              <FormField label="Last visit">
-                <input
-                  value={draft.lastVisit}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      lastVisit: event.target.value,
-                    })
-                  }
-                  className={inputClass}
-                />
-              </FormField>
-
-              <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-4">
-                <input
-                  type="checkbox"
-                  checked={draft.lockedGate}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      lockedGate:
-                        event.target.checked,
-                    })
-                  }
-                  className="h-5 w-5"
-                />
-
-                <span className="font-semibold">
-                  Locked gate
-                </span>
-              </label>
-
-              <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-4">
-                <input
-                  type="checkbox"
-                  checked={draft.dogOnProperty}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      dogOnProperty:
-                        event.target.checked,
-                    })
-                  }
-                  className="h-5 w-5"
-                />
-
-                <span className="font-semibold">
-                  Dog on property
-                </span>
-              </label>
 
               <div className="md:col-span-2">
-                <FormField label="Notes">
+                <FormField label="Customer notes">
                   <textarea
-                    rows={4}
+                    rows={5}
                     value={draft.notes}
                     onChange={(event) =>
                       setDraft({
                         ...draft,
-                        notes: event.target.value,
+                        notes:
+                          event.target
+                            .value,
                       })
                     }
                     className={inputClass}
@@ -576,7 +961,9 @@ function cancelEditing(customerToRestore: Customer) {
             <div className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
               <button
                 type="button"
-                onClick={() => cancelEditing(customer)}
+                onClick={
+                  cancelEditing
+                }
                 className="rounded-xl border border-slate-300 px-5 py-2.5 font-semibold hover:bg-slate-50"
               >
                 Cancel
@@ -599,8 +986,14 @@ function cancelEditing(customerToRestore: Customer) {
 
 function OverviewTab({
   customer,
+  nextVisit,
+  lastVisit,
+  hasProgramme,
 }: {
-  customer: Customer;
+  customer: StoredCustomer;
+  nextVisit: string;
+  lastVisit: string;
+  hasProgramme: boolean;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -616,30 +1009,61 @@ function OverviewTab({
         <CompactRow
           label="Home"
           value={
-            customer.homePhone || "Not recorded"
+            customer.homePhone ||
+            "Not recorded"
           }
         />
 
         <CompactRow
           label="Email"
-          value={customer.email || "Not recorded"}
+          value={
+            customer.email ||
+            "Not recorded"
+          }
         />
 
         <CompactRow
           label="Preferred"
-          value={customer.preferredContact}
+          value={
+            customer.preferredContact
+          }
         />
       </CompactCard>
 
-      <CompactCard title="Property">
+      <CompactCard title="Scheduling">
         <CompactRow
-          label="Lawn size"
-          value={`${customer.lawnSize.toLocaleString()} m²`}
+          label="Assigned group"
+          value={`Group ${customer.groupNumber}`}
         />
 
         <CompactRow
-          label="Group"
-          value={`Group ${customer.groupNumber}`}
+          label="Next visit"
+          value={nextVisit}
+        />
+
+        <CompactRow
+          label="Last completed"
+          value={lastVisit}
+        />
+
+        <CompactRow
+          label="Eligibility"
+          value={
+            customer.programmeStartDate
+              ? formatDate(
+                  customer.programmeStartDate,
+                )
+              : "Established customer"
+          }
+        />
+      </CompactCard>
+
+      <CompactCard title="Property and alerts">
+        <CompactRow
+          label="Lawn size"
+          value={`${customer.lawnSize.toLocaleString(
+            "en-GB",
+          )} m²`}
         />
 
         <CompactRow
@@ -647,33 +1071,23 @@ function OverviewTab({
           value={`Van ${customer.vanNumber}`}
         />
 
-        <CompactRow
-          label="Last visit"
-          value={customer.lastVisit}
-        />
-      </CompactCard>
-
-      <CompactCard title="Alerts">
         <AlertRow
           label="Locked gate"
-          active={customer.lockedGate}
-        />
-
-        <AlertRow
-          label="Dog on property"
-          active={customer.dogOnProperty}
-        />
-
-        <AlertRow
-          label="SMS reminder"
           active={
-            customer.preferredContact === "SMS"
+            customer.lockedGate
           }
         />
 
         <AlertRow
-          label="Active customer"
-          active={customer.status === "Active"}
+          label="Dog on property"
+          active={
+            customer.dogOnProperty
+          }
+        />
+
+        <AlertRow
+          label="Inherited programme"
+          active={hasProgramme}
           positive
         />
       </CompactCard>
@@ -683,99 +1097,181 @@ function OverviewTab({
 
 function ProgrammeTab({
   customer,
+  programme,
+  season,
 }: {
-  customer: Customer;
+  customer: StoredCustomer;
+
+  programme:
+    | ReturnType<
+        typeof useProgrammeStore
+      >["programmes"][number]
+    | null;
+
+  season:
+    | ReturnType<
+        typeof useSeasonStore
+      >["seasons"][number]
+    | null;
 }) {
-  const visits = [
-    {
-      name: "Early winter moss control",
-      date: "15 January 2028",
-      status: "Completed",
-    },
-    {
-      name: "Spring weed and feed",
-      date: customer.lastVisit,
-      status: "Completed",
-    },
-    {
-      name: "Summer weed and feed",
-      date: customer.nextVisit,
-      status: "Upcoming",
-    },
-    {
-      name: "Autumn weed and feed",
-      date: "14 September 2028",
-      status: "Planned",
-    },
-    {
-      name: "Winter moss control",
-      date: "16 November 2028",
-      status: "Planned",
-    },
-  ];
+  if (!season) {
+    return (
+      <EmptyState>
+        No Season Calendar is available for this
+        customer&apos;s programme year.
+      </EmptyState>
+    );
+  }
+
+  const groupDates =
+    season.groupDates.find(
+      (group) =>
+        group.groupNumber ===
+        customer.groupNumber,
+    );
+
+  if (!groupDates) {
+    return (
+      <EmptyState>
+        Group {customer.groupNumber} is outside the
+        configured range for {season.year}.
+      </EmptyState>
+    );
+  }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200">
-      <div className="grid grid-cols-[50px_1.5fr_1fr_100px] gap-3 bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-500">
-        <span>Visit</span>
-        <span>Treatment</span>
-        <span>Date</span>
-        <span>Status</span>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+        <div>
+          <div className="font-bold">
+            Group {customer.groupNumber} inherited
+            schedule
+          </div>
+
+          <p className="mt-1">
+            These treatment names and standard dates
+            come directly from the {season.year} Season
+            Calendar.
+          </p>
+        </div>
+
+        <Link
+          href="/programmes"
+          className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-blue-900 hover:bg-blue-100"
+        >
+          Review overrides
+        </Link>
       </div>
 
-      {visits.map((visit, index) => (
-        <div
-          key={visit.name}
-          className="grid grid-cols-[50px_1.5fr_1fr_100px] items-center gap-3 border-t border-slate-100 px-4 py-3 text-sm"
-        >
-          <span className="font-bold">
-            {index + 1}
-          </span>
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="min-w-[900px]">
+          <div className="grid grid-cols-[70px_1.4fr_180px_180px_130px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+            <span>Round</span>
+            <span>Treatment</span>
+            <span>Group date</span>
+            <span>Customer date</span>
+            <span>Status</span>
+          </div>
 
-          <span className="font-semibold">
-            {visit.name}
-          </span>
+          {season.treatmentRounds.map(
+            (round, index) => {
+              const visit =
+                programme?.visits.find(
+                  (item) =>
+                    item.visitNumber ===
+                    round.visitNumber,
+                ) ?? null;
 
-          <span className="text-slate-600">
-            {visit.date}
-          </span>
+              const groupDate =
+                groupDates
+                  .treatmentDates[index];
 
-          <ProgrammeStatus
-            status={visit.status}
-          />
+              const overridden =
+                Boolean(
+                  visit &&
+                    visit.scheduledDate !==
+                      groupDate,
+                );
+
+              return (
+                <div
+                  key={
+                    round.visitNumber
+                  }
+                  className="grid grid-cols-[70px_1.4fr_180px_180px_130px] items-center gap-3 border-t border-slate-100 px-4 py-4 text-sm"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#176b37] font-bold text-white">
+                    {
+                      round.visitNumber
+                    }
+                  </span>
+
+                  <div>
+                    <div className="font-bold">
+                      {
+                        round.treatmentName
+                      }
+                    </div>
+
+                    <div className="mt-1 text-xs text-slate-500">
+                      {index === 0
+                        ? "Season starting round"
+                        : `${round.gapAfterPreviousDays} day standard gap`}
+                    </div>
+                  </div>
+
+                  <span className="font-semibold">
+                    {formatDate(
+                      groupDate,
+                    )}
+                  </span>
+
+                  <div>
+                    {visit ? (
+                      <>
+                        <div className="font-semibold">
+                          {formatDate(
+                            visit.scheduledDate,
+                          )}
+                        </div>
+
+                        {overridden && (
+                          <div className="mt-1 text-xs font-bold text-amber-700">
+                            Customer override
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                          Not included
+                        </span>
+
+                        <div className="mt-2 text-xs text-slate-500">
+                          This round was before the
+                          customer became eligible.
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {visit ? (
+                    <ProgrammeStatus
+                      status={
+                        visit.status
+                      }
+                    />
+                  ) : (
+                    <span className="text-xs font-semibold text-slate-400">
+                      Unavailable
+                    </span>
+                  )}
+                </div>
+              );
+            },
+          )}
         </div>
-      ))}
-    </div>
-  );
-}
-
-function HistoryTab({
-  customer,
-}: {
-  customer: Customer;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200">
-      <HistoryRow
-        date={customer.lastVisit}
-        treatment="Spring weed and feed"
-        products="ProTurf Spring, Pastor Pro"
-        result="Completed"
-      />
-
-      <HistoryRow
-        date="15 January 2028"
-        treatment="Early winter moss control"
-        products="Moss control treatment"
-        result="Completed"
-      />
-
-      <HistoryRow
-        date="16 November 2027"
-        treatment="Winter moss control"
-        products="Moss control treatment"
-        result="Completed"
-      />
+      </div>
     </div>
   );
 }
@@ -805,7 +1301,9 @@ function PricingTab({
 
       <PriceCard
         title="Scarification"
-        price={scarificationPrice}
+        price={
+          scarificationPrice
+        }
         detail="Treatment price ×3"
       />
     </div>
@@ -823,15 +1321,103 @@ function NotesTab({
         Customer notes
       </h2>
 
-      <p className="mt-3 leading-7 text-slate-600">
-        {notes || "No customer notes recorded."}
+      <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-600">
+        {notes ||
+          "No customer notes recorded."}
       </p>
     </div>
   );
 }
 
-const inputClass =
-  "w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+function getTreatmentDate(
+  treatment: {
+    completedDate: string;
+    scheduledDate: string;
+    recordedDate: string;
+  },
+) {
+  return (
+    treatment.completedDate ||
+    treatment.scheduledDate ||
+    treatment.recordedDate.slice(
+      0,
+      10,
+    )
+  );
+}
+
+function parseDate(
+  value: string,
+) {
+  const [year, month, day] =
+    value
+      .split("-")
+      .map(Number);
+
+  return new Date(
+    year,
+    month - 1,
+    day,
+  );
+}
+
+function isDateValue(
+  value: string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const date =
+    parseDate(value);
+
+  return (
+    !Number.isNaN(
+      date.getTime(),
+    ) &&
+    toDateValue(date) === value
+  );
+}
+
+function toDateValue(
+  date: Date,
+) {
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDate(
+  value: string,
+) {
+  if (!isDateValue(value)) {
+    return "No date";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    },
+  ).format(parseDate(value));
+}
 
 function FormField({
   label,
@@ -847,6 +1433,37 @@ function FormField({
       </span>
 
       {children}
+    </label>
+  );
+}
+
+function CheckboxField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (
+    checked: boolean,
+  ) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-4 text-sm">
+      <span className="font-semibold">
+        {label}
+      </span>
+
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) =>
+          onChange(
+            event.target.checked,
+          )
+        }
+        className="h-5 w-5"
+      />
     </label>
   );
 }
@@ -882,7 +1499,7 @@ function HeaderStat({
 function StatusBadge({
   status,
 }: {
-  status: Customer["status"];
+  status: StoredCustomer["status"];
 }) {
   const styles =
     status === "Active"
@@ -971,14 +1588,16 @@ function AlertRow({
 function ProgrammeStatus({
   status,
 }: {
-  status: string;
+  status: ProgrammeVisitStatus;
 }) {
   const style =
     status === "Completed"
       ? "bg-green-100 text-green-800"
-      : status === "Upcoming"
+      : status === "Scheduled"
         ? "bg-blue-100 text-blue-800"
-        : "bg-slate-100 text-slate-700";
+        : status === "Planned"
+          ? "bg-slate-100 text-slate-700"
+          : "bg-amber-100 text-amber-800";
 
   return (
     <span
@@ -986,38 +1605,6 @@ function ProgrammeStatus({
     >
       {status}
     </span>
-  );
-}
-
-function HistoryRow({
-  date,
-  treatment,
-  products,
-  result,
-}: {
-  date: string;
-  treatment: string;
-  products: string;
-  result: string;
-}) {
-  return (
-    <div className="grid grid-cols-[130px_1.2fr_1.5fr_100px] items-center gap-4 border-b border-slate-100 px-4 py-3 text-sm last:border-0">
-      <span className="text-slate-500">
-        {date}
-      </span>
-
-      <span className="font-semibold">
-        {treatment}
-      </span>
-
-      <span className="text-slate-600">
-        {products}
-      </span>
-
-      <span className="rounded-full bg-green-100 px-2.5 py-1 text-center text-xs font-bold text-green-800">
-        {result}
-      </span>
-    </div>
   );
 }
 
@@ -1032,7 +1619,9 @@ function PriceCard({
 }) {
   return (
     <article className="rounded-xl border border-slate-200 p-5">
-      <h2 className="font-bold">{title}</h2>
+      <h2 className="font-bold">
+        {title}
+      </h2>
 
       <div className="mt-2 text-3xl font-bold text-[#176b37]">
         £{price.toFixed(2)}
@@ -1042,5 +1631,17 @@ function PriceCard({
         {detail}
       </p>
     </article>
+  );
+}
+
+function EmptyState({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
+      {children}
+    </div>
   );
 }

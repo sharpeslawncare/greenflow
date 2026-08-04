@@ -879,7 +879,7 @@ function normaliseRounds(
 function getDefaultSeasonStartDate(
   year: number,
 ) {
-  return `${year}-03-30`;
+  return `${year}-01-12`;
 }
 
 function addCalendarDays(

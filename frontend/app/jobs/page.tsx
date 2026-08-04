@@ -11,22 +11,22 @@ import {
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
-
 import {
   type ApplicationRateUnit,
   type ChemicalRecord,
   type ChemicalUnit,
   useChemicalStore,
 } from "@/components/chemical-store";
-
-import { useCustomerStore } from "@/components/customer-store";
-
+import {
+  type StoredCustomer,
+  useCustomerStore,
+} from "@/components/customer-store";
 import {
   type CustomerProgramme,
   type ProgrammeVisit,
   useProgrammeStore,
 } from "@/components/programme-store";
-
+import { useSeasonStore } from "@/components/season-store";
 import {
   type TreatmentRecord,
   type TreatmentStatus,
@@ -35,46 +35,38 @@ import {
 
 type ScheduledJob = {
   id: string;
-
-  customerNumber: string;
-  customerName: string;
-
-  address: string;
-  postcode: string;
-
-  groupNumber: number;
-  vanNumber: number;
-
-  lawnSize: number;
-  treatmentPrice: number;
-
-  lockedGate: boolean;
-  dogOnProperty: boolean;
-
-  programmeId: string;
+  customer: StoredCustomer;
+  programme: CustomerProgramme;
   visit: ProgrammeVisit;
+  standardGroupDate: string;
+  overridden: boolean;
 };
 
 type ApplicationCalculation = {
   productRequired: number;
   productUnit: ChemicalUnit;
-
   calibratedWaterVolumePerHectare: number;
   waterRequiredLitres: number;
-
   tankFills: number;
   productPerTank: number;
-
   estimatedProductCost: number;
-  calibrationUsed: boolean;
 };
 
-const treatmentStatuses: TreatmentStatus[] =
-  [
-    "Completed",
-    "Needs Rescheduling",
-    "Cancelled",
-  ];
+const outcomeStatuses: Array<
+  Extract<
+    TreatmentStatus,
+    | "Completed"
+    | "Needs Rescheduling"
+    | "Cancelled"
+  >
+> = [
+  "Completed",
+  "Needs Rescheduling",
+  "Cancelled",
+];
+
+const inputClass =
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
 export default function JobsPage() {
   const searchParams =
@@ -83,6 +75,9 @@ export default function JobsPage() {
   const rescheduleMode =
     searchParams.get("view") ===
     "reschedule";
+
+  const requestedDate =
+    searchParams.get("date");
 
   const {
     customers,
@@ -94,6 +89,11 @@ export default function JobsPage() {
     ready: programmesReady,
     saveProgramme,
   } = useProgrammeStore();
+
+  const {
+    seasons,
+    ready: seasonsReady,
+  } = useSeasonStore();
 
   const {
     treatments,
@@ -110,44 +110,50 @@ export default function JobsPage() {
 
   const availableDates =
     useMemo(() => {
-      const dates =
-        programmes.flatMap(
-          (programme) =>
-            programme.visits
-              .filter(
-                (visit) =>
-                  visit.status ===
-                    "Scheduled" ||
-                  visit.status ===
-                    "Planned",
-              )
-              .map(
-                (visit) =>
-                  visit.scheduledDate,
-              ),
-        );
-
       return Array.from(
-        new Set(dates),
+        new Set(
+          programmes.flatMap(
+            (programme) =>
+              programme.visits
+                .filter(
+                  (visit) =>
+                    visit.status ===
+                      "Scheduled" ||
+                    visit.status ===
+                      "Planned",
+                )
+                .map(
+                  (visit) =>
+                    visit.scheduledDate,
+                ),
+          ),
+        ),
       ).sort();
     }, [programmes]);
 
-  const [
-    selectedDate,
-    setSelectedDate,
-  ] = useState(() =>
-    toDateValue(new Date()),
-  );
+  const [selectedDate, setSelectedDate] =
+    useState(
+      isDateValue(
+        requestedDate ?? "",
+      )
+        ? requestedDate!
+        : toDateValue(new Date()),
+    );
 
   const [
     selectedJobId,
     setSelectedJobId,
   ] = useState("");
 
-  const [status, setStatus] =
-    useState<TreatmentStatus>(
-      "Completed",
-    );
+  const [outcome, setOutcome] =
+    useState<
+      Extract<
+        TreatmentStatus,
+        | "Completed"
+        | "Needs Rescheduling"
+        | "Cancelled"
+      >
+    >("Completed");
 
   const [
     selectedChemicalId,
@@ -174,8 +180,8 @@ export default function JobsPage() {
     useState("");
 
   const [
-    nextVisitDate,
-    setNextVisitDate,
+    suggestedReplacementDate,
+    setSuggestedReplacementDate,
   ] = useState("");
 
   const [
@@ -191,144 +197,162 @@ export default function JobsPage() {
   const [message, setMessage] =
     useState("");
 
-  const jobs = useMemo(() => {
-    if (!selectedDate) {
-      return [];
+  useEffect(() => {
+    if (
+      isDateValue(
+        requestedDate ?? "",
+      )
+    ) {
+      setSelectedDate(
+        requestedDate!,
+      );
+    }
+  }, [requestedDate]);
+
+  useEffect(() => {
+    if (
+      selectedDate !==
+        toDateValue(new Date()) ||
+      availableDates.length ===
+        0 ||
+      availableDates.includes(
+        selectedDate,
+      )
+    ) {
+      return;
     }
 
-    return programmes
-      .flatMap((programme) =>
-        programme.visits
-          .filter(
-            (visit) =>
-              visit.scheduledDate ===
-                selectedDate &&
-              (visit.status ===
-                "Scheduled" ||
-                visit.status ===
-                  "Planned"),
-          )
-          .map((visit) => {
-            const customer =
-              customers.find(
-                (item) =>
-                  item.customerNumber ===
-                  programme.customerNumber,
-              );
+    const today =
+      toDateValue(new Date());
 
-            if (
-              !customer ||
-              customer.status !== "Active"
-            ) {
-              return null;
-            }
+    const nextDate =
+      availableDates.find(
+        (date) =>
+          date >= today,
+      ) ??
+      availableDates[0];
 
-            const alreadyRecorded =
-              treatments.some(
-                (treatment) =>
-                  treatment.programmeId ===
-                    programme.id &&
-                  treatment.programmeVisitId ===
-                    visit.id &&
-                  treatment.status !==
-                    "Rescheduled",
-              ) ||
-              treatments.some(
-                (treatment) =>
-                  !treatment.programmeVisitId &&
-                  treatment.customerNumber ===
-                    customer.customerNumber &&
-                  treatment.scheduledDate ===
-                    visit.scheduledDate &&
-                  treatment.treatmentName ===
-                    visit.treatmentName &&
-                  treatment.status !==
-                    "Rescheduled",
-              );
-
-            if (alreadyRecorded) {
-              return null;
-            }
-
-            const job: ScheduledJob = {
-              id: `${programme.id}-${visit.id}`,
-
-              customerNumber:
-                customer.customerNumber,
-
-              customerName:
-                customer.fullName,
-
-              address:
-                customer.address,
-
-              postcode:
-                customer.postcode,
-
-              groupNumber:
-                customer.groupNumber,
-
-              vanNumber:
-                customer.vanNumber,
-
-              lawnSize:
-                customer.lawnSize,
-
-              treatmentPrice:
-                customer.treatmentPrice,
-
-              lockedGate:
-                customer.lockedGate,
-
-              dogOnProperty:
-                customer.dogOnProperty,
-
-              programmeId:
-                programme.id,
-
-              visit,
-            };
-
-            return job;
-          }),
-      )
-      .filter(
-        (
-          job,
-        ): job is ScheduledJob =>
-          Boolean(job),
-      )
-      .sort((first, second) => {
-        if (
-          first.vanNumber !==
-          second.vanNumber
-        ) {
-          return (
-            first.vanNumber -
-            second.vanNumber
-          );
-        }
-
-        if (
-          first.groupNumber !==
-          second.groupNumber
-        ) {
-          return (
-            first.groupNumber -
-            second.groupNumber
-          );
-        }
-
-        return first.customerName.localeCompare(
-          second.customerName,
-        );
-      });
+    setSelectedDate(nextDate);
   }, [
-    programmes,
-    customers,
-    treatments,
+    availableDates,
     selectedDate,
   ]);
+
+  const jobs =
+    useMemo<ScheduledJob[]>(() => {
+      if (!selectedDate) {
+        return [];
+      }
+
+      return programmes
+        .flatMap((programme) => {
+          const customer =
+            customers.find(
+              (item) =>
+                item.customerNumber ===
+                programme.customerNumber,
+            );
+
+          if (
+            !customer ||
+            customer.status !==
+              "Active"
+          ) {
+            return [];
+          }
+
+          const season =
+            seasons.find(
+              (item) =>
+                item.year ===
+                programme.year,
+            );
+
+          const groupDates =
+            season?.groupDates.find(
+              (group) =>
+                group.groupNumber ===
+                customer.groupNumber,
+            );
+
+          return programme.visits
+            .filter(
+              (visit) =>
+                visit.scheduledDate ===
+                  selectedDate &&
+                (visit.status ===
+                  "Scheduled" ||
+                  visit.status ===
+                    "Planned"),
+            )
+            .filter(
+              (visit) =>
+                !hasRecordedOutcome(
+                  treatments,
+                  programme,
+                  visit,
+                  customer.customerNumber,
+                ),
+            )
+            .map((visit) => {
+              const roundIndex =
+                Math.max(
+                  0,
+                  visit.visitNumber -
+                    1,
+                );
+
+              const standardGroupDate =
+                groupDates
+                  ?.treatmentDates[
+                    roundIndex
+                  ] ??
+                visit.scheduledDate;
+
+              return {
+                id: `${programme.id}-${visit.id}`,
+                customer,
+                programme,
+                visit,
+                standardGroupDate,
+                overridden:
+                  standardGroupDate !==
+                  visit.scheduledDate,
+              };
+            });
+        })
+        .sort((first, second) => {
+          if (
+            first.customer.vanNumber !==
+            second.customer.vanNumber
+          ) {
+            return (
+              first.customer.vanNumber -
+              second.customer.vanNumber
+            );
+          }
+
+          if (
+            first.customer.groupNumber !==
+            second.customer.groupNumber
+          ) {
+            return (
+              first.customer.groupNumber -
+              second.customer.groupNumber
+            );
+          }
+
+          return first.customer.fullName.localeCompare(
+            second.customer.fullName,
+          );
+        });
+    }, [
+      programmes,
+      customers,
+      seasons,
+      treatments,
+      selectedDate,
+    ]);
 
   const selectedJob =
     jobs.find(
@@ -338,6 +362,27 @@ export default function JobsPage() {
     jobs[0] ??
     null;
 
+  useEffect(() => {
+    if (!selectedJob) {
+      setSelectedJobId("");
+      return;
+    }
+
+    if (
+      selectedJobId ===
+      selectedJob.id
+    ) {
+      return;
+    }
+
+    initialiseJobForm(
+      selectedJob,
+    );
+  }, [
+    selectedJob,
+    selectedJobId,
+  ]);
+
   const selectedChemical =
     chemicals.find(
       (chemical) =>
@@ -346,10 +391,16 @@ export default function JobsPage() {
     ) ?? null;
 
   const activeChemicals =
-    chemicals.filter(
-      (chemical) =>
-        chemical.active,
-    );
+    chemicals
+      .filter(
+        (chemical) =>
+          chemical.active,
+      )
+      .sort((first, second) =>
+        first.name.localeCompare(
+          second.name,
+        ),
+      );
 
   const calculation =
     selectedChemical
@@ -366,16 +417,16 @@ export default function JobsPage() {
           selectedDate &&
         treatment.status ===
           "Completed",
-    );
+    ).length;
 
-  const needsReschedulingOnDate =
+  const reschedulingOnDate =
     treatments.filter(
       (treatment) =>
         treatment.scheduledDate ===
           selectedDate &&
         treatment.status ===
           "Needs Rescheduling",
-    );
+    ).length;
 
   const cancelledOnDate =
     treatments.filter(
@@ -384,30 +435,34 @@ export default function JobsPage() {
           selectedDate &&
         treatment.status ===
           "Cancelled",
-    );
+    ).length;
 
-  const expectedIncome =
+  const remainingValue =
     jobs.reduce(
       (total, job) =>
         total +
-        job.treatmentPrice,
+        job.customer
+          .treatmentPrice,
       0,
     );
 
   const reschedulingTreatments =
-    useMemo(() => {
-      return treatments
-        .filter(
-          (treatment) =>
-            treatment.status ===
-            "Needs Rescheduling",
-        )
-        .sort((first, second) =>
-          first.scheduledDate.localeCompare(
-            second.scheduledDate,
+    useMemo(
+      () =>
+        treatments
+          .filter(
+            (treatment) =>
+              treatment.status ===
+              "Needs Rescheduling",
+          )
+          .sort(
+            (first, second) =>
+              first.scheduledDate.localeCompare(
+                second.scheduledDate,
+              ),
           ),
-        );
-    }, [treatments]);
+      [treatments],
+    );
 
   const selectedReschedulingTreatment =
     reschedulingTreatments.find(
@@ -424,8 +479,31 @@ export default function JobsPage() {
           (customer) =>
             customer.customerNumber ===
             selectedReschedulingTreatment.customerNumber,
+        ) ?? null
+      : null;
+
+  const selectedRescheduleMatch =
+    selectedReschedulingTreatment
+      ? findProgrammeVisitForTreatment(
+          programmes,
+          selectedReschedulingTreatment,
         )
-      : undefined;
+      : null;
+
+  const selectedStandardGroupDate =
+    selectedRescheduleMatch &&
+    selectedReschedulingCustomer
+      ? getStandardGroupDate(
+          seasons,
+          selectedRescheduleMatch
+            .programme.year,
+          selectedReschedulingCustomer
+            .groupNumber,
+          selectedRescheduleMatch
+            .programmeVisit
+            .visitNumber,
+        )
+      : "";
 
   useEffect(() => {
     if (!rescheduleMode) {
@@ -441,30 +519,28 @@ export default function JobsPage() {
       return;
     }
 
-    const stillExists =
+    const selectedStillExists =
       reschedulingTreatments.some(
         (treatment) =>
           treatment.id ===
           selectedRescheduleId,
       );
 
-    if (stillExists) {
+    if (selectedStillExists) {
       return;
     }
 
-    const firstTreatment =
+    const first =
       reschedulingTreatments[0];
 
     setSelectedRescheduleId(
-      firstTreatment.id,
+      first.id,
     );
 
     setReplacementDate(
-      firstTreatment.nextVisitDate ||
-        addDaysToDate(
-          firstTreatment.scheduledDate,
-          7,
-        ),
+      chooseReplacementDefault(
+        first,
+      ),
     );
   }, [
     rescheduleMode,
@@ -472,31 +548,34 @@ export default function JobsPage() {
     selectedRescheduleId,
   ]);
 
-  function selectJob(
+  function initialiseJobForm(
     job: ScheduledJob,
   ) {
     setSelectedJobId(job.id);
-
+    setOutcome("Completed");
     setTreatmentArea(
-      job.lawnSize,
+      job.customer.lawnSize,
     );
-
-    setStatus("Completed");
-
     setSelectedChemicalId("");
-
     setFertiliser("");
     setHerbicide("");
     setOtherMaterials("");
     setNotes("");
-
-    setNextVisitDate(
+    setSuggestedReplacementDate(
       findNextProgrammeVisitDate(
         programmes,
-        job.customerNumber,
-        job.visit.scheduledDate,
+        job.customer
+          .customerNumber,
+        job.visit
+          .scheduledDate,
       ),
     );
+  }
+
+  function selectJob(
+    job: ScheduledJob,
+  ) {
+    initialiseJobForm(job);
   }
 
   function selectReschedulingTreatment(
@@ -507,11 +586,9 @@ export default function JobsPage() {
     );
 
     setReplacementDate(
-      treatment.nextVisitDate ||
-        addDaysToDate(
-          treatment.scheduledDate,
-          7,
-        ),
+      chooseReplacementDefault(
+        treatment,
+      ),
     );
   }
 
@@ -528,7 +605,7 @@ export default function JobsPage() {
     }
 
     if (
-      status === "Completed" &&
+      outcome === "Completed" &&
       treatmentArea <= 0
     ) {
       showMessage(
@@ -537,7 +614,21 @@ export default function JobsPage() {
       return;
     }
 
+    if (
+      outcome ===
+        "Needs Rescheduling" &&
+      suggestedReplacementDate &&
+      suggestedReplacementDate <
+        toDateValue(new Date())
+    ) {
+      showMessage(
+        "The suggested replacement date cannot be in the past.",
+      );
+      return;
+    }
+
     const chemicalValues =
+      outcome === "Completed" &&
       selectedChemical &&
       calculation
         ? createChemicalTreatmentValues(
@@ -547,7 +638,7 @@ export default function JobsPage() {
         : createEmptyChemicalTreatmentValues();
 
     if (
-      status === "Completed" &&
+      outcome === "Completed" &&
       selectedChemical &&
       calculation
     ) {
@@ -566,150 +657,159 @@ export default function JobsPage() {
       }
     }
 
-    const treatment: TreatmentRecord =
-      {
-        id: createTreatmentId(),
+    const treatment:
+      TreatmentRecord = {
+      id: createTreatmentId(),
 
-        programmeId:
-          selectedJob.programmeId,
+      programmeId:
+        selectedJob.programme.id,
 
-        programmeVisitId:
-          selectedJob.visit.id,
+      programmeVisitId:
+        selectedJob.visit.id,
 
-        invoiceNumber:
-          status === "Completed"
-            ? createInvoiceNumber()
-            : "",
+      invoiceNumber:
+        outcome === "Completed"
+          ? createInvoiceNumber()
+          : "",
 
-        customerNumber:
-          selectedJob.customerNumber,
+      customerNumber:
+        selectedJob.customer
+          .customerNumber,
 
-        scheduledDate:
-          selectedJob.visit
-            .scheduledDate,
+      scheduledDate:
+        selectedJob.visit
+          .scheduledDate,
 
-        recordedDate:
-          new Date().toISOString(),
+      recordedDate:
+        new Date().toISOString(),
 
-        completedDate:
-          status === "Completed"
-            ? toDateValue(new Date())
-            : "",
+      completedDate:
+        outcome === "Completed"
+          ? toDateValue(new Date())
+          : "",
 
-        status,
+      status: outcome,
 
-        treatmentName:
-          selectedJob.visit
-            .treatmentName,
+      treatmentName:
+        selectedJob.visit
+          .treatmentName,
 
-        fertiliser:
-          fertiliser.trim(),
+      fertiliser:
+        outcome === "Completed"
+          ? fertiliser.trim()
+          : "",
 
-        herbicide:
-          herbicide.trim(),
+      herbicide:
+        outcome === "Completed"
+          ? herbicide.trim()
+          : "",
 
-        otherMaterials:
-          otherMaterials.trim(),
+      otherMaterials:
+        outcome === "Completed"
+          ? otherMaterials.trim()
+          : "",
 
-        ...chemicalValues,
+      ...chemicalValues,
 
-        treatmentAreaSquareMetres:
-          treatmentArea,
+      treatmentAreaSquareMetres:
+        outcome === "Completed"
+          ? treatmentArea
+          : 0,
 
-        notes: notes.trim(),
+      notes: notes.trim(),
 
-        nextVisitDate,
-      };
-
-    const programme =
-      programmes.find(
-        (item) =>
-          item.id ===
-          selectedJob.programmeId,
-      );
-
-    if (!programme) {
-      showMessage(
-        "The annual programme could not be found.",
-      );
-      return;
-    }
+      nextVisitDate:
+        outcome ===
+        "Needs Rescheduling"
+          ? suggestedReplacementDate
+          : findNextProgrammeVisitDate(
+              programmes,
+              selectedJob.customer
+                .customerNumber,
+              selectedJob.visit
+                .scheduledDate,
+            ),
+    };
 
     const programmeVisitStatus =
-      status === "Completed"
+      outcome === "Completed"
         ? "Completed"
         : "Skipped";
 
-    const updatedProgramme:
-      CustomerProgramme = {
-      ...programme,
+    saveProgramme({
+      ...selectedJob.programme,
 
-      visits: programme.visits.map(
-        (visit) =>
-          visit.id ===
-          selectedJob.visit.id
-            ? {
-                ...visit,
+      visits:
+        selectedJob.programme.visits.map(
+          (visit) =>
+            visit.id ===
+            selectedJob.visit.id
+              ? {
+                  ...visit,
 
-                status:
-                  programmeVisitStatus,
+                  status:
+                    programmeVisitStatus,
 
-                notes: appendNote(
-                  visit.notes,
-                  createProgrammeOutcomeNote(
-                    status,
-                    nextVisitDate,
+                  notes: appendNote(
+                    visit.notes,
+                    createOutcomeNote(
+                      outcome,
+                      suggestedReplacementDate,
+                    ),
                   ),
-                ),
-              }
-            : visit,
-      ),
-    };
-
-    saveProgramme(
-      updatedProgramme,
-    );
+                }
+              : visit,
+        ),
+    });
 
     addTreatment(treatment);
 
     const customerName =
-      selectedJob.customerName;
+      selectedJob.customer.fullName;
 
     setSelectedJobId("");
-    setSelectedChemicalId("");
-
-    setFertiliser("");
-    setHerbicide("");
-    setOtherMaterials("");
-    setNotes("");
-
-    setTreatmentArea(0);
-    setNextVisitDate("");
-    setStatus("Completed");
+    resetJobForm();
 
     showMessage(
-      status === "Completed"
+      outcome === "Completed"
         ? `${customerName}'s treatment has been completed and saved.`
-        : status ===
+        : outcome ===
             "Needs Rescheduling"
-          ? `${customerName}'s visit has been added to the rescheduling queue.`
+          ? `${customerName}'s visit is now in the rescheduling queue.`
           : `${customerName}'s visit has been cancelled.`,
     );
   }
 
   function rescheduleVisit() {
     if (
-      !selectedReschedulingTreatment
+      !selectedReschedulingTreatment ||
+      !selectedRescheduleMatch
     ) {
       showMessage(
-        "Select a visit to reschedule.",
+        "The matching programme visit could not be found.",
       );
       return;
     }
 
-    if (!replacementDate) {
+    if (
+      !isDateValue(
+        replacementDate,
+      )
+    ) {
       showMessage(
-        "Choose a new visit date.",
+        "Choose a valid replacement date.",
+      );
+      return;
+    }
+
+    const today =
+      toDateValue(new Date());
+
+    if (
+      replacementDate < today
+    ) {
+      showMessage(
+        "A visit cannot be rescheduled to a date that has already passed.",
       );
       return;
     }
@@ -719,20 +819,7 @@ export default function JobsPage() {
       selectedReschedulingTreatment.scheduledDate
     ) {
       showMessage(
-        "Choose a different date from the original visit date.",
-      );
-      return;
-    }
-
-    const match =
-      findProgrammeVisitForTreatment(
-        programmes,
-        selectedReschedulingTreatment,
-      );
-
-    if (!match) {
-      showMessage(
-        "The matching annual programme visit could not be found.",
+        "Choose a different date from the failed visit date.",
       );
       return;
     }
@@ -740,65 +827,59 @@ export default function JobsPage() {
     const {
       programme,
       programmeVisit,
-    } = match;
+    } = selectedRescheduleMatch;
 
     const conflictingVisit =
       programme.visits.find(
         (visit) =>
           visit.id !==
             programmeVisit.id &&
-          visit.scheduledDate ===
-            replacementDate &&
           visit.status !==
-            "Skipped",
+            "Skipped" &&
+          visit.scheduledDate ===
+            replacementDate,
       );
 
     if (conflictingVisit) {
       showMessage(
-        `This customer already has "${conflictingVisit.treatmentName}" scheduled on ${formatDate(
+        `This customer already has ${conflictingVisit.treatmentName} scheduled on ${formatDate(
           replacementDate,
-        )}. Please choose another date.`,
+        )}.`,
       );
       return;
     }
 
-    const updatedProgramme:
-      CustomerProgramme = {
+    const standardGroupDate =
+      selectedStandardGroupDate ||
+      programmeVisit.scheduledDate;
+
+    saveProgramme({
       ...programme,
 
-      visits: programme.visits.map(
-        (visit) => {
-          if (
-            visit.id !==
+      visits:
+        programme.visits.map(
+          (visit) =>
+            visit.id ===
             programmeVisit.id
-          ) {
-            return visit;
-          }
+              ? {
+                  ...visit,
 
-          return {
-            ...visit,
+                  scheduledDate:
+                    replacementDate,
 
-            scheduledDate:
-              replacementDate,
+                  status:
+                    "Scheduled",
 
-            status: "Scheduled",
-
-            notes: appendNote(
-              visit.notes,
-              `Rescheduled from ${formatDate(
-                selectedReschedulingTreatment.scheduledDate,
-              )} to ${formatDate(
-                replacementDate,
-              )}.`,
-            ),
-          };
-        },
-      ),
-    };
-
-    saveProgramme(
-      updatedProgramme,
-    );
+                  notes:
+                    addDateOverrideNote(
+                      visit.notes,
+                      standardGroupDate,
+                      replacementDate,
+                    ),
+                }
+              : visit,
+        ),
+    });
 
     updateTreatment({
       ...selectedReschedulingTreatment,
@@ -809,22 +890,25 @@ export default function JobsPage() {
       programmeVisitId:
         programmeVisit.id,
 
-      status: "Rescheduled",
+      status:
+        "Rescheduled",
 
       nextVisitDate:
         replacementDate,
 
       notes: appendNote(
         selectedReschedulingTreatment.notes,
-        `Visit successfully rescheduled to ${formatDate(
+        `Visit rescheduled to ${formatDate(
           replacementDate,
         )}.`,
       ),
     });
 
     const customerName =
-      selectedReschedulingCustomer?.fullName ??
-      selectedReschedulingTreatment.customerNumber;
+      selectedReschedulingCustomer
+        ?.fullName ??
+      selectedReschedulingTreatment
+        .customerNumber;
 
     const confirmedDate =
       replacementDate;
@@ -835,8 +919,19 @@ export default function JobsPage() {
     showMessage(
       `${customerName}'s visit has been rescheduled to ${formatDate(
         confirmedDate,
-      )}.`,
+      )}. The other customers in the group are unchanged.`,
     );
+  }
+
+  function resetJobForm() {
+    setOutcome("Completed");
+    setTreatmentArea(0);
+    setSelectedChemicalId("");
+    setFertiliser("");
+    setHerbicide("");
+    setOtherMaterials("");
+    setNotes("");
+    setSuggestedReplacementDate("");
   }
 
   function showMessage(
@@ -852,6 +947,7 @@ export default function JobsPage() {
   const ready =
     customersReady &&
     programmesReady &&
+    seasonsReady &&
     treatmentsReady &&
     chemicalsReady;
 
@@ -883,20 +979,20 @@ export default function JobsPage() {
               <h1 className="mt-2 text-3xl font-bold">
                 {rescheduleMode
                   ? "Reschedule Visits"
-                  : "Today’s Jobs"}
+                  : "Scheduled Jobs"}
               </h1>
 
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">
                 {rescheduleMode
-                  ? "Choose replacement dates without conflicting with the customer’s annual programme."
-                  : "Complete scheduled treatments, calculate chemical requirements and record visits that need rearranging."}
+                  ? "Move only the affected customer visit. The standard group calendar and every other customer in the group remain unchanged."
+                  : "Jobs are derived from the shared Season Calendar, customer group assignments and customer-specific overrides."}
               </p>
             </div>
 
             {rescheduleMode ? (
               <Link
                 href="/jobs"
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold hover:bg-slate-50"
               >
                 Return to jobs
               </Link>
@@ -908,10 +1004,10 @@ export default function JobsPage() {
                     setSelectedDate(
                       event.target.value,
                     );
-
                     setSelectedJobId("");
+                    resetJobForm();
                   }}
-                  className="min-w-[280px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                  className="min-w-[285px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
                 >
                   {!availableDates.includes(
                     selectedDate,
@@ -919,7 +1015,7 @@ export default function JobsPage() {
                     <option
                       value={selectedDate}
                     >
-                      {formatDate(
+                      {formatDateWithDay(
                         selectedDate,
                       )}
                     </option>
@@ -949,17 +1045,24 @@ export default function JobsPage() {
           )}
 
           {rescheduleMode ? (
-            <ReschedulingScreen
+            <RescheduleView
               treatments={
                 reschedulingTreatments
               }
               customers={customers}
               programmes={programmes}
+              seasons={seasons}
               selectedTreatment={
                 selectedReschedulingTreatment
               }
               selectedCustomer={
                 selectedReschedulingCustomer
+              }
+              selectedMatch={
+                selectedRescheduleMatch
+              }
+              standardGroupDate={
+                selectedStandardGroupDate
               }
               replacementDate={
                 replacementDate
@@ -967,7 +1070,7 @@ export default function JobsPage() {
               onSelect={
                 selectReschedulingTreatment
               }
-              onReplacementDateChange={
+              onDateChange={
                 setReplacementDate
               }
               onConfirm={
@@ -990,19 +1093,19 @@ export default function JobsPage() {
                 <SummaryCard
                   label="Completed"
                   value={String(
-                    completedOnDate.length,
+                    completedOnDate,
                   )}
-                  detail="Saved treatments"
+                  detail="Recorded outcomes"
                 />
 
                 <SummaryCard
                   label="Rescheduling"
                   value={String(
-                    needsReschedulingOnDate.length,
+                    reschedulingOnDate,
                   )}
-                  detail="Replacement visit needed"
+                  detail="Replacement date needed"
                   warning={
-                    needsReschedulingOnDate.length >
+                    reschedulingOnDate >
                     0
                   }
                 />
@@ -1010,140 +1113,35 @@ export default function JobsPage() {
                 <SummaryCard
                   label="Cancelled"
                   value={String(
-                    cancelledOnDate.length,
+                    cancelledOnDate,
                   )}
-                  detail="Visits not completed"
+                  detail="Not completed"
                 />
 
                 <SummaryCard
                   label="Remaining value"
-                  value={`£${expectedIncome.toFixed(
+                  value={`£${remainingValue.toFixed(
                     2,
                   )}`}
-                  detail="Unrecorded scheduled jobs"
+                  detail="Scheduled work"
                 />
               </section>
 
-              <section className="mt-4 grid gap-4 xl:grid-cols-[390px_1fr]">
-                <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h2 className="text-lg font-bold">
-                    Scheduled customers
-                  </h2>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    Select a customer to
-                    record the visit.
-                  </p>
-
-                  <div className="mt-4 max-h-[72vh] space-y-2 overflow-y-auto pr-1">
-                    {jobs.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-                        All scheduled jobs
-                        for this date have
-                        been recorded, or no
-                        programme visits are
-                        scheduled.
-                      </div>
-                    ) : (
-                      jobs.map((job) => {
-                        const isSelected =
-                          selectedJob?.id ===
-                          job.id;
-
-                        return (
-                          <button
-                            key={job.id}
-                            type="button"
-                            onClick={() =>
-                              selectJob(job)
-                            }
-                            className={`w-full rounded-xl border p-4 text-left transition ${
-                              isSelected
-                                ? "border-[#338b45] bg-green-50"
-                                : "border-slate-200 hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-bold">
-                                  {
-                                    job.customerName
-                                  }
-                                </div>
-
-                                <div className="mt-1 text-xs text-slate-500">
-                                  Customer{" "}
-                                  {
-                                    job.customerNumber
-                                  }
-                                </div>
-                              </div>
-
-                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
-                                Van{" "}
-                                {
-                                  job.vanNumber
-                                }
-                              </span>
-                            </div>
-
-                            <div className="mt-3 text-sm text-slate-600">
-                              {job.address},{" "}
-                              {job.postcode}
-                            </div>
-
-                            <div className="mt-3 font-semibold text-slate-800">
-                              {
-                                job.visit
-                                  .treatmentName
-                              }
-                            </div>
-
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                              <span className="rounded-full bg-blue-100 px-2 py-1 font-semibold text-blue-800">
-                                Group{" "}
-                                {
-                                  job.groupNumber
-                                }
-                              </span>
-
-                              <span className="rounded-full bg-green-100 px-2 py-1 font-semibold text-green-800">
-                                {job.lawnSize} m²
-                              </span>
-
-                              {job.lockedGate && (
-                                <span className="rounded-full bg-red-100 px-2 py-1 font-bold text-red-700">
-                                  Locked gate
-                                </span>
-                              )}
-
-                              {job.dogOnProperty && (
-                                <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-800">
-                                  Dog
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </aside>
+              <section className="mt-4 grid gap-4 xl:grid-cols-[400px_1fr]">
+                <JobList
+                  jobs={jobs}
+                  selectedJob={
+                    selectedJob
+                  }
+                  onSelect={selectJob}
+                />
 
                 <section className="min-w-0">
                   {!selectedJob ? (
-                    <article className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
-                      <h2 className="text-xl font-bold">
-                        Select a scheduled
-                        customer
-                      </h2>
-
-                      <p className="mt-2 text-sm text-slate-500">
-                        Choose a job from the
-                        left to record the
-                        treatment.
-                      </p>
-                    </article>
+                    <EmptyPanel>
+                      No unrecorded jobs are due on
+                      this date.
+                    </EmptyPanel>
                   ) : (
                     <form
                       onSubmit={
@@ -1151,121 +1149,48 @@ export default function JobsPage() {
                       }
                       className="space-y-4"
                     >
-                      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-3">
-                              <h2 className="text-2xl font-bold">
-                                {
-                                  selectedJob.customerName
-                                }
-                              </h2>
-
-                              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
-                                {
-                                  selectedJob.visit
-                                    .treatmentName
-                                }
-                              </span>
-                            </div>
-
-                            <p className="mt-2 text-sm text-slate-500">
-                              Customer{" "}
-                              {
-                                selectedJob.customerNumber
-                              }{" "}
-                              · Group{" "}
-                              {
-                                selectedJob.groupNumber
-                              }{" "}
-                              · Van{" "}
-                              {
-                                selectedJob.vanNumber
-                              }
-                            </p>
-
-                            <p className="mt-1 text-sm text-slate-600">
-                              {
-                                selectedJob.address
-                              }
-                              ,{" "}
-                              {
-                                selectedJob.postcode
-                              }
-                            </p>
-                          </div>
-
-                          <Link
-                            href={`/customers/${selectedJob.customerNumber}`}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-                          >
-                            Open customer
-                          </Link>
-                        </div>
-                      </article>
+                      <JobHeader
+                        job={selectedJob}
+                      />
 
                       <section className="grid gap-4 lg:grid-cols-2">
-                        <Panel>
-                          <SectionHeading
-                            title="Visit outcome"
-                            description="Record whether the job was completed, needs rearranging or was cancelled."
-                          />
-
-                          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                            <Field label="Visit status">
+                        <Panel
+                          title="Visit outcome"
+                          description="Record the result against this exact customer programme visit."
+                        >
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label="Outcome">
                               <select
-                                value={status}
+                                value={outcome}
                                 onChange={(
                                   event,
                                 ) =>
-                                  setStatus(
+                                  setOutcome(
                                     event.target
-                                      .value as TreatmentStatus,
+                                      .value as typeof outcome,
                                   )
                                 }
                                 className={
                                   inputClass
                                 }
                               >
-                                {treatmentStatuses.map(
-                                  (
-                                    treatmentStatus,
-                                  ) => (
+                                {outcomeStatuses.map(
+                                  (status) => (
                                     <option
                                       key={
-                                        treatmentStatus
+                                        status
                                       }
                                       value={
-                                        treatmentStatus
+                                        status
                                       }
                                     >
                                       {
-                                        treatmentStatus
+                                        status
                                       }
                                     </option>
                                   ),
                                 )}
                               </select>
-                            </Field>
-
-                            <Field label="Suggested replacement / next visit date">
-                              <input
-                                type="date"
-                                value={
-                                  nextVisitDate
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  setNextVisitDate(
-                                    event.target
-                                      .value,
-                                  )
-                                }
-                                className={
-                                  inputClass
-                                }
-                              />
                             </Field>
 
                             <NumberField
@@ -1273,108 +1198,153 @@ export default function JobsPage() {
                               value={
                                 treatmentArea
                               }
-                              step="1"
+                              disabled={
+                                outcome !==
+                                "Completed"
+                              }
                               onChange={
                                 setTreatmentArea
                               }
                             />
 
-                            <ResultBox
+                            {outcome ===
+                              "Needs Rescheduling" && (
+                              <Field label="Suggested replacement date">
+                                <input
+                                  type="date"
+                                  min={toDateValue(
+                                    new Date(),
+                                  )}
+                                  value={
+                                    suggestedReplacementDate
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) =>
+                                    setSuggestedReplacementDate(
+                                      event
+                                        .target
+                                        .value,
+                                    )
+                                  }
+                                  className={
+                                    inputClass
+                                  }
+                                />
+                              </Field>
+                            )}
+
+                            <InfoBox
                               label="Treatment price"
-                              value={`£${selectedJob.treatmentPrice.toFixed(
+                              value={`£${selectedJob.customer.treatmentPrice.toFixed(
                                 2,
                               )}`}
-                              detail={`${selectedJob.lawnSize} m² customer lawn`}
+                              detail={`${selectedJob.customer.lawnSize} m² lawn`}
                             />
                           </div>
 
-                          {selectedJob.lockedGate && (
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <InfoBox
+                              label="Standard group date"
+                              value={formatDate(
+                                selectedJob.standardGroupDate,
+                              )}
+                              detail={`Group ${selectedJob.customer.groupNumber}`}
+                            />
+
+                            <InfoBox
+                              label="Customer visit date"
+                              value={formatDate(
+                                selectedJob.visit.scheduledDate,
+                              )}
+                              detail={
+                                selectedJob.overridden
+                                  ? "Customer-specific override"
+                                  : "Inherited group date"
+                              }
+                              warning={
+                                selectedJob.overridden
+                              }
+                            />
+                          </div>
+
+                          {selectedJob.customer
+                            .lockedGate && (
                             <WarningBox tone="red">
-                              This customer has
-                              a locked gate.
-                              Confirm access
-                              before beginning
-                              the treatment.
+                              Locked gate warning:
+                              confirm access before
+                              treatment.
                             </WarningBox>
                           )}
 
-                          {selectedJob.dogOnProperty && (
+                          {selectedJob.customer
+                            .dogOnProperty && (
                             <WarningBox tone="amber">
-                              A dog may be
-                              present at this
-                              property. Confirm
-                              the garden is safe
-                              before entering.
+                              A dog may be present.
+                              Confirm the garden is
+                              safe before entering.
                             </WarningBox>
                           )}
                         </Panel>
 
-                        <Panel>
-                          <SectionHeading
-                            title="Chemical selection"
-                            description="Choose a product from the Chemical Centre to calculate the exact dose and water required."
-                          />
+                        <Panel
+                          title="Chemical application"
+                          description="Chemical use is recorded only when the visit is completed."
+                        >
+                          <Field label="Chemical or product">
+                            <select
+                              value={
+                                selectedChemicalId
+                              }
+                              onChange={(
+                                event,
+                              ) =>
+                                setSelectedChemicalId(
+                                  event.target
+                                    .value,
+                                )
+                              }
+                              disabled={
+                                outcome !==
+                                "Completed"
+                              }
+                              className={
+                                inputClass
+                              }
+                            >
+                              <option value="">
+                                No chemical selected
+                              </option>
 
-                          <div className="mt-5">
-                            <Field label="Chemical or product">
-                              <select
-                                value={
-                                  selectedChemicalId
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  setSelectedChemicalId(
-                                    event.target
-                                      .value,
-                                  )
-                                }
-                                disabled={
-                                  status !==
-                                  "Completed"
-                                }
-                                className={
-                                  inputClass
-                                }
-                              >
-                                <option value="">
-                                  No chemical
-                                  selected
-                                </option>
-
-                                {activeChemicals.map(
-                                  (
-                                    chemical,
-                                  ) => (
-                                    <option
-                                      key={
-                                        chemical.id
-                                      }
-                                      value={
-                                        chemical.id
-                                      }
-                                    >
-                                      {
-                                        chemical.name
-                                      }{" "}
-                                      —{" "}
-                                      {
-                                        chemical.applicationRate
-                                      }{" "}
-                                      {
-                                        chemical.applicationRateUnit
-                                      }
-                                    </option>
-                                  ),
-                                )}
-                              </select>
-                            </Field>
-                          </div>
+                              {activeChemicals.map(
+                                (chemical) => (
+                                  <option
+                                    key={
+                                      chemical.id
+                                    }
+                                    value={
+                                      chemical.id
+                                    }
+                                  >
+                                    {chemical.name} —{" "}
+                                    {
+                                      chemical.applicationRate
+                                    }{" "}
+                                    {
+                                      chemical.applicationRateUnit
+                                    }
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </Field>
 
                           {selectedChemical &&
-                            calculation && (
-                              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                                <ResultBox
+                            calculation &&
+                            outcome ===
+                              "Completed" && (
+                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <InfoBox
                                   label="Product required"
                                   value={formatApplicationAmount(
                                     calculation.productRequired,
@@ -1383,7 +1353,7 @@ export default function JobsPage() {
                                   detail={`${selectedChemical.applicationRate} ${selectedChemical.applicationRateUnit}`}
                                 />
 
-                                <ResultBox
+                                <InfoBox
                                   label="Water required"
                                   value={`${calculation.waterRequiredLitres.toFixed(
                                     3,
@@ -1393,7 +1363,7 @@ export default function JobsPage() {
                                   )} L/ha`}
                                 />
 
-                                <ResultBox
+                                <InfoBox
                                   label="Tank fills"
                                   value={calculation.tankFills.toFixed(
                                     3,
@@ -1401,7 +1371,7 @@ export default function JobsPage() {
                                   detail={`${selectedChemical.tankCapacityLitres} L tank`}
                                 />
 
-                                <ResultBox
+                                <InfoBox
                                   label="Product per tank"
                                   value={formatApplicationAmount(
                                     calculation.productPerTank,
@@ -1410,15 +1380,15 @@ export default function JobsPage() {
                                   detail="Per full-equivalent tank"
                                 />
 
-                                <ResultBox
-                                  label="Chemical cost"
+                                <InfoBox
+                                  label="Product cost"
                                   value={`£${calculation.estimatedProductCost.toFixed(
                                     2,
                                   )}`}
                                   detail="Based on pack cost"
                                 />
 
-                                <ResultBox
+                                <InfoBox
                                   label="Equipment"
                                   value={`${selectedChemical.nozzleColour} ${selectedChemical.nozzleType}`}
                                   detail={`${selectedChemical.knapsackMake} ${selectedChemical.knapsackModel}`}
@@ -1429,13 +1399,11 @@ export default function JobsPage() {
                       </section>
 
                       <section className="grid gap-4 lg:grid-cols-2">
-                        <Panel>
-                          <SectionHeading
-                            title="Other products and materials"
-                            description="Record fertilisers, herbicides and other materials used during the visit."
-                          />
-
-                          <div className="mt-5 space-y-4">
+                        <Panel
+                          title="Other products"
+                          description="Optional additional materials used during a completed visit."
+                        >
+                          <div className="space-y-4">
                             <Field label="Fertiliser">
                               <input
                                 value={
@@ -1450,7 +1418,7 @@ export default function JobsPage() {
                                   )
                                 }
                                 disabled={
-                                  status !==
+                                  outcome !==
                                   "Completed"
                                 }
                                 className={
@@ -1473,7 +1441,7 @@ export default function JobsPage() {
                                   )
                                 }
                                 disabled={
-                                  status !==
+                                  outcome !==
                                   "Completed"
                                 }
                                 className={
@@ -1496,7 +1464,7 @@ export default function JobsPage() {
                                   )
                                 }
                                 disabled={
-                                  status !==
+                                  outcome !==
                                   "Completed"
                                 }
                                 className={
@@ -1507,56 +1475,51 @@ export default function JobsPage() {
                           </div>
                         </Panel>
 
-                        <Panel>
-                          <SectionHeading
-                            title="Treatment notes"
-                            description="Record observations, access problems, lawn condition and advice for the next visit."
-                          />
-
-                          <div className="mt-5">
-                            <Field label="Notes">
-                              <textarea
-                                rows={9}
-                                value={notes}
-                                onChange={(
-                                  event,
-                                ) =>
-                                  setNotes(
-                                    event.target
-                                      .value,
-                                  )
-                                }
-                                placeholder="Record information about the visit and any preparation needed before the next treatment."
-                                className={
-                                  inputClass
-                                }
-                              />
-                            </Field>
-                          </div>
+                        <Panel
+                          title="Visit notes"
+                          description="Record lawn observations, access problems and customer advice."
+                        >
+                          <Field label="Notes">
+                            <textarea
+                              rows={9}
+                              value={notes}
+                              onChange={(
+                                event,
+                              ) =>
+                                setNotes(
+                                  event.target
+                                    .value,
+                                )
+                              }
+                              className={
+                                inputClass
+                              }
+                            />
+                          </Field>
                         </Panel>
                       </section>
 
-                      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="text-sm text-slate-500">
-                          Saving the visit
-                          updates the matching
-                          annual programme
-                          entry.
-                        </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p className="text-sm text-slate-500">
+                          Saving records the outcome
+                          against this programme visit
+                          and removes it from the
+                          remaining-jobs list.
+                        </p>
 
                         <button
                           type="submit"
                           className="rounded-xl bg-[#176b37] px-6 py-3 text-sm font-semibold text-white hover:bg-[#125b2f]"
                         >
-                          {status ===
+                          {outcome ===
                           "Completed"
                             ? "Complete and save treatment"
-                            : status ===
+                            : outcome ===
                                 "Needs Rescheduling"
                               ? "Add to rescheduling queue"
                               : "Save cancellation"}
                         </button>
-                      </section>
+                      </div>
                     </form>
                   )}
                 </section>
@@ -1569,121 +1532,272 @@ export default function JobsPage() {
   );
 }
 
-function ReschedulingScreen({
+function JobList({
+  jobs,
+  selectedJob,
+  onSelect,
+}: {
+  jobs: ScheduledJob[];
+  selectedJob: ScheduledJob | null;
+  onSelect: (job: ScheduledJob) => void;
+}) {
+  return (
+    <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <h2 className="text-lg font-bold">
+        Scheduled customers
+      </h2>
+
+      <p className="mt-1 text-sm text-slate-500">
+        Ordered by van, group and customer.
+      </p>
+
+      <div className="mt-4 max-h-[72vh] space-y-2 overflow-y-auto pr-1">
+        {jobs.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+            No unrecorded jobs are due on this
+            date.
+          </div>
+        ) : (
+          jobs.map((job) => {
+            const selected =
+              selectedJob?.id ===
+              job.id;
+
+            return (
+              <button
+                key={job.id}
+                type="button"
+                onClick={() =>
+                  onSelect(job)
+                }
+                className={`w-full rounded-xl border p-4 text-left transition ${
+                  selected
+                    ? "border-[#338b45] bg-green-50"
+                    : "border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-bold">
+                      {
+                        job.customer.fullName
+                      }
+                    </div>
+
+                    <div className="mt-1 text-xs text-slate-500">
+                      Customer{" "}
+                      {
+                        job.customer.customerNumber
+                      }
+                    </div>
+                  </div>
+
+                  <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
+                    Group{" "}
+                    {
+                      job.customer.groupNumber
+                    }
+                  </span>
+                </div>
+
+                <div className="mt-3 text-sm text-slate-600">
+                  {job.customer.address},{" "}
+                  {job.customer.postcode}
+                </div>
+
+                <div className="mt-3 font-semibold">
+                  {
+                    job.visit.treatmentName
+                  }
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-700">
+                    Van{" "}
+                    {
+                      job.customer.vanNumber
+                    }
+                  </span>
+
+                  <span className="rounded-full bg-green-100 px-2 py-1 font-semibold text-green-800">
+                    {
+                      job.customer.lawnSize
+                    }{" "}
+                    m²
+                  </span>
+
+                  {job.overridden && (
+                    <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-800">
+                      Date override
+                    </span>
+                  )}
+
+                  {job.customer
+                    .lockedGate && (
+                    <span className="rounded-full bg-red-100 px-2 py-1 font-bold text-red-700">
+                      Locked gate
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function JobHeader({
+  job,
+}: {
+  job: ScheduledJob;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-2xl font-bold">
+              {job.customer.fullName}
+            </h2>
+
+            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+              {job.visit.treatmentName}
+            </span>
+
+            {job.overridden && (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
+                Customer date override
+              </span>
+            )}
+          </div>
+
+          <p className="mt-2 text-sm text-slate-500">
+            Customer{" "}
+            {job.customer.customerNumber} · Group{" "}
+            {job.customer.groupNumber} · Van{" "}
+            {job.customer.vanNumber}
+          </p>
+
+          <p className="mt-1 text-sm text-slate-600">
+            {job.customer.address},{" "}
+            {job.customer.postcode}
+          </p>
+        </div>
+
+        <Link
+          href={`/customers/${job.customer.customerNumber}`}
+          className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+        >
+          Open customer
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function RescheduleView({
   treatments,
   customers,
   programmes,
+  seasons,
   selectedTreatment,
   selectedCustomer,
+  selectedMatch,
+  standardGroupDate,
   replacementDate,
   onSelect,
-  onReplacementDateChange,
+  onDateChange,
   onConfirm,
 }: {
   treatments: TreatmentRecord[];
-
-  customers: Array<{
-    customerNumber: string;
-    fullName: string;
-    address: string;
-    postcode: string;
-  }>;
-
+  customers: StoredCustomer[];
   programmes: CustomerProgramme[];
-
-  selectedTreatment:
-    | TreatmentRecord
-    | null;
-
-  selectedCustomer:
-    | {
-        customerNumber: string;
-        fullName: string;
-        address: string;
-        postcode: string;
-      }
-    | undefined;
-
+  seasons: ReturnType<
+    typeof useSeasonStore
+  >["seasons"];
+  selectedTreatment: TreatmentRecord | null;
+  selectedCustomer: StoredCustomer | null;
+  selectedMatch: {
+    programme: CustomerProgramme;
+    programmeVisit: ProgrammeVisit;
+  } | null;
+  standardGroupDate: string;
   replacementDate: string;
-
   onSelect: (
     treatment: TreatmentRecord,
   ) => void;
-
-  onReplacementDateChange: (
+  onDateChange: (
     value: string,
   ) => void;
-
   onConfirm: () => void;
 }) {
+  const conflict =
+    selectedMatch &&
+    replacementDate
+      ? selectedMatch.programme.visits.find(
+          (visit) =>
+            visit.id !==
+              selectedMatch
+                .programmeVisit.id &&
+            visit.status !==
+              "Skipped" &&
+            visit.scheduledDate ===
+              replacementDate,
+        )
+      : undefined;
+
   if (treatments.length === 0) {
     return (
-      <section className="rounded-2xl border border-green-200 bg-green-50 p-10 text-center shadow-sm">
+      <EmptyPanel>
         <h2 className="text-xl font-bold text-green-900">
-          No visits need
-          rescheduling
+          No visits need rescheduling
         </h2>
 
-        <p className="mt-2 text-sm text-green-800">
-          All failed visits have
-          been resolved.
+        <p className="mt-2">
+          All failed visits have been resolved.
         </p>
 
         <Link
           href="/jobs"
-          className="mt-5 inline-flex rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white"
+          className="mt-5 inline-flex rounded-xl bg-[#176b37] px-5 py-2.5 font-semibold text-white"
         >
           Return to jobs
         </Link>
-      </section>
+      </EmptyPanel>
     );
   }
 
-  const programmeMatch =
-    selectedTreatment
-      ? findProgrammeVisitForTreatment(
-          programmes,
-          selectedTreatment,
-        )
-      : null;
-
-  const existingVisits =
-    programmeMatch
-      ? programmeMatch.programme.visits
+  const existingDates =
+    selectedMatch
+      ? selectedMatch.programme.visits
           .filter(
             (visit) =>
               visit.id !==
-                programmeMatch
+                selectedMatch
                   .programmeVisit.id &&
               visit.status !==
                 "Skipped",
           )
-          .sort((first, second) =>
-            first.scheduledDate.localeCompare(
-              second.scheduledDate,
-            ),
+          .sort(
+            (first, second) =>
+              first.scheduledDate.localeCompare(
+                second.scheduledDate,
+              ),
           )
       : [];
 
-  const conflict =
-    existingVisits.find(
-      (visit) =>
-        visit.scheduledDate ===
-        replacementDate,
-    );
-
   return (
-    <section className="grid gap-4 xl:grid-cols-[1fr_450px]">
+    <section className="grid gap-4 xl:grid-cols-[1fr_460px]">
       <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
         <h2 className="text-xl font-bold text-amber-950">
-          Waiting to be
-          rescheduled
+          Waiting to be rescheduled
         </h2>
 
         <p className="mt-1 text-sm text-amber-800">
-          Select a visit to choose
-          a new annual programme
-          date.
+          Selecting a new date creates a
+          customer-only override.
         </p>
 
         <div className="mt-5 space-y-3">
@@ -1696,7 +1810,7 @@ function ReschedulingScreen({
                     treatment.customerNumber,
                 );
 
-              const isSelected =
+              const selected =
                 selectedTreatment?.id ===
                 treatment.id;
 
@@ -1708,16 +1822,16 @@ function ReschedulingScreen({
                     onSelect(treatment)
                   }
                   className={`w-full rounded-xl border p-4 text-left transition ${
-                    isSelected
+                    selected
                       ? "border-amber-500 bg-white shadow-sm"
-                      : "border-amber-200 bg-amber-50 hover:bg-white"
+                      : "border-amber-200 hover:bg-white"
                   }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="font-bold text-slate-900">
+                      <div className="font-bold">
                         {customer?.fullName ??
-                          `Customer ${treatment.customerNumber}`}
+                          treatment.customerNumber}
                       </div>
 
                       <div className="mt-1 text-sm text-slate-600">
@@ -1739,14 +1853,14 @@ function ReschedulingScreen({
                   </div>
 
                   <div className="mt-1 text-xs text-slate-500">
-                    Original date:{" "}
+                    Failed date:{" "}
                     {formatDate(
                       treatment.scheduledDate,
                     )}
                   </div>
 
                   {treatment.notes && (
-                    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
                       {treatment.notes}
                     </div>
                   )}
@@ -1758,128 +1872,166 @@ function ReschedulingScreen({
       </article>
 
       <article className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        {selectedTreatment ? (
+        {selectedTreatment &&
+        selectedCustomer &&
+        selectedMatch ? (
           <>
             <h2 className="text-xl font-bold">
-              Reschedule visit
+              Customer date override
             </h2>
 
             <div className="mt-5 space-y-4">
               <InformationRow
                 label="Customer"
                 value={
-                  selectedCustomer?.fullName ??
-                  selectedTreatment.customerNumber
+                  selectedCustomer.fullName
                 }
+              />
+
+              <InformationRow
+                label="Group"
+                value={`Group ${selectedCustomer.groupNumber}`}
               />
 
               <InformationRow
                 label="Treatment"
                 value={
-                  selectedTreatment.treatmentName
+                  selectedMatch
+                    .programmeVisit
+                    .treatmentName
                 }
               />
 
               <InformationRow
-                label="Original date"
+                label="Standard group date"
+                value={formatDate(
+                  standardGroupDate,
+                )}
+              />
+
+              <InformationRow
+                label="Failed customer date"
                 value={formatDate(
                   selectedTreatment.scheduledDate,
                 )}
               />
 
-              <Field label="New visit date">
+              <Field label="Replacement date">
                 <input
                   type="date"
-                  value={replacementDate}
+                  min={toDateValue(
+                    new Date(),
+                  )}
+                  value={
+                    replacementDate
+                  }
                   onChange={(event) =>
-                    onReplacementDateChange(
+                    onDateChange(
                       event.target.value,
                     )
                   }
-                  className={inputClass}
+                  className={
+                    inputClass
+                  }
                 />
               </Field>
 
               {conflict && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">
-                  This customer already
-                  has “
-                  {conflict.treatmentName}
-                  ” scheduled on{" "}
+                <WarningBox tone="red">
+                  This customer already has{" "}
+                  {conflict.treatmentName} on{" "}
                   {formatDate(
                     conflict.scheduledDate,
                   )}
-                  . Choose another date.
-                </div>
+                  .
+                </WarningBox>
               )}
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-sm font-bold">
-                  Existing annual dates
+                <h3 className="text-sm font-bold">
+                  Other customer dates
+                </h3>
+
+                <div className="mt-3 space-y-2">
+                  {existingDates.map(
+                    (visit) => (
+                      <div
+                        key={visit.id}
+                        className="flex justify-between gap-4 rounded-lg bg-white px-3 py-2 text-sm"
+                      >
+                        <span className="font-semibold">
+                          {
+                            visit.treatmentName
+                          }
+                        </span>
+
+                        <span className="whitespace-nowrap text-slate-600">
+                          {formatDate(
+                            visit.scheduledDate,
+                          )}
+                        </span>
+                      </div>
+                    ),
+                  )}
                 </div>
-
-                {existingVisits.length ===
-                0 ? (
-                  <p className="mt-2 text-sm text-slate-500">
-                    No other active annual
-                    visits were found.
-                  </p>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    {existingVisits.map(
-                      (visit) => (
-                        <div
-                          key={visit.id}
-                          className="flex items-start justify-between gap-3 rounded-lg bg-white p-3 text-sm"
-                        >
-                          <span className="font-semibold">
-                            {
-                              visit.treatmentName
-                            }
-                          </span>
-
-                          <span className="whitespace-nowrap text-slate-600">
-                            {formatDate(
-                              visit.scheduledDate,
-                            )}
-                          </span>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                )}
               </div>
 
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-                The exact annual
-                programme visit will be
-                moved. The failed visit
-                will remain in history
-                with the status
-                Rescheduled.
+                The group calendar is not changed.
+                Only this customer&apos;s exact
+                programme visit receives an override.
               </div>
 
               <button
                 type="button"
                 onClick={onConfirm}
                 disabled={
-                  Boolean(conflict) ||
-                  !replacementDate
+                  !replacementDate ||
+                  Boolean(conflict)
                 }
                 className="w-full rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                Confirm reschedule
+                Confirm customer override
               </button>
             </div>
           </>
         ) : (
           <div className="p-6 text-center text-sm text-slate-500">
-            Select a visit from
-            the list.
+            The matching programme visit could not
+            be found. This may be an older demo
+            treatment record.
           </div>
         )}
       </article>
     </section>
+  );
+}
+
+function hasRecordedOutcome(
+  treatments: TreatmentRecord[],
+  programme: CustomerProgramme,
+  visit: ProgrammeVisit,
+  customerNumber: string,
+) {
+  return treatments.some(
+    (treatment) =>
+      treatment.status !==
+        "Rescheduled" &&
+      ((
+        treatment.programmeId ===
+          programme.id &&
+        treatment.programmeVisitId ===
+          visit.id
+      ) ||
+        (
+          !treatment.programmeVisitId &&
+          treatment.customerNumber ===
+            customerNumber &&
+          treatment.scheduledDate ===
+            visit.scheduledDate &&
+          treatment.treatmentName ===
+            visit.treatmentName
+        )),
   );
 }
 
@@ -1927,10 +2079,15 @@ function findProgrammeVisitForTreatment(
     const programmeVisit =
       programme.visits.find(
         (visit) =>
-          visit.scheduledDate ===
-            treatment.scheduledDate &&
+          visit.visitNumber > 0 &&
           visit.treatmentName ===
-            treatment.treatmentName,
+            treatment.treatmentName &&
+          (
+            visit.scheduledDate ===
+              treatment.scheduledDate ||
+            visit.status ===
+              "Skipped"
+          ),
       );
 
     if (programmeVisit) {
@@ -1944,26 +2101,173 @@ function findProgrammeVisitForTreatment(
   return null;
 }
 
+function getStandardGroupDate(
+  seasons: ReturnType<
+    typeof useSeasonStore
+  >["seasons"],
+  year: number,
+  groupNumber: number,
+  visitNumber: number,
+) {
+  return (
+    seasons
+      .find(
+        (season) =>
+          season.year === year,
+      )
+      ?.groupDates.find(
+        (group) =>
+          group.groupNumber ===
+          groupNumber,
+      )
+      ?.treatmentDates[
+        visitNumber - 1
+      ] ?? ""
+  );
+}
+
+function chooseReplacementDefault(
+  treatment: TreatmentRecord,
+) {
+  const today =
+    toDateValue(new Date());
+
+  if (
+    isDateValue(
+      treatment.nextVisitDate,
+    ) &&
+    treatment.nextVisitDate >=
+      today
+  ) {
+    return treatment.nextVisitDate;
+  }
+
+  return addDaysToDate(
+    today,
+    7,
+  );
+}
+
+function findNextProgrammeVisitDate(
+  programmes: CustomerProgramme[],
+  customerNumber: string,
+  currentDate: string,
+) {
+  return (
+    programmes
+      .filter(
+        (programme) =>
+          programme.customerNumber ===
+          customerNumber,
+      )
+      .flatMap(
+        (programme) =>
+          programme.visits,
+      )
+      .filter(
+        (visit) =>
+          visit.scheduledDate >
+            currentDate &&
+          (visit.status ===
+            "Scheduled" ||
+            visit.status ===
+              "Planned"),
+      )
+      .map(
+        (visit) =>
+          visit.scheduledDate,
+      )
+      .sort()[0] ?? ""
+  );
+}
+
+function createOutcomeNote(
+  outcome: Extract<
+    TreatmentStatus,
+    | "Completed"
+    | "Needs Rescheduling"
+    | "Cancelled"
+  >,
+  suggestedDate: string,
+) {
+  if (outcome === "Completed") {
+    return "Visit completed.";
+  }
+
+  if (
+    outcome ===
+    "Needs Rescheduling"
+  ) {
+    return suggestedDate
+      ? `Visit could not be completed. Suggested replacement date: ${formatDate(
+          suggestedDate,
+        )}.`
+      : "Visit could not be completed and requires rescheduling.";
+  }
+
+  return "Visit cancelled.";
+}
+
+function addDateOverrideNote(
+  notes: string,
+  groupDate: string,
+  replacementDate: string,
+) {
+  const cleanNotes =
+    notes
+      .split("\n")
+      .filter(
+        (line) =>
+          !line.includes(
+            "[date override]",
+          ),
+      )
+      .join("\n")
+      .trim();
+
+  return appendNote(
+    cleanNotes,
+    `[date override] Standard group date ${formatDate(
+      groupDate,
+    )}; customer date ${formatDate(
+      replacementDate,
+    )}.`,
+  );
+}
+
+function appendNote(
+  existing: string,
+  next: string,
+) {
+  return [
+    existing.trim(),
+    next.trim(),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function calculateApplication(
   chemical: ChemicalRecord,
   areaSquareMetres: number,
 ): ApplicationCalculation {
-  const safeArea = Math.max(
-    0,
-    areaSquareMetres,
-  );
+  const safeArea =
+    Math.max(
+      0,
+      areaSquareMetres,
+    );
 
   const areaHectares =
     safeArea / 10000;
 
-  const calibrationUsed =
+  const hasCalibration =
     chemical.flowRateLitresPerMinute >
       0 &&
     chemical.walkingSpeedKph > 0 &&
     chemical.sprayWidthMetres > 0;
 
-  const calibratedWaterVolumePerHectare =
-    calibrationUsed
+  const waterPerHectare =
+    hasCalibration
       ? (600 *
           chemical.flowRateLitresPerMinute) /
         (chemical.walkingSpeedKph *
@@ -1984,11 +2288,12 @@ function calculateApplication(
         safeArea;
 
   const waterRequiredLitres =
-    calibratedWaterVolumePerHectare *
+    waterPerHectare *
     areaHectares;
 
   const tankFills =
-    chemical.tankCapacityLitres > 0
+    chemical.tankCapacityLitres >
+    0
       ? waterRequiredLitres /
         chemical.tankCapacityLitres
       : 0;
@@ -2019,7 +2324,7 @@ function calculateApplication(
 
     calibratedWaterVolumePerHectare:
       roundToThreeDecimals(
-        calibratedWaterVolumePerHectare,
+        waterPerHectare,
       ),
 
     waterRequiredLitres:
@@ -2041,8 +2346,6 @@ function calculateApplication(
       roundToTwoDecimals(
         estimatedProductCost,
       ),
-
-    calibrationUsed,
   };
 }
 
@@ -2051,9 +2354,14 @@ function createChemicalTreatmentValues(
   calculation: ApplicationCalculation,
 ) {
   return {
-    chemicalId: chemical.id,
-    chemicalName: chemical.name,
-    chemicalType: chemical.type,
+    chemicalId:
+      chemical.id,
+
+    chemicalName:
+      chemical.name,
+
+    chemicalType:
+      chemical.type,
 
     activeIngredients:
       chemical.activeIngredients,
@@ -2122,117 +2430,49 @@ function createEmptyChemicalTreatmentValues() {
     chemicalId: "",
     chemicalName: "",
     chemicalType: "",
-
     activeIngredients: "",
     registrationNumber: "",
-
     applicationRate: 0,
     applicationRateUnit: "",
-
     productRequired: 0,
     productUnit: "",
-
     calibratedWaterVolumePerHectare:
       0,
-
     waterRequiredLitres: 0,
-
     tankCapacityLitres: 0,
     tankFills: 0,
     productPerTank: 0,
-
     estimatedProductCost: 0,
-
     nozzleColour: "",
     nozzleType: "",
-
     knapsackMake: "",
     knapsackModel: "",
-
     walkingSpeedKph: 0,
-
     flowRateLitresPerMinute:
       0,
-
     sprayWidthMetres: 0,
     pressureBar: 0,
   };
 }
 
-function findNextProgrammeVisitDate(
-  programmes: CustomerProgramme[],
-  customerNumber: string,
-  currentDate: string,
-) {
-  return (
-    programmes
-      .filter(
-        (programme) =>
-          programme.customerNumber ===
-          customerNumber,
-      )
-      .flatMap(
-        (programme) =>
-          programme.visits,
-      )
-      .map(
-        (visit) =>
-          visit.scheduledDate,
-      )
-      .filter(
-        (date) =>
-          date > currentDate,
-      )
-      .sort()[0] ?? ""
-  );
-}
-
-function createProgrammeOutcomeNote(
-  status: TreatmentStatus,
-  nextVisitDate: string,
-) {
-  if (status === "Completed") {
-    return "Visit completed.";
-  }
-
-  if (
-    status ===
-    "Needs Rescheduling"
-  ) {
-    return nextVisitDate
-      ? `Visit could not be completed and requires rescheduling. Suggested replacement date: ${formatDate(
-          nextVisitDate,
-        )}.`
-      : "Visit could not be completed and requires rescheduling.";
-  }
-
-  return "Visit cancelled.";
-}
-
-function appendNote(
-  existingNote: string,
-  newNote: string,
-) {
-  return [
-    existingNote.trim(),
-    newNote.trim(),
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 function getProductUnit(
   rateUnit: ApplicationRateUnit,
 ): ChemicalUnit {
-  if (rateUnit === "kg/ha") {
+  if (
+    rateUnit === "kg/ha"
+  ) {
     return "kg";
   }
 
-  if (rateUnit === "g/m²") {
+  if (
+    rateUnit === "g/m²"
+  ) {
     return "g";
   }
 
-  if (rateUnit === "ml/m²") {
+  if (
+    rateUnit === "ml/m²"
+  ) {
     return "ml";
   }
 
@@ -2275,51 +2515,17 @@ function createTreatmentId() {
 function createInvoiceNumber() {
   const now = new Date();
 
-  const year =
-    now.getFullYear();
-
-  const datePart = [
-    String(
-      now.getMonth() + 1,
-    ).padStart(2, "0"),
-
-    String(
-      now.getDate(),
-    ).padStart(2, "0"),
-  ].join("");
-
-  const timePart = [
-    String(
-      now.getHours(),
-    ).padStart(2, "0"),
-
-    String(
-      now.getMinutes(),
-    ).padStart(2, "0"),
-
-    String(
-      now.getSeconds(),
-    ).padStart(2, "0"),
-  ].join("");
-
-  return `INV-${year}-${datePart}-${timePart}`;
-}
-
-function toDateValue(
-  date: Date,
-) {
-  const year =
-    date.getFullYear();
-
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
-
-  const day = String(
-    date.getDate(),
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return `INV-${now.getFullYear()}-${String(
+    now.getMonth() + 1,
+  ).padStart(2, "0")}${String(
+    now.getDate(),
+  ).padStart(2, "0")}-${String(
+    now.getHours(),
+  ).padStart(2, "0")}${String(
+    now.getMinutes(),
+  ).padStart(2, "0")}${String(
+    now.getSeconds(),
+  ).padStart(2, "0")}`;
 }
 
 function parseDate(
@@ -2335,6 +2541,47 @@ function parseDate(
     month - 1,
     day,
   );
+}
+
+function isDateValue(
+  value: string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const date =
+    parseDate(value);
+
+  return (
+    !Number.isNaN(
+      date.getTime(),
+    ) &&
+    toDateValue(date) === value
+  );
+}
+
+function toDateValue(
+  date: Date,
+) {
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function addDaysToDate(
@@ -2354,8 +2601,8 @@ function addDaysToDate(
 function formatDate(
   value: string,
 ) {
-  if (!value) {
-    return "No date selected";
+  if (!isDateValue(value)) {
+    return "No date";
   }
 
   return new Intl.DateTimeFormat(
@@ -2371,6 +2618,10 @@ function formatDate(
 function formatDateWithDay(
   value: string,
 ) {
+  if (!isDateValue(value)) {
+    return "No date";
+  }
+
   return new Intl.DateTimeFormat(
     "en-GB",
     {
@@ -2406,21 +2657,6 @@ function roundToTwoDecimals(
   );
 }
 
-const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
-
-function Panel({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      {children}
-    </article>
-  );
-}
-
 function Field({
   label,
   children,
@@ -2442,12 +2678,12 @@ function Field({
 function NumberField({
   label,
   value,
-  step,
+  disabled = false,
   onChange,
 }: {
   label: string;
   value: number;
-  step: string;
+  disabled?: boolean;
   onChange: (
     value: number,
   ) => void;
@@ -2457,13 +2693,16 @@ function NumberField({
       <input
         type="number"
         min="0"
-        step={step}
         value={value}
+        disabled={disabled}
         onChange={(event) =>
           onChange(
-            Number(
-              event.target.value,
-            ) || 0,
+            Math.max(
+              0,
+              Number(
+                event.target.value,
+              ) || 0,
+            ),
           )
         }
         className={inputClass}
@@ -2472,15 +2711,17 @@ function NumberField({
   );
 }
 
-function SectionHeading({
+function Panel({
   title,
   description,
+  children,
 }: {
   title: string;
   description: string;
+  children: ReactNode;
 }) {
   return (
-    <div>
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-bold">
         {title}
       </h2>
@@ -2488,7 +2729,11 @@ function SectionHeading({
       <p className="mt-1 text-sm leading-6 text-slate-500">
         {description}
       </p>
-    </div>
+
+      <div className="mt-5">
+        {children}
+      </div>
+    </article>
   );
 }
 
@@ -2528,22 +2773,30 @@ function SummaryCard({
   );
 }
 
-function ResultBox({
+function InfoBox({
   label,
   value,
   detail,
+  warning = false,
 }: {
   label: string;
   value: string;
   detail: string;
+  warning?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <div
+      className={`rounded-xl border p-4 ${
+        warning
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-slate-50"
+      }`}
+    >
       <div className="text-xs font-semibold text-slate-500">
         {label}
       </div>
 
-      <div className="mt-1 text-xl font-bold">
+      <div className="mt-1 text-lg font-bold">
         {value}
       </div>
 
@@ -2561,14 +2814,13 @@ function WarningBox({
   children: ReactNode;
   tone: "red" | "amber";
 }) {
-  const styles =
-    tone === "red"
-      ? "border-red-200 bg-red-50 text-red-900"
-      : "border-amber-200 bg-amber-50 text-amber-900";
-
   return (
     <div
-      className={`mt-4 rounded-xl border p-4 text-sm font-semibold ${styles}`}
+      className={`mt-4 rounded-xl border p-4 text-sm font-semibold ${
+        tone === "red"
+          ? "border-red-200 bg-red-50 text-red-900"
+          : "border-amber-200 bg-amber-50 text-amber-900"
+      }`}
     >
       {children}
     </div>
@@ -2592,5 +2844,17 @@ function InformationRow({
         {value}
       </div>
     </div>
+  );
+}
+
+function EmptyPanel({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <article className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-sm text-slate-500 shadow-sm">
+      {children}
+    </article>
   );
 }

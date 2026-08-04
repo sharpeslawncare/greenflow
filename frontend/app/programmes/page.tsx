@@ -9,91 +9,75 @@ import {
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { useCustomerStore } from "@/components/customer-store";
+import {
+  type StoredCustomer,
+  useCustomerStore,
+} from "@/components/customer-store";
 import {
   type CustomerProgramme,
   type ProgrammeVisit,
-  type ProgrammeVisitStatus,
   useProgrammeStore,
 } from "@/components/programme-store";
-import { STANDARD_TREATMENTS } from "@/lib/standard-treatments";
+import {
+  type SeasonCalendar,
+  useSeasonStore,
+} from "@/components/season-store";
 
-type GeneratorSettings = {
-  customerNumber: string;
-  programmeYear: number;
-  programmeName: string;
-  startDate: string;
-  gap1: number;
-  gap2: number;
-  gap3: number;
-  gap4: number;
-  avoidWednesdays: boolean;
-  avoidWeekends: boolean;
+type VisitDisplayRow = {
+  visitNumber: number;
+  treatmentName: string;
+  groupDate: string;
+  visit: ProgrammeVisit | null;
+  included: boolean;
+  overridden: boolean;
 };
+
+const OVERRIDE_NOTE = "[date override]";
+
+const inputClass =
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
 export default function ProgrammesPage() {
   const {
     customers,
     ready: customersReady,
-    updateCustomer,
   } = useCustomerStore();
+
+  const {
+    seasons,
+    ready: seasonsReady,
+  } = useSeasonStore();
 
   const {
     programmes,
     ready: programmesReady,
-    saveProgramme,
-    deleteProgramme,
     getProgrammeForCustomer,
+    applySeasonDatesToCustomer,
+    saveProgramme,
   } = useProgrammeStore();
-
-  const activeCustomers = useMemo(
-    () =>
-      customers
-        .filter(
-          (customer) =>
-            customer.status === "Active",
-        )
-        .sort((first, second) =>
-          first.fullName.localeCompare(
-            second.fullName,
-          ),
-        ),
-    [customers],
-  );
-
-  const defaultCustomer =
-    activeCustomers[0];
 
   const currentYear =
     new Date().getFullYear();
 
-  const [settings, setSettings] =
-    useState<GeneratorSettings>({
-      customerNumber:
-        defaultCustomer?.customerNumber ??
-        "",
-      programmeYear: currentYear,
-      programmeName:
-        "Standard annual programme",
-      startDate: `${currentYear}-01-15`,
-      gap1:
-        STANDARD_TREATMENTS[1]
-          .gapAfterPreviousDays,
-      gap2:
-        STANDARD_TREATMENTS[2]
-          .gapAfterPreviousDays,
-      gap3:
-        STANDARD_TREATMENTS[3]
-          .gapAfterPreviousDays,
-      gap4:
-        STANDARD_TREATMENTS[4]
-          .gapAfterPreviousDays,
-      avoidWednesdays: true,
-      avoidWeekends: true,
-    });
+  const [selectedYear, setSelectedYear] =
+    useState(currentYear);
 
-  const [draftVisits, setDraftVisits] =
-    useState<ProgrammeVisit[]>([]);
+  const [
+    selectedCustomerNumber,
+    setSelectedCustomerNumber,
+  ] = useState("");
+
+  const [
+    editingVisitNumber,
+    setEditingVisitNumber,
+  ] = useState<number | null>(
+    null,
+  );
+
+  const [
+    replacementDate,
+    setReplacementDate,
+  ] = useState("");
 
   const [search, setSearch] =
     useState("");
@@ -101,369 +85,440 @@ export default function ProgrammesPage() {
   const [message, setMessage] =
     useState("");
 
+  const activeCustomers =
+    useMemo(
+      () =>
+        customers
+          .filter(
+            (customer) =>
+              customer.status ===
+              "Active",
+          )
+          .sort((first, second) => {
+            if (
+              first.groupNumber !==
+              second.groupNumber
+            ) {
+              return (
+                first.groupNumber -
+                second.groupNumber
+              );
+            }
+
+            return first.fullName.localeCompare(
+              second.fullName,
+            );
+          }),
+      [customers],
+    );
+
+  const availableYears =
+    useMemo(() => {
+      const years =
+        seasons.map(
+          (season) =>
+            season.year,
+        );
+
+      if (
+        !years.includes(
+          currentYear,
+        )
+      ) {
+        years.push(
+          currentYear,
+        );
+      }
+
+      return Array.from(
+        new Set(years),
+      ).sort(
+        (first, second) =>
+          second - first,
+      );
+    }, [
+      seasons,
+      currentYear,
+    ]);
+
   useEffect(() => {
     if (
-      settings.customerNumber ||
-      activeCustomers.length === 0
+      selectedCustomerNumber ||
+      activeCustomers.length ===
+        0
     ) {
       return;
     }
 
-    setSettings((current) => ({
-      ...current,
-      customerNumber:
-        activeCustomers[0].customerNumber,
-    }));
+    setSelectedCustomerNumber(
+      activeCustomers[0]
+        .customerNumber,
+    );
   }, [
     activeCustomers,
-    settings.customerNumber,
+    selectedCustomerNumber,
   ]);
 
   const selectedCustomer =
-    customers.find(
+    activeCustomers.find(
       (customer) =>
         customer.customerNumber ===
-        settings.customerNumber,
-    );
+        selectedCustomerNumber,
+    ) ?? null;
 
-  const existingProgramme =
-    getProgrammeForCustomer(
-      settings.customerNumber,
-      settings.programmeYear,
-    );
+  const selectedSeason =
+    seasons.find(
+      (season) =>
+        season.year ===
+        selectedYear,
+    ) ?? null;
 
-  const filteredProgrammes = useMemo(() => {
-    const query =
-      search.trim().toLowerCase();
+  const selectedProgramme =
+    selectedCustomer
+      ? getProgrammeForCustomer(
+          selectedCustomer.customerNumber,
+          selectedYear,
+        )
+      : undefined;
 
-    return programmes
-      .filter((programme) => {
-        const customer = customers.find(
-          (item) =>
-            item.customerNumber ===
-            programme.customerNumber,
-        );
+  const selectedGroupDates =
+    selectedCustomer &&
+    selectedSeason
+      ? selectedSeason.groupDates.find(
+          (group) =>
+            group.groupNumber ===
+            selectedCustomer.groupNumber,
+        ) ?? null
+      : null;
 
-        if (!query) {
-          return true;
-        }
+  const visitRows =
+    useMemo<VisitDisplayRow[]>(() => {
+      if (
+        !selectedSeason ||
+        !selectedGroupDates
+      ) {
+        return [];
+      }
 
-        return [
-          programme.customerNumber,
-          programme.programmeName,
-          String(programme.year),
-          customer?.fullName ?? "",
-          customer?.address ?? "",
-          customer?.postcode ?? "",
-        ].some((value) =>
-          value
-            .toLowerCase()
-            .includes(query),
-        );
-      })
-      .sort(
-        (first, second) =>
-          second.year - first.year,
+      return selectedSeason.treatmentRounds.map(
+        (round, index) => {
+          const visit =
+            selectedProgramme?.visits.find(
+              (item) =>
+                item.visitNumber ===
+                round.visitNumber,
+            ) ?? null;
+
+          const groupDate =
+            selectedGroupDates
+              .treatmentDates[index];
+
+          return {
+            visitNumber:
+              round.visitNumber,
+
+            treatmentName:
+              round.treatmentName,
+
+            groupDate,
+
+            visit,
+
+            included:
+              Boolean(visit),
+
+            overridden:
+              Boolean(
+                visit &&
+                  visit.scheduledDate !==
+                    groupDate,
+              ),
+          };
+        },
       );
-  }, [
-    programmes,
-    customers,
-    search,
-  ]);
+    }, [
+      selectedSeason,
+      selectedGroupDates,
+      selectedProgramme,
+    ]);
 
-  const annualValue = selectedCustomer
-    ? selectedCustomer.treatmentPrice *
-      draftVisits.filter(
+  const filteredCustomers =
+    useMemo(() => {
+      const query =
+        search.trim().toLowerCase();
+
+      if (!query) {
+        return activeCustomers;
+      }
+
+      return activeCustomers.filter(
+        (customer) =>
+          [
+            customer.customerNumber,
+            customer.fullName,
+            customer.address,
+            customer.postcode,
+            String(
+              customer.groupNumber,
+            ),
+          ].some((value) =>
+            value
+              .toLowerCase()
+              .includes(query),
+          ),
+      );
+    }, [
+      activeCustomers,
+      search,
+    ]);
+
+  const groupCustomerCount =
+    selectedCustomer
+      ? activeCustomers.filter(
+          (customer) =>
+            customer.groupNumber ===
+            selectedCustomer.groupNumber,
+        ).length
+      : 0;
+
+  const includedVisitCount =
+    visitRows.filter(
+      (row) =>
+        row.included,
+    ).length;
+
+  const overriddenVisitCount =
+    visitRows.filter(
+      (row) =>
+        row.overridden,
+    ).length;
+
+  function chooseCustomer(
+    customerNumber: string,
+  ) {
+    setSelectedCustomerNumber(
+      customerNumber,
+    );
+
+    setEditingVisitNumber(
+      null,
+    );
+
+    setReplacementDate("");
+  }
+
+  function beginOverride(
+    row: VisitDisplayRow,
+  ) {
+    if (!row.visit) {
+      showMessage(
+        "This treatment round is not part of the customer's programme.",
+      );
+      return;
+    }
+
+    if (
+      row.visit.status ===
+        "Completed" ||
+      row.visit.status ===
+        "Skipped"
+    ) {
+      showMessage(
+        "Completed or skipped historical visits cannot be moved here.",
+      );
+      return;
+    }
+
+    setEditingVisitNumber(
+      row.visitNumber,
+    );
+
+    setReplacementDate(
+      row.visit.scheduledDate,
+    );
+  }
+
+  function cancelOverride() {
+    setEditingVisitNumber(
+      null,
+    );
+
+    setReplacementDate("");
+  }
+
+  function saveOverride(
+    row: VisitDisplayRow,
+  ) {
+    if (
+      !selectedCustomer ||
+      !selectedProgramme ||
+      !row.visit
+    ) {
+      return;
+    }
+
+    if (
+      !isDateValue(
+        replacementDate,
+      )
+    ) {
+      showMessage(
+        "Choose a valid replacement date.",
+      );
+      return;
+    }
+
+    const today =
+      toDateValue(
+        new Date(),
+      );
+
+    if (
+      replacementDate < today
+    ) {
+      showMessage(
+        "A treatment cannot be scheduled on a date that has already passed.",
+      );
+      return;
+    }
+
+    const conflictingVisit =
+      selectedProgramme.visits.find(
         (visit) =>
-          visit.status !== "Skipped",
-      ).length
-    : 0;
+          visit.id !==
+            row.visit?.id &&
+          visit.status !==
+            "Skipped" &&
+          visit.scheduledDate ===
+            replacementDate,
+      );
 
-  function generateProgramme() {
-    if (!selectedCustomer) {
+    if (conflictingVisit) {
       showMessage(
-        "Select a customer first.",
+        `This customer already has ${conflictingVisit.treatmentName} scheduled on ${formatDate(
+          replacementDate,
+        )}.`,
       );
       return;
     }
 
-    if (!settings.startDate) {
-      showMessage(
-        "Choose a programme start date.",
-      );
-      return;
-    }
+    const updatedProgramme:
+      CustomerProgramme = {
+      ...selectedProgramme,
 
-    const generatedVisits =
-      buildProgrammeVisits(settings);
+      visits:
+        selectedProgramme.visits.map(
+          (visit) => {
+            if (
+              visit.id !==
+              row.visit?.id
+            ) {
+              return visit;
+            }
 
-    setDraftVisits(generatedVisits);
+            const returningToGroupDate =
+              replacementDate ===
+              row.groupDate;
 
-    showMessage(
-      `${generatedVisits.length} treatment visits generated.`,
-    );
-  }
+            return {
+              ...visit,
 
-  function loadExistingProgramme() {
-    if (!existingProgramme) {
-      showMessage(
-        "No saved programme exists for this customer and year.",
-      );
-      return;
-    }
+              scheduledDate:
+                replacementDate,
 
-    setSettings((current) => ({
-      ...current,
-      programmeName:
-        existingProgramme.programmeName,
-      startDate:
-        existingProgramme.startDate,
-      avoidWednesdays:
-        existingProgramme.avoidWednesdays,
-      avoidWeekends:
-        existingProgramme.avoidWeekends,
-      gap1:
-        existingProgramme.visits[1]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[1]
-          .gapAfterPreviousDays,
-      gap2:
-        existingProgramme.visits[2]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[2]
-          .gapAfterPreviousDays,
-      gap3:
-        existingProgramme.visits[3]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[3]
-          .gapAfterPreviousDays,
-      gap4:
-        existingProgramme.visits[4]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[4]
-          .gapAfterPreviousDays,
-    }));
-
-    setDraftVisits(
-      existingProgramme.visits.map(
-        (visit) => ({ ...visit }),
-      ),
-    );
-
-    showMessage(
-      "Saved programme loaded.",
-    );
-  }
-
-  function saveGeneratedProgramme() {
-    if (!selectedCustomer) {
-      showMessage(
-        "Select a customer first.",
-      );
-      return;
-    }
-
-    if (draftVisits.length === 0) {
-      showMessage(
-        "Generate the programme before saving it.",
-      );
-      return;
-    }
-
-    const programme: CustomerProgramme = {
-      id:
-        existingProgramme?.id ??
-        `programme-${settings.customerNumber}-${settings.programmeYear}`,
-      customerNumber:
-        settings.customerNumber,
-      year: settings.programmeYear,
-      createdAt:
-        existingProgramme?.createdAt ??
-        new Date().toISOString(),
-      programmeName:
-        settings.programmeName.trim() ||
-        "Standard annual programme",
-      startDate: settings.startDate,
-      avoidWednesdays:
-        settings.avoidWednesdays,
-      avoidWeekends:
-        settings.avoidWeekends,
-      visits: draftVisits,
+              notes:
+                returningToGroupDate
+                  ? removeOverrideNote(
+                      visit.notes,
+                    )
+                  : addOverrideNote(
+                      visit.notes,
+                      row.groupDate,
+                      replacementDate,
+                    ),
+            };
+          },
+        ),
     };
 
-    saveProgramme(programme);
+    saveProgramme(
+      updatedProgramme,
+    );
 
-    const firstUpcomingVisit =
-      draftVisits.find(
-        (visit) =>
-          visit.status === "Scheduled" ||
-          visit.status === "Planned",
-      );
+    setEditingVisitNumber(
+      null,
+    );
 
-    if (firstUpcomingVisit) {
-      updateCustomer({
-        ...selectedCustomer,
-        nextVisit: formatDate(
-          firstUpcomingVisit.scheduledDate,
-        ),
-      });
-    }
+    setReplacementDate("");
 
     showMessage(
-      `Programme saved for ${selectedCustomer.fullName}.`,
+      replacementDate ===
+        row.groupDate
+        ? `${row.treatmentName} restored to the Group ${selectedCustomer.groupNumber} date.`
+        : `${row.treatmentName} moved to ${formatDate(
+            replacementDate,
+          )} for ${selectedCustomer.fullName} only.`,
     );
   }
 
-  function moveVisit(
-    visitId: string,
-    days: number,
-  ) {
-    setDraftVisits((current) =>
-      current.map((visit) => {
-        if (visit.id !== visitId) {
-          return visit;
-        }
-
-        let movedDate = addDays(
-          parseDate(
-            visit.scheduledDate,
-          ),
-          days,
-        );
-
-        movedDate = moveToWorkingDay(
-          movedDate,
-          settings.avoidWednesdays,
-          settings.avoidWeekends,
-        );
-
-        return {
-          ...visit,
-          scheduledDate:
-            toDateValue(movedDate),
-        };
-      }),
-    );
-  }
-
-  function updateVisitStatus(
-    visitId: string,
-    status: ProgrammeVisitStatus,
-  ) {
-    setDraftVisits((current) =>
-      current.map((visit) =>
-        visit.id === visitId
-          ? {
-              ...visit,
-              status,
-            }
-          : visit,
-      ),
-    );
-  }
-
-  function updateVisitDate(
-    visitId: string,
-    date: string,
-  ) {
-    setDraftVisits((current) =>
-      current.map((visit) =>
-        visit.id === visitId
-          ? {
-              ...visit,
-              scheduledDate: date,
-            }
-          : visit,
-      ),
-    );
-  }
-
-  function deleteSelectedProgramme() {
-    if (!existingProgramme) {
-      showMessage(
-        "No saved programme exists to delete.",
-      );
+  function restoreAllGroupDates() {
+    if (!selectedCustomer) {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Delete the ${existingProgramme.year} programme for ${selectedCustomer?.fullName}?`,
-    );
+    const confirmed =
+      window.confirm(
+        `Restore all active ${selectedYear} visits for ${selectedCustomer.fullName} to the standard Group ${selectedCustomer.groupNumber} dates?`,
+      );
 
     if (!confirmed) {
       return;
     }
 
-    deleteProgramme(
-      existingProgramme.id,
+    const result =
+      applySeasonDatesToCustomer(
+        selectedCustomer.customerNumber,
+        selectedYear,
+      );
+
+    if (!result) {
+      showMessage(
+        "The season or group calendar could not be found.",
+      );
+      return;
+    }
+
+    setEditingVisitNumber(
+      null,
     );
 
-    setDraftVisits([]);
+    setReplacementDate("");
 
     showMessage(
-      "Customer programme deleted.",
+      `${selectedCustomer.fullName}'s active visits now use the standard Group ${selectedCustomer.groupNumber} dates.`,
     );
   }
 
-  function selectSavedProgramme(
-    programme: CustomerProgramme,
+  function showMessage(
+    text: string,
   ) {
-    setSettings({
-      customerNumber:
-        programme.customerNumber,
-      programmeYear: programme.year,
-      programmeName:
-        programme.programmeName,
-      startDate: programme.startDate,
-      gap1:
-        programme.visits[1]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[1]
-          .gapAfterPreviousDays,
-      gap2:
-        programme.visits[2]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[2]
-          .gapAfterPreviousDays,
-      gap3:
-        programme.visits[3]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[3]
-          .gapAfterPreviousDays,
-      gap4:
-        programme.visits[4]
-          ?.gapAfterPreviousDays ??
-        STANDARD_TREATMENTS[4]
-          .gapAfterPreviousDays,
-      avoidWednesdays:
-        programme.avoidWednesdays,
-      avoidWeekends:
-        programme.avoidWeekends,
-    });
-
-    setDraftVisits(
-      programme.visits.map(
-        (visit) => ({ ...visit }),
-      ),
-    );
-  }
-
-  function showMessage(text: string) {
     setMessage(text);
 
     window.setTimeout(() => {
       setMessage("");
-    }, 2800);
+    }, 3800);
   }
 
-  if (
-    !customersReady ||
-    !programmesReady
-  ) {
+  const ready =
+    customersReady &&
+    seasonsReady &&
+    programmesReady;
+
+  if (!ready) {
     return (
       <AppShell>
         <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
             Loading annual programmes...
           </div>
         </main>
@@ -474,513 +529,96 @@ export default function ProgrammesPage() {
   return (
     <AppShell>
       <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5">
-            <Link
-              href="/"
-              className="text-sm font-semibold text-[#176b37] hover:underline"
-            >
-              ← Dashboard
-            </Link>
+        <div className="mx-auto max-w-[1650px]">
+          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <Link
+                href="/"
+                className="text-sm font-semibold text-[#176b37] hover:underline"
+              >
+                ← Dashboard
+              </Link>
 
-            <h1 className="mt-2 text-3xl font-bold">
-              Annual Programmes
-            </h1>
+              <h1 className="mt-2 text-3xl font-bold">
+                Annual Programmes
+              </h1>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Generate, adjust and save each
-              customer&apos;s annual treatment
-              schedule.
-            </p>
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                Customers automatically inherit the
+                five treatment dates assigned to
+                their group. Use this page only to
+                review schedules or create a
+                customer-specific date override.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Season year">
+                <select
+                  value={selectedYear}
+                  onChange={(event) => {
+                    setSelectedYear(
+                      Number(
+                        event.target.value,
+                      ),
+                    );
+
+                    setEditingVisitNumber(
+                      null,
+                    );
+
+                    setReplacementDate(
+                      "",
+                    );
+                  }}
+                  className="min-w-40 rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                >
+                  {availableYears.map(
+                    (year) => (
+                      <option
+                        key={year}
+                        value={year}
+                      >
+                        {year}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </Field>
+
+              <Link
+                href="/season-planner"
+                className="inline-flex h-11 items-center rounded-xl border border-[#338b45] bg-white px-4 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+              >
+                Open Season Planner
+              </Link>
+            </div>
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
               {message}
             </div>
           )}
 
+          {!selectedSeason && (
+            <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+              No season calendar exists for{" "}
+              {selectedYear}. Create it in the{" "}
+              <Link
+                href="/season-planner"
+                className="font-bold underline"
+              >
+                Season Planner
+              </Link>
+              .
+            </section>
+          )}
+
           <section className="grid gap-4 xl:grid-cols-[390px_1fr]">
             <aside className="space-y-4">
-              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-lg font-bold">
-                  Programme generator
-                </h2>
-
-                <div className="mt-5 space-y-4">
-                  <Field label="Customer">
-                    <select
-                      value={
-                        settings.customerNumber
-                      }
-                      onChange={(event) => {
-                        setSettings(
-                          (current) => ({
-                            ...current,
-                            customerNumber:
-                              event.target
-                                .value,
-                          }),
-                        );
-
-                        setDraftVisits([]);
-                      }}
-                      className={inputClass}
-                    >
-                      {activeCustomers.map(
-                        (customer) => (
-                          <option
-                            key={
-                              customer.customerNumber
-                            }
-                            value={
-                              customer.customerNumber
-                            }
-                          >
-                            {
-                              customer.customerNumber
-                            }{" "}
-                            — {customer.fullName}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </Field>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Programme year">
-                      <input
-                        type="number"
-                        min="2020"
-                        max="2100"
-                        value={
-                          settings.programmeYear
-                        }
-                        onChange={(event) => {
-                          setSettings(
-                            (current) => ({
-                              ...current,
-                              programmeYear:
-                                Number(
-                                  event.target
-                                    .value,
-                                ) ||
-                                currentYear,
-                            }),
-                          );
-
-                          setDraftVisits([]);
-                        }}
-                        className={inputClass}
-                      />
-                    </Field>
-
-                    <Field label="Start date">
-                      <input
-                        type="date"
-                        value={
-                          settings.startDate
-                        }
-                        onChange={(event) =>
-                          setSettings(
-                            (current) => ({
-                              ...current,
-                              startDate:
-                                event.target
-                                  .value,
-                            }),
-                          )
-                        }
-                        className={inputClass}
-                      />
-                    </Field>
-                  </div>
-
-                  <Field label="Programme name">
-                    <input
-                      value={
-                        settings.programmeName
-                      }
-                      onChange={(event) =>
-                        setSettings(
-                          (current) => ({
-                            ...current,
-                            programmeName:
-                              event.target
-                                .value,
-                          }),
-                        )
-                      }
-                      className={inputClass}
-                    />
-                  </Field>
-
-                  <div className="rounded-xl bg-green-50 p-4 text-sm text-green-900">
-                    Standard visits use the shared
-                    treatment template. Each gap
-                    remains editable.
-                  </div>
-
-                  <GapInput
-                    label="Visit 1 → Visit 2"
-                    value={settings.gap1}
-                    onChange={(value) =>
-                      setSettings(
-                        (current) => ({
-                          ...current,
-                          gap1: value,
-                        }),
-                      )
-                    }
-                  />
-
-                  <GapInput
-                    label="Visit 2 → Visit 3"
-                    value={settings.gap2}
-                    onChange={(value) =>
-                      setSettings(
-                        (current) => ({
-                          ...current,
-                          gap2: value,
-                        }),
-                      )
-                    }
-                  />
-
-                  <GapInput
-                    label="Visit 3 → Visit 4"
-                    value={settings.gap3}
-                    onChange={(value) =>
-                      setSettings(
-                        (current) => ({
-                          ...current,
-                          gap3: value,
-                        }),
-                      )
-                    }
-                  />
-
-                  <GapInput
-                    label="Visit 4 → Visit 5"
-                    value={settings.gap4}
-                    onChange={(value) =>
-                      setSettings(
-                        (current) => ({
-                          ...current,
-                          gap4: value,
-                        }),
-                      )
-                    }
-                  />
-
-                  <OptionToggle
-                    label="Reserve Wednesdays"
-                    description="Move generated visits to the next working day."
-                    checked={
-                      settings.avoidWednesdays
-                    }
-                    onChange={(checked) =>
-                      setSettings(
-                        (current) => ({
-                          ...current,
-                          avoidWednesdays:
-                            checked,
-                        }),
-                      )
-                    }
-                  />
-
-                  <OptionToggle
-                    label="Avoid weekends"
-                    description="Move Saturday and Sunday visits forward."
-                    checked={
-                      settings.avoidWeekends
-                    }
-                    onChange={(checked) =>
-                      setSettings(
-                        (current) => ({
-                          ...current,
-                          avoidWeekends:
-                            checked,
-                        }),
-                      )
-                    }
-                  />
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={
-                        generateProgramme
-                      }
-                      className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
-                    >
-                      Generate
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={
-                        loadExistingProgramme
-                      }
-                      disabled={
-                        !existingProgramme
-                      }
-                      className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                    >
-                      Load saved
-                    </button>
-                  </div>
-                </div>
-              </article>
-            </aside>
-
-            <section className="min-w-0 space-y-4">
-              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-bold">
-                      {selectedCustomer
-                        ? selectedCustomer.fullName
-                        : "Select a customer"}
-                    </h2>
-
-                    {selectedCustomer && (
-                      <p className="mt-1 text-sm text-slate-500">
-                        Customer #
-                        {
-                          selectedCustomer.customerNumber
-                        }{" "}
-                        · Group{" "}
-                        {
-                          selectedCustomer.groupNumber
-                        }{" "}
-                        · £
-                        {selectedCustomer.treatmentPrice.toFixed(
-                          2,
-                        )}{" "}
-                        per standard visit
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {existingProgramme && (
-                      <span className="inline-flex h-11 items-center rounded-xl bg-green-100 px-4 text-sm font-bold text-green-800">
-                        Saved programme
-                      </span>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={
-                        saveGeneratedProgramme
-                      }
-                      disabled={
-                        draftVisits.length ===
-                        0
-                      }
-                      className="h-11 rounded-xl bg-[#176b37] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                    >
-                      Save programme
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={
-                        deleteSelectedProgramme
-                      }
-                      disabled={
-                        !existingProgramme
-                      }
-                      className="h-11 rounded-xl border border-red-300 bg-red-50 px-4 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <SummaryCard
-                    label="Scheduled visits"
-                    value={String(
-                      draftVisits.filter(
-                        (visit) =>
-                          visit.status !==
-                          "Skipped",
-                      ).length,
-                    )}
-                    detail="Current programme"
-                  />
-
-                  <SummaryCard
-                    label="Expected value"
-                    value={`£${annualValue.toFixed(
-                      2,
-                    )}`}
-                    detail="Standard visits only"
-                  />
-
-                  <SummaryCard
-                    label="First visit"
-                    value={
-                      draftVisits[0]
-                        ? formatShortDate(
-                            draftVisits[0]
-                              .scheduledDate,
-                          )
-                        : "Not generated"
-                    }
-                    detail="Programme start"
-                  />
-
-                  <SummaryCard
-                    label="Final visit"
-                    value={
-                      draftVisits[
-                        draftVisits.length -
-                          1
-                      ]
-                        ? formatShortDate(
-                            draftVisits[
-                              draftVisits.length -
-                                1
-                            ].scheduledDate,
-                          )
-                        : "Not generated"
-                    }
-                    detail="Programme finish"
-                  />
-                </div>
-              </article>
-
-              <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="grid grid-cols-[75px_1.4fr_170px_130px_210px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                  <span>Visit</span>
-                  <span>Treatment</span>
-                  <span>Scheduled date</span>
-                  <span>Status</span>
-                  <span>Adjust</span>
-                </div>
-
-                {draftVisits.length === 0 ? (
-                  <div className="p-12 text-center">
-                    <div className="font-bold">
-                      No programme generated
-                    </div>
-
-                    <p className="mt-2 text-sm text-slate-500">
-                      Choose a customer and
-                      programme start date, then
-                      select Generate.
-                    </p>
-                  </div>
-                ) : (
-                  draftVisits.map(
-                    (visit) => (
-                      <div
-                        key={visit.id}
-                        className="grid grid-cols-[75px_1.4fr_170px_130px_210px] items-center gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-0"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#176b37] font-bold text-white">
-                          {
-                            visit.visitNumber
-                          }
-                        </div>
-
-                        <div>
-                          <div className="font-bold">
-                            {
-                              visit.treatmentName
-                            }
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            {visit.visitNumber ===
-                            1
-                              ? "Programme starting visit"
-                              : `${visit.gapAfterPreviousDays} days after previous visit`}
-                          </div>
-                        </div>
-
-                        <input
-                          type="date"
-                          value={
-                            visit.scheduledDate
-                          }
-                          onChange={(event) =>
-                            updateVisitDate(
-                              visit.id,
-                              event.target
-                                .value,
-                            )
-                          }
-                          className={inputClass}
-                        />
-
-                        <select
-                          value={visit.status}
-                          onChange={(event) =>
-                            updateVisitStatus(
-                              visit.id,
-                              event.target
-                                .value as ProgrammeVisitStatus,
-                            )
-                          }
-                          className={inputClass}
-                        >
-                          <option value="Planned">
-                            Planned
-                          </option>
-
-                          <option value="Scheduled">
-                            Scheduled
-                          </option>
-
-                          <option value="Completed">
-                            Completed
-                          </option>
-
-                          <option value="Skipped">
-                            Skipped
-                          </option>
-                        </select>
-
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              moveVisit(
-                                visit.id,
-                                -1,
-                              )
-                            }
-                            className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
-                          >
-                            −1 day
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              moveVisit(
-                                visit.id,
-                                1,
-                              )
-                            }
-                            className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
-                          >
-                            +1 day
-                          </button>
-                        </div>
-                      </div>
-                    ),
-                  )
-                )}
-              </article>
-
               <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <Field label="Search saved programmes">
+                <Field label="Find customer">
                   <input
                     value={search}
                     onChange={(event) =>
@@ -988,61 +626,90 @@ export default function ProgrammesPage() {
                         event.target.value,
                       )
                     }
-                    placeholder="Customer, year, address or programme"
+                    placeholder="Name, customer number, postcode or group"
                     className={inputClass}
                   />
                 </Field>
 
-                <div className="mt-4 max-h-[260px] overflow-y-auto rounded-xl border border-slate-200">
-                  {filteredProgrammes.length ===
+                <div className="mt-4 max-h-[70vh] space-y-2 overflow-y-auto pr-1">
+                  {filteredCustomers.length ===
                   0 ? (
-                    <div className="p-8 text-center text-sm text-slate-500">
-                      No saved customer
-                      programmes found.
+                    <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                      No active customers match the
+                      search.
                     </div>
                   ) : (
-                    filteredProgrammes.map(
-                      (programme) => {
-                        const customer =
-                          customers.find(
+                    filteredCustomers.map(
+                      (customer) => {
+                        const selected =
+                          customer.customerNumber ===
+                          selectedCustomerNumber;
+
+                        const programme =
+                          programmes.find(
                             (item) =>
                               item.customerNumber ===
-                              programme.customerNumber,
+                                customer.customerNumber &&
+                              item.year ===
+                                selectedYear,
                           );
 
                         return (
                           <button
-                            key={programme.id}
+                            key={
+                              customer.customerNumber
+                            }
                             type="button"
                             onClick={() =>
-                              selectSavedProgramme(
-                                programme,
+                              chooseCustomer(
+                                customer.customerNumber,
                               )
                             }
-                            className="grid w-full grid-cols-[100px_1.5fr_1fr_120px] gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm last:border-0 hover:bg-green-50"
+                            className={`w-full rounded-xl border p-4 text-left transition ${
+                              selected
+                                ? "border-[#338b45] bg-green-50"
+                                : "border-slate-200 hover:bg-slate-50"
+                            }`}
                           >
-                            <span className="font-bold text-[#176b37]">
-                              {programme.year}
-                            </span>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-bold">
+                                  {
+                                    customer.fullName
+                                  }
+                                </div>
 
-                            <span className="font-semibold">
-                              {customer?.fullName ??
-                                programme.customerNumber}
-                            </span>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  Customer{" "}
+                                  {
+                                    customer.customerNumber
+                                  }
+                                </div>
+                              </div>
 
-                            <span className="text-slate-600">
-                              {
-                                programme.programmeName
-                              }
-                            </span>
+                              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
+                                Group{" "}
+                                {
+                                  customer.groupNumber
+                                }
+                              </span>
+                            </div>
 
-                            <span className="text-right font-semibold">
-                              {
-                                programme.visits
-                                  .length
-                              }{" "}
-                              visits
-                            </span>
+                            <div className="mt-2 text-sm text-slate-600">
+                              {customer.address},{" "}
+                              {customer.postcode}
+                            </div>
+
+                            <div className="mt-3 text-xs font-semibold text-slate-500">
+                              {programme
+                                ? `${programme.visits.length} included treatment${
+                                    programme.visits.length ===
+                                    1
+                                      ? ""
+                                      : "s"
+                                  }`
+                                : "No inherited programme available"}
+                            </div>
                           </button>
                         );
                       },
@@ -1050,6 +717,313 @@ export default function ProgrammesPage() {
                   )}
                 </div>
               </article>
+            </aside>
+
+            <section className="min-w-0 space-y-4">
+              {!selectedCustomer ? (
+                <EmptyPanel>
+                  Select an active customer to review
+                  their inherited group schedule.
+                </EmptyPanel>
+              ) : (
+                <>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h2 className="text-2xl font-bold">
+                            {
+                              selectedCustomer.fullName
+                            }
+                          </h2>
+
+                          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800">
+                            Group{" "}
+                            {
+                              selectedCustomer.groupNumber
+                            }
+                          </span>
+
+                          {selectedProgramme && (
+                            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+                              Schedule inherited
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="mt-2 text-sm text-slate-500">
+                          Customer{" "}
+                          {
+                            selectedCustomer.customerNumber
+                          }{" "}
+                          · {selectedCustomer.address},{" "}
+                          {selectedCustomer.postcode}
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {selectedCustomer.programmeStartDate
+                            ? `Programme eligibility begins ${formatDate(
+                                selectedCustomer.programmeStartDate,
+                              )}. Past treatment rounds are excluded automatically.`
+                            : "Established customer: all standard group rounds remain visible, including historical dates."}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={
+                          restoreAllGroupDates
+                        }
+                        disabled={
+                          !selectedProgramme ||
+                          overriddenVisitCount ===
+                            0
+                        }
+                        className="h-11 rounded-xl border border-[#338b45] bg-white px-4 text-sm font-semibold text-[#176b37] hover:bg-green-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                      >
+                        Restore group dates
+                      </button>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <SummaryCard
+                        label="Assigned group"
+                        value={String(
+                          selectedCustomer.groupNumber,
+                        )}
+                        detail={`${groupCustomerCount} active customer${
+                          groupCustomerCount ===
+                          1
+                            ? ""
+                            : "s"
+                        } in this group`}
+                      />
+
+                      <SummaryCard
+                        label="Included rounds"
+                        value={`${includedVisitCount}/5`}
+                        detail="Eligible treatments"
+                      />
+
+                      <SummaryCard
+                        label="Date overrides"
+                        value={String(
+                          overriddenVisitCount,
+                        )}
+                        detail="Customer-specific changes"
+                      />
+
+                      <SummaryCard
+                        label="Standard price"
+                        value={`£${selectedCustomer.treatmentPrice.toFixed(
+                          2,
+                        )}`}
+                        detail="Per treatment visit"
+                      />
+                    </div>
+                  </article>
+
+                  <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="grid grid-cols-[75px_1.3fr_170px_170px_150px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                      <span>Round</span>
+                      <span>Treatment</span>
+                      <span>Group date</span>
+                      <span>Customer date</span>
+                      <span>Action</span>
+                    </div>
+
+                    {visitRows.length === 0 ? (
+                      <div className="p-12 text-center text-sm text-slate-500">
+                        The selected group does not
+                        have dates for this season.
+                      </div>
+                    ) : (
+                      visitRows.map(
+                        (row) => {
+                          const editing =
+                            editingVisitNumber ===
+                            row.visitNumber;
+
+                          return (
+                            <div
+                              key={
+                                row.visitNumber
+                              }
+                              className="grid grid-cols-[75px_1.3fr_170px_170px_150px] items-center gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-0"
+                            >
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#176b37] font-bold text-white">
+                                {
+                                  row.visitNumber
+                                }
+                              </div>
+
+                              <div>
+                                <div className="font-bold">
+                                  {
+                                    row.treatmentName
+                                  }
+                                </div>
+
+                                <div className="mt-1 text-xs text-slate-500">
+                                  {row.visitNumber ===
+                                  1
+                                    ? "Season starting round"
+                                    : `${selectedSeason?.treatmentRounds[
+                                        row.visitNumber -
+                                          1
+                                      ]
+                                        ?.gapAfterPreviousDays ?? 70} day standard gap`}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="font-semibold">
+                                  {formatDate(
+                                    row.groupDate,
+                                  )}
+                                </div>
+
+                                <div className="mt-1 text-xs text-slate-500">
+                                  Group{" "}
+                                  {
+                                    selectedCustomer.groupNumber
+                                  }
+                                </div>
+                              </div>
+
+                              <div>
+                                {!row.included ? (
+                                  <div>
+                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                                      Not included
+                                    </span>
+
+                                    <div className="mt-2 text-xs text-slate-500">
+                                      Date passed before this
+                                      customer became eligible.
+                                    </div>
+                                  </div>
+                                ) : editing ? (
+                                  <input
+                                    type="date"
+                                    min={toDateValue(
+                                      new Date(),
+                                    )}
+                                    value={
+                                      replacementDate
+                                    }
+                                    onChange={(
+                                      event,
+                                    ) =>
+                                      setReplacementDate(
+                                        event.target
+                                          .value,
+                                      )
+                                    }
+                                    className={
+                                      inputClass
+                                    }
+                                  />
+                                ) : (
+                                  <div>
+                                    <div className="font-semibold">
+                                      {formatDate(
+                                        row.visit
+                                          ?.scheduledDate ??
+                                          "",
+                                      )}
+                                    </div>
+
+                                    <div className="mt-1">
+                                      {row.overridden ? (
+                                        <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
+                                          Override
+                                        </span>
+                                      ) : (
+                                        <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-800">
+                                          Group date
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div>
+                                {!row.visit ? (
+                                  <span className="text-xs font-semibold text-slate-400">
+                                    Unavailable
+                                  </span>
+                                ) : editing ? (
+                                  <div className="flex flex-col gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        saveOverride(
+                                          row,
+                                        )
+                                      }
+                                      className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                                    >
+                                      Save date
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={
+                                        cancelOverride
+                                      }
+                                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      beginOverride(
+                                        row,
+                                      )
+                                    }
+                                    disabled={
+                                      row.visit.status ===
+                                        "Completed" ||
+                                      row.visit.status ===
+                                        "Skipped"
+                                    }
+                                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                  >
+                                    {row.overridden
+                                      ? "Change override"
+                                      : "Override date"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        },
+                      )
+                    )}
+                  </article>
+
+                  <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-950">
+                    <h2 className="font-bold">
+                      How this page now works
+                    </h2>
+
+                    <p className="mt-1">
+                      Dates are not generated here.
+                      The Season Planner creates one
+                      calendar for all groups, and
+                      every customer inherits the
+                      dates assigned to their group.
+                      Only a deliberate customer
+                      override is saved separately.
+                    </p>
+                  </article>
+                </>
+              )}
             </section>
           </section>
         </div>
@@ -1058,98 +1032,50 @@ export default function ProgrammesPage() {
   );
 }
 
-function buildProgrammeVisits(
-  settings: GeneratorSettings,
-): ProgrammeVisit[] {
-  const gaps = [
-    0,
-    settings.gap1,
-    settings.gap2,
-    settings.gap3,
-    settings.gap4,
-  ];
-
-  const visits: ProgrammeVisit[] = [];
-
-  let currentDate = parseDate(
-    settings.startDate,
-  );
-
-  for (
-    let index = 0;
-    index <
-    STANDARD_TREATMENTS.length;
-    index += 1
-  ) {
-    if (index > 0) {
-      currentDate = addDays(
-        currentDate,
-        gaps[index],
-      );
-    }
-
-    const adjustedDate =
-      moveToWorkingDay(
-        currentDate,
-        settings.avoidWednesdays,
-        settings.avoidWeekends,
-      );
-
-    visits.push({
-      id: `programme-visit-${settings.customerNumber}-${settings.programmeYear}-${index + 1}`,
-      visitNumber:
-        STANDARD_TREATMENTS[index]
-          .visitNumber,
-      treatmentName:
-        STANDARD_TREATMENTS[index]
-          .treatmentName,
-      scheduledDate:
-        toDateValue(adjustedDate),
-      gapAfterPreviousDays:
-        gaps[index],
-      status:
-        "Scheduled" as ProgrammeVisitStatus,
-      notes: "",
-    });
-
-    currentDate = adjustedDate;
-  }
-
-  return visits;
-}
-
-function moveToWorkingDay(
-  date: Date,
-  avoidWednesdays: boolean,
-  avoidWeekends: boolean,
+function addOverrideNote(
+  existingNotes: string,
+  groupDate: string,
+  replacementDate: string,
 ) {
-  let result = new Date(date);
+  const cleaned =
+    removeOverrideNote(
+      existingNotes,
+    );
 
-  while (true) {
-    const day = result.getDay();
-
-    const isWednesday =
-      avoidWednesdays && day === 3;
-
-    const isWeekend =
-      avoidWeekends &&
-      (day === 0 || day === 6);
-
-    if (
-      !isWednesday &&
-      !isWeekend
-    ) {
-      return result;
-    }
-
-    result = addDays(result, 1);
-  }
+  return [
+    cleaned,
+    `${OVERRIDE_NOTE} Standard group date ${formatDate(
+      groupDate,
+    )}; customer date ${formatDate(
+      replacementDate,
+    )}.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-function parseDate(value: string) {
-  const [year, month, day] = value
-    .split("-")
-    .map(Number);
+function removeOverrideNote(
+  notes: string,
+) {
+  return notes
+    .split("\n")
+    .filter(
+      (line) =>
+        !line.includes(
+          OVERRIDE_NOTE,
+        ),
+    )
+    .join("\n")
+    .trim();
+}
+
+function parseDate(
+  value: string,
+) {
+  const [year, month, day] =
+    value
+      .split("-")
+      .map(Number);
 
   return new Date(
     year,
@@ -1158,58 +1084,63 @@ function parseDate(value: string) {
   );
 }
 
-function addDays(
-  date: Date,
-  numberOfDays: number,
+function isDateValue(
+  value: string,
 ) {
-  const result = new Date(date);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
 
-  result.setDate(
-    result.getDate() + numberOfDays,
+  const date =
+    parseDate(value);
+
+  return (
+    !Number.isNaN(
+      date.getTime(),
+    ) &&
+    toDateValue(date) === value
   );
-
-  return result;
 }
 
-function toDateValue(date: Date) {
-  const year = date.getFullYear();
+function toDateValue(
+  date: Date,
+) {
+  const year =
+    date.getFullYear();
 
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, "0");
 
-  const day = String(
-    date.getDate(),
-  ).padStart(2, "0");
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    },
-  ).format(parseDate(value));
-}
-
-function formatShortDate(
+function formatDate(
   value: string,
 ) {
+  if (!isDateValue(value)) {
+    return "No date";
+  }
+
   return new Intl.DateTimeFormat(
     "en-GB",
     {
       day: "numeric",
       month: "short",
+      year: "numeric",
     },
   ).format(parseDate(value));
 }
-
-const inputClass =
-  "w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 function Field({
   label,
@@ -1229,77 +1160,6 @@ function Field({
   );
 }
 
-function GapInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <Field label={label}>
-      <div className="flex items-center gap-2">
-        <input
-          type="number"
-          min="1"
-          value={value}
-          onChange={(event) =>
-            onChange(
-              Number(
-                event.target.value,
-              ) || 1,
-            )
-          }
-          className={inputClass}
-        />
-
-        <span className="text-sm font-semibold text-slate-500">
-          days
-        </span>
-      </div>
-    </Field>
-  );
-}
-
-function OptionToggle({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
-      <div>
-        <div className="font-semibold">
-          {label}
-        </div>
-
-        <div className="mt-1 text-xs text-slate-500">
-          {description}
-        </div>
-      </div>
-
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) =>
-          onChange(
-            event.target.checked,
-          )
-        }
-        className="h-5 w-5"
-      />
-    </label>
-  );
-}
-
 function SummaryCard({
   label,
   value,
@@ -1310,7 +1170,7 @@ function SummaryCard({
   detail: string;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200 p-4">
+    <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="text-xs font-semibold text-slate-500">
         {label}
       </div>
@@ -1322,6 +1182,18 @@ function SummaryCard({
       <div className="mt-1 text-xs text-slate-500">
         {detail}
       </div>
+    </article>
+  );
+}
+
+function EmptyPanel({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <article className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-sm text-slate-500 shadow-sm">
+      {children}
     </article>
   );
 }

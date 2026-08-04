@@ -9,19 +9,38 @@ import type {
 
 import { useCustomerStore } from "@/components/customer-store";
 import {
+  type CustomerProgramme,
+  type ProgrammeVisit,
+  useProgrammeStore,
+} from "@/components/programme-store";
+import {
   type AdvisoryType,
   type TreatmentWordingSettings,
   useSettingsStore,
 } from "@/components/settings-store";
+import { useSeasonStore } from "@/components/season-store";
 import {
   type TreatmentRecord,
   useTreatmentStore,
 } from "@/components/treatment-store";
 
+type NextVisitInformation = {
+  date: string;
+  label:
+    | "Next planned treatment"
+    | "Replacement visit";
+  isOverride: boolean;
+};
+
+type BusinessWithVat = {
+  vatNumber?: string;
+};
+
 export default function TreatmentDocumentPage() {
-  const params = useParams<{
-    treatmentId: string;
-  }>();
+  const params =
+    useParams<{
+      treatmentId: string;
+    }>();
 
   const {
     customers,
@@ -34,32 +53,48 @@ export default function TreatmentDocumentPage() {
   } = useTreatmentStore();
 
   const {
+    programmes,
+    ready: programmesReady,
+  } = useProgrammeStore();
+
+  const {
+    seasons,
+    ready: seasonsReady,
+  } = useSeasonStore();
+
+  const {
     settings,
     ready: settingsReady,
   } = useSettingsStore();
 
-  const treatment = treatments.find(
-    (item) =>
-      item.id === params.treatmentId,
-  );
+  const treatment =
+    treatments.find(
+      (item) =>
+        item.id ===
+        params.treatmentId,
+    );
 
-  const customer = treatment
-    ? customers.find(
-        (item) =>
-          item.customerNumber ===
-          treatment.customerNumber,
-      )
-    : undefined;
+  const customer =
+    treatment
+      ? customers.find(
+          (item) =>
+            item.customerNumber ===
+            treatment.customerNumber,
+        )
+      : undefined;
 
-  if (
-    !customersReady ||
-    !treatmentsReady ||
-    !settingsReady
-  ) {
+  const ready =
+    customersReady &&
+    treatmentsReady &&
+    programmesReady &&
+    seasonsReady &&
+    settingsReady;
+
+  if (!ready) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
         <div className="rounded-2xl bg-white p-10 text-slate-500 shadow-sm">
-          Loading treatment document...
+          Loading customer document...
         </div>
       </main>
     );
@@ -74,8 +109,7 @@ export default function TreatmentDocumentPage() {
           </h1>
 
           <p className="mt-3 text-slate-500">
-            The treatment or customer record is no
-            longer available.
+            The treatment or customer record is no longer available.
           </p>
 
           <Link
@@ -89,46 +123,28 @@ export default function TreatmentDocumentPage() {
     );
   }
 
-  const invoiceNumber =
-    treatment.invoiceNumber ||
-    "Not assigned";
+  const completed =
+    treatment.status ===
+    "Completed";
+
+  const documentTitle =
+    completed
+      ? "Treatment report & invoice"
+      : "Visit outcome record";
 
   const visitInformation =
-    createVisitInformation(
+    createCustomerSafeVisitInformation(
       treatment,
       settings.treatmentWording,
     );
 
-  const nextVisitPreparation =
-    treatment.status === "Completed"
-      ? settings.treatmentWording
-          .nextVisitPreparation
-      : createNonCompletedPreparation(
-          treatment,
-          settings.treatmentWording,
-        );
-
-  const activeAdvisories =
-    settings.advisories.filter(
-      (advisory) => advisory.active,
-    );
-
-  const documentDensityClass =
-    getDocumentDensityClass(
-      visitInformation.length +
-        nextVisitPreparation.length +
-        treatment.notes.length +
-        activeAdvisories.reduce(
-          (total, advisory) =>
-            total +
-            advisory.title.length +
-            advisory.wording.length,
-          0,
-        ),
-    );
+  const primaryColour =
+    settings.branding
+      .primaryColour ||
+    "#176b37";
 
   const businessAddress =
-    createBusinessAddress([
+    joinAddress([
       settings.business.addressLine1,
       settings.business.addressLine2,
       settings.business.town,
@@ -136,19 +152,74 @@ export default function TreatmentDocumentPage() {
       settings.business.postcode,
     ]);
 
+  const vatNumber =
+    (
+      settings.business as typeof settings.business &
+        BusinessWithVat
+    ).vatNumber?.trim() ?? "";
+
   const customerAddress =
-    createBusinessAddress([
+    joinAddress([
       customer.address,
       customer.postcode,
     ]);
 
-  const primaryColour =
-    settings.branding.primaryColour ||
-    "#176b37";
+  const activeAdvisories =
+    completed
+      ? settings.advisories
+          .filter(
+            (advisory) =>
+              advisory.active,
+          )
+          .slice(0, 3)
+      : [];
+
+  const nextVisit =
+    getNextVisitInformation({
+      treatment,
+      customerNumber:
+        customer.customerNumber,
+      groupNumber:
+        customer.groupNumber,
+      programmes,
+      seasons,
+    });
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-6 print:bg-white print:p-0">
-      <div className="no-print mx-auto mb-4 flex max-w-[900px] flex-wrap items-center justify-between gap-3">
+    <main className="min-h-screen bg-slate-200 px-4 py-6 print:bg-white print:p-0">
+      <style jsx global>{`
+        @page {
+          size: A4 portrait;
+          margin: 0;
+        }
+
+        @media print {
+          html,
+          body {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0;
+            padding: 0;
+            background: white;
+          }
+
+          .no-print {
+            display: none !important;
+          }
+
+          .a4-document {
+            width: 210mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            overflow: hidden !important;
+          }
+        }
+      `}</style>
+
+      <div className="no-print mx-auto mb-4 flex max-w-[794px] flex-wrap items-center justify-between gap-3">
         <Link
           href="/documents"
           className="font-semibold text-[#176b37] hover:underline"
@@ -164,6 +235,13 @@ export default function TreatmentDocumentPage() {
             Open customer
           </Link>
 
+          <Link
+            href="/treatments"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+          >
+            Internal treatment record
+          </Link>
+
           <button
             type="button"
             onClick={() =>
@@ -177,365 +255,531 @@ export default function TreatmentDocumentPage() {
       </div>
 
       <article
-        className={`treatment-document mx-auto bg-white shadow-lg print:shadow-none ${documentDensityClass}`}
+        className="a4-document mx-auto min-h-[1123px] max-w-[794px] overflow-hidden rounded-[24px] bg-white shadow-2xl"
         style={
           {
-            "--greenflow-primary":
+            "--document-primary":
               primaryColour,
           } as CSSProperties
         }
       >
-        <header
-          className="flex items-start justify-between gap-8 border-b-4 pb-5"
-          style={{
-            borderColor: primaryColour,
-          }}
-        >
-          <div>
-            <div
-              className="text-3xl font-bold"
-              style={{
-                color: primaryColour,
-              }}
-            >
-              {
-                settings.business
-                  .businessName
-              }
-            </div>
-
-            <div className="mt-1 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Lawn treatment report and invoice
-            </div>
-
-            {settings.business
-              .applicationName && (
-              <div className="mt-2 text-xs text-slate-400">
-                Prepared using{" "}
+        <header className="border-b border-slate-200 px-8 py-6">
+          <div className="flex items-start justify-between gap-8">
+            <div>
+              <div
+                className="text-4xl font-bold tracking-tight"
+                style={{
+                  color:
+                    primaryColour,
+                }}
+              >
                 {
                   settings.business
-                    .applicationName
+                    .businessName
                 }
               </div>
-            )}
-          </div>
 
-          <div className="max-w-[48%] text-right text-sm leading-6 text-slate-600">
-            {settings.business
-              .proprietorName && (
+              <div className="mt-1 text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {documentTitle}
+              </div>
+            </div>
+
+            <div className="max-w-[320px] whitespace-pre-line text-right text-[11px] leading-[1.45] text-slate-600">
               <div className="font-bold text-slate-900">
                 {
                   settings.business
-                    .proprietorName
+                    .businessName
                 }
               </div>
-            )}
 
-            {businessAddress && (
-              <div className="whitespace-pre-line">
-                {businessAddress}
-              </div>
-            )}
+              {businessAddress && (
+                <div>
+                  {businessAddress}
+                </div>
+              )}
 
-            {settings.business
-              .telephone && (
-              <div>
-                Tel:{" "}
-                {
-                  settings.business
-                    .telephone
-                }
-              </div>
-            )}
+              {settings.business
+                .telephone && (
+                <div>
+                  Tel:{" "}
+                  {
+                    settings.business
+                      .telephone
+                  }
+                </div>
+              )}
 
-            {settings.business.mobile && (
-              <div>
-                Mobile:{" "}
-                {settings.business.mobile}
-              </div>
-            )}
+              {settings.business
+                .mobile && (
+                <div>
+                  Mobile:{" "}
+                  {
+                    settings.business
+                      .mobile
+                  }
+                </div>
+              )}
 
-            {settings.business.email && (
-              <div>
-                {settings.business.email}
-              </div>
-            )}
+              {settings.business
+                .email && (
+                <div>
+                  Email:{" "}
+                  {
+                    settings.business
+                      .email
+                  }
+                </div>
+              )}
 
-            {settings.business.website && (
-              <div>
-                {
-                  settings.business
-                    .website
-                }
-              </div>
-            )}
+              {settings.business
+                .website && (
+                <div>
+                  Web:{" "}
+                  {
+                    settings.business
+                      .website
+                  }
+                </div>
+              )}
 
-            {settings.business
-              .vatNumber && (
-              <div>
-                VAT:{" "}
-                {
-                  settings.business
-                    .vatNumber
-                }
-              </div>
-            )}
-
-            {settings.business
-              .companyNumber && (
-              <div>
-                Company number:{" "}
-                {
-                  settings.business
-                    .companyNumber
-                }
-              </div>
-            )}
+              {vatNumber && (
+                <div>
+                  VAT: {vatNumber}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        <section className="print-avoid mt-5 grid grid-cols-[1.3fr_1fr] gap-8">
-          <div>
-            <DocumentLabel
-              primaryColour={
-                primaryColour
-              }
-            >
-              Customer
-            </DocumentLabel>
+        <section className="px-8 py-6">
+          <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <SmallHeading colour={primaryColour}>
+                Customer
+              </SmallHeading>
 
-            <div className="mt-2 text-lg font-bold">
-              {customer.fullName}
-            </div>
-
-            <div className="mt-1 whitespace-pre-line leading-6 text-slate-700">
-              {customerAddress}
-            </div>
-
-            <div className="mt-3 text-sm text-slate-600">
-              Customer number:{" "}
-              <strong>
-                {
-                  customer.customerNumber
-                }
-              </strong>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <DocumentRow
-              label="Invoice number"
-              value={invoiceNumber}
-            />
-
-            <DocumentRow
-              label="Visit date"
-              value={formatTreatmentDate(
-                treatment,
-              )}
-            />
-
-            <DocumentRow
-              label="Status"
-              value={treatment.status}
-            />
-
-            <DocumentRow
-              label="Customer group"
-              value={`Group ${customer.groupNumber}`}
-            />
-
-            <DocumentRow
-              label="Van"
-              value={`Van ${customer.vanNumber}`}
-            />
-          </div>
-        </section>
-
-        <section className="print-avoid mt-5 rounded-xl border border-slate-200 p-5">
-          <DocumentLabel
-            primaryColour={
-              primaryColour
-            }
-          >
-            Treatment information
-          </DocumentLabel>
-
-          <div className="mt-4 space-y-5">
-            <div>
-              <div className="text-sm font-bold text-slate-900">
-                Today&apos;s visit
+              <div className="mt-2 text-lg font-bold">
+                {customer.fullName}
               </div>
 
-              <p className="variable-document-text mt-1.5 leading-relaxed text-slate-700">
-                {visitInformation}
-              </p>
+              <div className="mt-1 whitespace-pre-line text-sm leading-5 text-slate-600">
+                {customerAddress}
+              </div>
             </div>
 
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <DocumentMetaRow
+                label="Customer number"
+                value={
+                  customer.customerNumber
+                }
+              />
+
+              <DocumentMetaRow
+                label="Invoice number"
+                value={
+                  completed
+                    ? treatment.invoiceNumber ||
+                      "Pending"
+                    : "Not applicable"
+                }
+              />
+
+              <DocumentMetaRow
+                label="Visit date"
+                value={formatDate(
+                  getRecordDate(
+                    treatment,
+                  ),
+                )}
+              />
+            </div>
+          </div>
+
+          <section className="mt-5 min-h-[255px] rounded-xl border border-slate-200 p-5">
+            <div>
+              <SmallHeading colour={primaryColour}>
+                Today&apos;s visit
+              </SmallHeading>
+
+              <h1 className="mt-2 text-2xl font-bold">
+                {
+                  treatment.treatmentName
+                }
+              </h1>
+            </div>
+
+            <p className="mt-4 whitespace-pre-line text-[14px] leading-7 text-slate-700">
+              {visitInformation}
+            </p>
+
             {treatment.notes && (
-              <div>
-                <div className="text-sm font-bold text-slate-900">
-                  Additional lawn-care
-                  notes
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-bold">
+                  Lawn observations and advice
                 </div>
 
-                <p className="variable-document-text mt-1.5 whitespace-pre-line leading-relaxed text-slate-700">
-                  {treatment.notes}
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
+                  {removeInternalProductInformation(
+                    treatment.notes,
+                  )}
                 </p>
               </div>
             )}
-
-            <div className="rounded-xl bg-green-50 p-4">
-              <div className="text-sm font-bold text-green-900">
-                Preparing for the next
-                visit
-              </div>
-
-              <p className="variable-document-text mt-1.5 leading-relaxed text-green-900">
-                {nextVisitPreparation}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {activeAdvisories.length > 0 && (
-          <section
-            className={`print-avoid mt-5 grid gap-3 ${getAdvisoryGridClass(
-              activeAdvisories.length,
-            )}`}
-          >
-            {activeAdvisories.map(
-              (advisory) => (
-                <AdvisoryBox
-                  key={advisory.id}
-                  title={advisory.title}
-                  detail={
-                    advisory.wording
-                  }
-                  type={advisory.type}
-                />
-              ),
-            )}
           </section>
-        )}
 
-        <section className="print-avoid mt-5 grid grid-cols-[1.35fr_0.65fr] gap-5">
-          <div className="rounded-xl border border-slate-200 p-5">
-            <DocumentLabel
-              primaryColour={
-                primaryColour
-              }
+          {completed &&
+            activeAdvisories.length >
+              0 && (
+              <section className="mt-5">
+                <div className="flex items-center justify-between">
+                  <SmallHeading colour={primaryColour}>
+                    Important aftercare
+                  </SmallHeading>
+
+                  <span className="text-xs text-slate-400">
+                    Please follow the guidance below
+                  </span>
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {activeAdvisories.map(
+                    (advisory) => (
+                      <AdviceCard
+                        key={advisory.id}
+                        title={advisory.title}
+                        detail={advisory.wording}
+                        type={advisory.type}
+                      />
+                    ),
+                  )}
+                </div>
+              </section>
+            )}
+
+          {completed && (
+            <section className="mt-5 grid gap-4 md:grid-cols-[1.3fr_0.7fr]">
+              <div className="rounded-xl border border-slate-200 p-4">
+                <SmallHeading colour={primaryColour}>
+                  Payment information
+                </SmallHeading>
+
+                <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
+                  {
+                    settings.invoices
+                      .paymentInstructions
+                  }
+                </p>
+
+                {settings.invoices
+                  .vatWording && (
+                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
+                    {
+                      settings.invoices
+                        .vatWording
+                    }
+                  </p>
+                )}
+              </div>
+
+              <div
+                className="rounded-xl p-4 text-white shadow-sm"
+                style={{
+                  backgroundColor:
+                    primaryColour,
+                }}
+              >
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
+                  Treatment charge
+                </div>
+
+                <div className="mt-2 text-4xl font-bold tracking-tight">
+                  £
+                  {customer.treatmentPrice.toFixed(
+                    2,
+                  )}
+                </div>
+
+                <div className="mt-1 text-xs text-white/80">
+                  Including VAT
+                </div>
+              </div>
+            </section>
+          )}
+
+          {nextVisit && (
+            <section
+              className={`mt-5 rounded-xl border p-5 ${
+                nextVisit.isOverride
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-green-200 bg-green-50"
+              }`}
             >
-              Payment information
-            </DocumentLabel>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div
+                    className={`text-xs font-bold uppercase tracking-[0.16em] ${
+                      nextVisit.isOverride
+                        ? "text-amber-700"
+                        : "text-green-700"
+                    }`}
+                  >
+                    {nextVisit.label}
+                  </div>
 
-            <p className="mt-3 text-sm leading-6 text-slate-700">
-              {
-                settings.invoices
-                  .paymentInstructions
-              }
-            </p>
+                  <div className="mt-2 text-sm text-slate-600">
+                    {nextVisit.isOverride
+                      ? "This is the agreed customer-specific replacement date."
+                      : "This is the next date in your annual programme."}
+                  </div>
+                </div>
 
-            {settings.invoices
-              .vatWording && (
-              <p className="mt-3 text-sm leading-6 text-slate-700">
-                {
-                  settings.invoices
-                    .vatWording
-                }
-              </p>
-            )}
-
-            {invoiceNumber ===
-              "Not assigned" && (
-              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                This older treatment
-                record does not have a
-                permanent GreenFlow invoice
-                number.
-              </p>
-            )}
-          </div>
-
-          <div
-            className="rounded-xl p-5 text-white"
-            style={{
-              backgroundColor:
-                primaryColour,
-            }}
-          >
-            <div className="text-xs font-semibold uppercase tracking-wide text-white/80">
-              Amount due
-            </div>
-
-            <div className="mt-2 text-4xl font-bold">
-              £
-              {customer.treatmentPrice.toFixed(
-                2,
-              )}
-            </div>
-
-            {settings.invoices
-              .showAmountIncludingVat && (
-              <div className="mt-2 text-sm text-white/80">
-                Including VAT
+                <div
+                  className={`text-3xl font-bold ${
+                    nextVisit.isOverride
+                      ? "text-amber-900"
+                      : "text-green-900"
+                  }`}
+                >
+                  {formatDate(
+                    nextVisit.date,
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        </section>
+            </section>
+          )}
 
-        <section className="print-avoid mt-5 rounded-xl border-2 border-green-200 bg-green-50 p-5">
-          <div className="grid grid-cols-[1fr_auto] items-center gap-5">
+          <section className="mt-6 flex items-end justify-between gap-6">
             <div>
-              <div className="text-sm font-bold uppercase tracking-wide text-green-800">
-                Next scheduled treatment
+              <div className="text-sm text-slate-500">
+                Many thanks
               </div>
 
-              <div className="mt-2 text-2xl font-bold text-green-950">
-                {treatment.nextVisitDate ||
-                  customer.nextVisit ||
-                  "Not yet scheduled"}
+              <div
+                className="mt-2 text-lg font-semibold"
+                style={{
+                  color:
+                    primaryColour,
+                }}
+              >
+                {settings.business
+                  .proprietorName ||
+                  settings.business
+                    .businessName}
               </div>
             </div>
 
-            <div className="rounded-full bg-white px-4 py-2 text-sm font-bold text-green-800">
-              Group{" "}
-              {customer.groupNumber}
+            <div className="max-w-[58%] text-right text-[11px] leading-5 text-slate-500">
+              {completed
+                ? settings.invoices
+                    .footerMessage
+                : "This document records the outcome of the scheduled visit. No charge is shown unless the visit was completed."}
             </div>
-          </div>
+          </section>
         </section>
-
-        <footer className="mt-6 flex items-end justify-between gap-6 border-t border-slate-200 pt-4 text-xs text-slate-500">
-          <div className="max-w-[68%]">
-            <div className="font-semibold leading-5 text-slate-700">
-              {
-                settings.invoices
-                  .footerMessage
-              }
-            </div>
-          </div>
-
-          <div className="text-right">
-            <div>
-              Invoice number:{" "}
-              {invoiceNumber}
-            </div>
-
-            <div className="mt-1">
-              Generated by{" "}
-              {
-                settings.business
-                  .applicationName
-              }
-            </div>
-          </div>
-        </footer>
       </article>
     </main>
   );
 }
 
-function createVisitInformation(
+function getNextVisitInformation({
+  treatment,
+  customerNumber,
+  groupNumber,
+  programmes,
+  seasons,
+}: {
+  treatment: TreatmentRecord;
+  customerNumber: string;
+  groupNumber: number;
+  programmes: CustomerProgramme[];
+  seasons: ReturnType<
+    typeof useSeasonStore
+  >["seasons"];
+}): NextVisitInformation | null {
+  if (
+    (
+      treatment.status ===
+        "Rescheduled" ||
+      treatment.status ===
+        "Needs Rescheduling"
+    ) &&
+    isDateValue(
+      treatment.nextVisitDate,
+    )
+  ) {
+    return {
+      date:
+        treatment.nextVisitDate,
+      label:
+        "Replacement visit",
+      isOverride: true,
+    };
+  }
+
+  const linked =
+    findLinkedProgrammeVisit(
+      programmes,
+      treatment,
+    );
+
+  const programme =
+    linked?.programme ??
+    programmes
+      .filter(
+        (item) =>
+          item.customerNumber ===
+          customerNumber,
+      )
+      .sort(
+        (first, second) =>
+          first.year -
+          second.year,
+      )
+      .find(
+        (item) =>
+          item.visits.some(
+            (visit) =>
+              visit.scheduledDate >
+                treatment.scheduledDate &&
+              (visit.status ===
+                "Scheduled" ||
+                visit.status ===
+                  "Planned"),
+          ),
+      );
+
+  if (!programme) {
+    return null;
+  }
+
+  const nextVisit =
+    programme.visits
+      .filter(
+        (visit) =>
+          visit.scheduledDate >
+            treatment.scheduledDate &&
+          (visit.status ===
+            "Scheduled" ||
+            visit.status ===
+              "Planned"),
+      )
+      .sort(
+        (first, second) =>
+          first.scheduledDate.localeCompare(
+            second.scheduledDate,
+          ),
+      )[0];
+
+  if (!nextVisit) {
+    return null;
+  }
+
+  const season =
+    seasons.find(
+      (item) =>
+        item.year ===
+        programme.year,
+    );
+
+  const standardGroupDate =
+    season?.groupDates.find(
+      (group) =>
+        group.groupNumber ===
+        groupNumber,
+    )?.treatmentDates[
+      nextVisit.visitNumber - 1
+    ];
+
+  const isOverride =
+    Boolean(
+      standardGroupDate &&
+        standardGroupDate !==
+          nextVisit.scheduledDate,
+    );
+
+  return {
+    date:
+      nextVisit.scheduledDate,
+    label:
+      isOverride
+        ? "Replacement visit"
+        : "Next planned treatment",
+    isOverride,
+  };
+}
+
+function findLinkedProgrammeVisit(
+  programmes: CustomerProgramme[],
+  treatment: TreatmentRecord,
+): {
+  programme: CustomerProgramme;
+  visit: ProgrammeVisit;
+} | null {
+  if (
+    treatment.programmeId &&
+    treatment.programmeVisitId
+  ) {
+    const programme =
+      programmes.find(
+        (item) =>
+          item.id ===
+          treatment.programmeId,
+      );
+
+    const visit =
+      programme?.visits.find(
+        (item) =>
+          item.id ===
+          treatment.programmeVisitId,
+      );
+
+    if (
+      programme &&
+      visit
+    ) {
+      return {
+        programme,
+        visit,
+      };
+    }
+  }
+
+  for (const programme of programmes) {
+    if (
+      programme.customerNumber !==
+      treatment.customerNumber
+    ) {
+      continue;
+    }
+
+    const visit =
+      programme.visits.find(
+        (item) =>
+          item.treatmentName ===
+            treatment.treatmentName &&
+          (
+            item.scheduledDate ===
+              treatment.scheduledDate ||
+            item.status ===
+              "Completed" ||
+            item.status ===
+              "Skipped"
+          ),
+      );
+
+    if (visit) {
+      return {
+        programme,
+        visit,
+      };
+    }
+  }
+
+  return null;
+}
+
+function createCustomerSafeVisitInformation(
   treatment: TreatmentRecord,
   wording: TreatmentWordingSettings,
 ) {
@@ -547,7 +791,19 @@ function createVisitInformation(
   }
 
   if (
-    treatment.status === "Cancelled"
+    treatment.status ===
+    "Rescheduled"
+  ) {
+    return treatment.nextVisitDate
+      ? `The original visit could not be completed. A replacement visit has been arranged for ${formatDate(
+          treatment.nextVisitDate,
+        )}.`
+      : wording.rescheduledVisit;
+  }
+
+  if (
+    treatment.status ===
+    "Cancelled"
   ) {
     return wording.cancelledVisit;
   }
@@ -556,107 +812,170 @@ function createVisitInformation(
     treatment.treatmentName.toLowerCase();
 
   if (
-    treatmentName.includes("aerat")
+    treatmentName.includes(
+      "moss",
+    )
+  ) {
+    return wording.mossControlVisit;
+  }
+
+  if (
+    treatmentName.includes(
+      "aerat",
+    )
   ) {
     return wording.aerationVisit;
   }
 
   if (
-    treatmentName.includes("scarif")
+    treatmentName.includes(
+      "scarif",
+    )
   ) {
     return wording.scarificationVisit;
   }
 
   if (
-    treatmentName.includes("overseed")
+    treatmentName.includes(
+      "seed",
+    )
   ) {
     return wording.overseedingVisit;
-  }
-
-  if (
-    treatmentName.includes("moss")
-  ) {
-    return wording.mossControlVisit;
-  }
-
-  const hasHerbicide =
-    Boolean(treatment.herbicide) &&
-    treatment.herbicide !== "None";
-
-  const hasFertiliser =
-    Boolean(treatment.fertiliser) &&
-    treatment.fertiliser !== "None";
-
-  if (
-    hasHerbicide &&
-    hasFertiliser
-  ) {
-    return wording
-      .combinedFertiliserAndHerbicideVisit;
-  }
-
-  if (hasHerbicide) {
-    return wording.herbicideVisit;
   }
 
   return wording.seasonalFertiliserVisit;
 }
 
-function createNonCompletedPreparation(
+function removeInternalProductInformation(
+  notes: string,
+) {
+  const blockedTerms = [
+    "chemical:",
+    "fertiliser:",
+    "fertilizer:",
+    "herbicide:",
+    "application rate:",
+    "product required:",
+    "active ingredient:",
+    "registration number:",
+    "tank fills:",
+    "flow rate:",
+    "nozzle:",
+    "knapsack:",
+    "pressure:",
+    "spray width:",
+  ];
+
+  const safeLines =
+    notes
+      .split("\n")
+      .filter((line) => {
+        const lower =
+          line
+            .trim()
+            .toLowerCase();
+
+        return !blockedTerms.some(
+          (term) =>
+            lower.startsWith(
+              term,
+            ),
+        );
+      })
+      .join("\n")
+      .trim();
+
+  return (
+    safeLines ||
+    "No additional customer-facing remarks were recorded."
+  );
+}
+
+function getRecordDate(
   treatment: TreatmentRecord,
-  wording: TreatmentWordingSettings,
 ) {
-  if (
-    treatment.status ===
-    "Needs Rescheduling"
-  ) {
-    return "No preparation is required until a replacement visit date has been arranged.";
-  }
-
-  if (
-    treatment.status === "Cancelled"
-  ) {
-    return "No preparation is currently required. Please contact Sharpes Lawn Care if you would like to arrange another visit.";
-  }
-
-  return wording.nextVisitPreparation;
-}
-
-function getAdvisoryGridClass(
-  advisoryCount: number,
-) {
-  if (advisoryCount === 1) {
-    return "grid-cols-1";
-  }
-
-  if (advisoryCount === 2) {
-    return "grid-cols-2";
-  }
-
-  return "grid-cols-3";
-}
-
-function createBusinessAddress(
-  addressParts: Array<
-    string | undefined
-  >,
-) {
-  return addressParts
-    .map((part) => part?.trim())
-    .filter(
-      (part): part is string =>
-        Boolean(part),
+  return (
+    treatment.completedDate ||
+    treatment.scheduledDate ||
+    treatment.recordedDate.slice(
+      0,
+      10,
     )
+  );
+}
+
+function joinAddress(
+  values: string[],
+) {
+  return values
+    .map((value) =>
+      value.trim(),
+    )
+    .filter(Boolean)
     .join("\n");
 }
 
-function formatTreatmentDate(
-  treatment: TreatmentRecord,
+function parseDate(
+  value: string,
 ) {
-  if (treatment.completedDate) {
-    return formatDate(
-      treatment.completedDate,
-    );
+  const [year, month, day] =
+    value
+      .split("-")
+      .map(Number);
+
+  return new Date(
+    year,
+    month - 1,
+    day,
+  );
+}
+
+function isDateValue(
+  value: string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const date =
+    parseDate(value);
+
+  return (
+    !Number.isNaN(
+      date.getTime(),
+    ) &&
+    toDateValue(date) === value
+  );
+}
+
+function toDateValue(
+  date: Date,
+) {
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDate(
+  value: string,
+) {
+  if (!isDateValue(value)) {
+    return "Not recorded";
   }
 
   return new Intl.DateTimeFormat(
@@ -666,60 +985,21 @@ function formatTreatmentDate(
       month: "long",
       year: "numeric",
     },
-  ).format(
-    new Date(
-      treatment.recordedDate,
-    ),
-  );
+  ).format(parseDate(value));
 }
 
-function formatDate(value: string) {
-  const [year, month, day] = value
-    .split("-")
-    .map(Number);
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    },
-  ).format(
-    new Date(
-      year,
-      month - 1,
-      day,
-    ),
-  );
-}
-
-function getDocumentDensityClass(
-  textLength: number,
-) {
-  if (textLength > 1200) {
-    return "document-density-very-compact";
-  }
-
-  if (textLength > 750) {
-    return "document-density-compact";
-  }
-
-  return "document-density-normal";
-}
-
-function DocumentLabel({
+function SmallHeading({
+  colour,
   children,
-  primaryColour,
 }: {
+  colour: string;
   children: ReactNode;
-  primaryColour: string;
 }) {
   return (
     <div
-      className="text-xs font-bold uppercase tracking-[0.14em]"
+      className="text-xs font-bold uppercase tracking-[0.16em]"
       style={{
-        color: primaryColour,
+        color: colour,
       }}
     >
       {children}
@@ -727,7 +1007,7 @@ function DocumentLabel({
   );
 }
 
-function DocumentRow({
+function DocumentMetaRow({
   label,
   value,
 }: {
@@ -735,19 +1015,19 @@ function DocumentRow({
   value: string;
 }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-slate-200 py-2 text-sm last:border-0">
+    <div className="flex justify-between gap-5 border-b border-slate-100 py-2 text-sm last:border-0">
       <span className="text-slate-500">
         {label}
       </span>
 
-      <span className="text-right font-bold">
+      <span className="text-right font-semibold">
         {value}
       </span>
     </div>
   );
 }
 
-function AdvisoryBox({
+function AdviceCard({
   title,
   detail,
   type,
@@ -758,22 +1038,60 @@ function AdvisoryBox({
 }) {
   const styles =
     type === "danger"
-      ? "border-red-400 bg-red-50 text-red-950"
+      ? {
+          card:
+            "border-red-200 bg-red-50",
+          icon:
+            "bg-red-100 text-red-700",
+          title:
+            "text-red-900",
+        }
       : type === "warning"
-        ? "border-amber-400 bg-amber-50 text-amber-950"
-        : "border-blue-400 bg-blue-50 text-blue-950";
+        ? {
+            card:
+              "border-amber-200 bg-amber-50",
+            icon:
+              "bg-amber-100 text-amber-700",
+            title:
+              "text-amber-900",
+          }
+        : {
+            card:
+              "border-blue-200 bg-blue-50",
+            icon:
+              "bg-blue-100 text-blue-700",
+            title:
+              "text-blue-900",
+          };
+
+  const symbol =
+    type === "danger"
+      ? "!"
+      : type === "warning"
+        ? "↟"
+        : "●";
 
   return (
-    <article
-      className={`rounded-xl border-2 p-4 text-center ${styles}`}
+    <div
+      className={`rounded-xl border p-3 ${styles.card}`}
     >
-      <div className="text-sm font-extrabold uppercase tracking-wide">
-        {title}
+      <div className="flex items-center gap-3">
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${styles.icon}`}
+        >
+          {symbol}
+        </div>
+
+        <div
+          className={`text-sm font-bold ${styles.title}`}
+        >
+          {title}
+        </div>
       </div>
 
-      <p className="mt-2 text-xs font-medium leading-5">
+      <p className="mt-2 text-xs leading-5 text-slate-700">
         {detail}
       </p>
-    </article>
+    </div>
   );
 }
