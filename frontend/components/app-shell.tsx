@@ -2,21 +2,70 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 const navigation = [
-  { label: "Dashboard", href: "/" },
-  { label: "Today's Jobs", href: "/jobs" },
-  { label: "Groups & Routes", href: "/routes" },
-  { label: "Treatment Records", href: "/treatments" },
-  { label: "Chemical Usage", href: "/chemical-usage" },
-  { label: "Customers", href: "/customers" },
-  { label: "Enquiries & Quotes", href: "/enquiries" },
-  { label: "Season Planner", href: "/season-planner" },
-  { label: "Annual Programmes", href: "/programmes" },
-  { label: "Chemical Centre", href: "/chemicals" },
-  { label: "Stock & Purchasing", href: "/stock" },
-  { label: "Communications", href: "/communications" },
-  { label: "Documents", href: "/documents" },
-  { label: "Reports", href: "/reports" },
-  { label: "Business Settings", href: "/settings" },
+  {
+    label: "Dashboard",
+    href: "/",
+  },
+  {
+    label: "Today's Jobs",
+    href: "/jobs",
+  },
+  {
+    label: "Visit Centre",
+    href: "/visit-centre",
+  },
+  {
+    label: "Groups & Routes",
+    href: "/routes",
+  },
+  {
+    label: "Treatment Records",
+    href: "/treatments",
+  },
+  {
+    label: "Chemical Usage",
+    href: "/chemical-usage",
+  },
+  {
+    label: "Customers",
+    href: "/customers",
+  },
+  {
+    label: "Enquiries & Quotes",
+    href: "/enquiries",
+  },
+  {
+    label: "Season Planner",
+    href: "/season-planner",
+  },
+  {
+    label: "Annual Programmes",
+    href: "/programmes",
+  },
+  {
+    label: "Chemical Centre",
+    href: "/chemicals",
+  },
+  {
+    label: "Stock & Purchasing",
+    href: "/stock",
+  },
+  {
+    label: "Communications",
+    href: "/communications",
+  },
+  {
+    label: "Documents",
+    href: "/documents",
+  },
+  {
+    label: "Reports",
+    href: "/reports",
+  },
+  {
+    label: "Business Settings",
+    href: "/settings",
+  },
 ];
 
 export function AppShell({
