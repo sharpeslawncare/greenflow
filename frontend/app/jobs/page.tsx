@@ -28,6 +28,7 @@ import {
 } from "@/components/programme-store";
 import { useSeasonStore } from "@/components/season-store";
 import {
+  createTreatmentApplication,
   type TreatmentRecord,
   type TreatmentStatus,
   useTreatmentStore,
@@ -108,29 +109,6 @@ export default function JobsPage() {
     deductChemicalStock,
   } = useChemicalStore();
 
-  const availableDates =
-    useMemo(() => {
-      return Array.from(
-        new Set(
-          programmes.flatMap(
-            (programme) =>
-              programme.visits
-                .filter(
-                  (visit) =>
-                    visit.status ===
-                      "Scheduled" ||
-                    visit.status ===
-                      "Planned",
-                )
-                .map(
-                  (visit) =>
-                    visit.scheduledDate,
-                ),
-          ),
-        ),
-      ).sort();
-    }, [programmes]);
-
   const [selectedDate, setSelectedDate] =
     useState(
       isDateValue(
@@ -208,35 +186,6 @@ export default function JobsPage() {
       );
     }
   }, [requestedDate]);
-
-  useEffect(() => {
-    if (
-      selectedDate !==
-        toDateValue(new Date()) ||
-      availableDates.length ===
-        0 ||
-      availableDates.includes(
-        selectedDate,
-      )
-    ) {
-      return;
-    }
-
-    const today =
-      toDateValue(new Date());
-
-    const nextDate =
-      availableDates.find(
-        (date) =>
-          date >= today,
-      ) ??
-      availableDates[0];
-
-    setSelectedDate(nextDate);
-  }, [
-    availableDates,
-    selectedDate,
-  ]);
 
   const jobs =
     useMemo<ScheduledJob[]>(() => {
@@ -694,6 +643,17 @@ export default function JobsPage() {
         selectedJob.visit
           .treatmentName,
 
+      applications:
+        outcome === "Completed"
+          ? createApplicationsForJob({
+              selectedChemical,
+              calculation,
+              fertiliser,
+              herbicide,
+              otherMaterials,
+            })
+          : [],
+
       fertiliser:
         outcome === "Completed"
           ? fertiliser.trim()
@@ -997,44 +957,36 @@ export default function JobsPage() {
                 Return to jobs
               </Link>
             ) : (
-              <Field label="Working date">
-                <select
-                  value={selectedDate}
-                  onChange={(event) => {
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Working date">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(event) => {
+                      setSelectedDate(
+                        event.target.value,
+                      );
+                      setSelectedJobId("");
+                      resetJobForm();
+                    }}
+                    className="min-w-[210px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                  />
+                </Field>
+
+                <button
+                  type="button"
+                  onClick={() => {
                     setSelectedDate(
-                      event.target.value,
+                      toDateValue(new Date()),
                     );
                     setSelectedJobId("");
                     resetJobForm();
                   }}
-                  className="min-w-[285px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                  className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold hover:bg-slate-50"
                 >
-                  {!availableDates.includes(
-                    selectedDate,
-                  ) && (
-                    <option
-                      value={selectedDate}
-                    >
-                      {formatDateWithDay(
-                        selectedDate,
-                      )}
-                    </option>
-                  )}
-
-                  {availableDates.map(
-                    (date) => (
-                      <option
-                        key={date}
-                        value={date}
-                      >
-                        {formatDateWithDay(
-                          date,
-                        )}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </Field>
+                  Today
+                </button>
+              </div>
             )}
           </header>
 
@@ -2347,6 +2299,105 @@ function calculateApplication(
         estimatedProductCost,
       ),
   };
+}
+
+function createApplicationsForJob({
+  selectedChemical,
+  calculation,
+  fertiliser,
+  herbicide,
+  otherMaterials,
+}: {
+  selectedChemical: ChemicalRecord | null;
+  calculation: ApplicationCalculation | null;
+  fertiliser: string;
+  herbicide: string;
+  otherMaterials: string;
+}) {
+  const applications = [];
+
+  if (selectedChemical && calculation) {
+    applications.push(
+      createTreatmentApplication({
+        productId: selectedChemical.id,
+        productName: selectedChemical.name,
+        productType: selectedChemical.type,
+        activeIngredients: selectedChemical.activeIngredients,
+        registrationNumber: selectedChemical.registrationNumber,
+        applicationRate: selectedChemical.applicationRate,
+        applicationRateUnit: selectedChemical.applicationRateUnit,
+        productRequired: calculation.productRequired,
+        productUnit: calculation.productUnit,
+        calibratedWaterVolumePerHectare:
+          calculation.calibratedWaterVolumePerHectare,
+        waterRequiredLitres: calculation.waterRequiredLitres,
+        tankCapacityLitres: selectedChemical.tankCapacityLitres,
+        tankFills: calculation.tankFills,
+        productPerTank: calculation.productPerTank,
+        estimatedProductCost: calculation.estimatedProductCost,
+        nozzleColour: selectedChemical.nozzleColour,
+        nozzleType: selectedChemical.nozzleType,
+        knapsackMake: selectedChemical.knapsackMake,
+        knapsackModel: selectedChemical.knapsackModel,
+        walkingSpeedKph: selectedChemical.walkingSpeedKph,
+        flowRateLitresPerMinute:
+          selectedChemical.flowRateLitresPerMinute,
+        sprayWidthMetres: selectedChemical.sprayWidthMetres,
+        pressureBar: selectedChemical.pressureBar,
+      }),
+    );
+  }
+
+  const trimmedFertiliser = fertiliser.trim();
+  const trimmedHerbicide = herbicide.trim();
+  const trimmedOtherMaterials = otherMaterials.trim();
+
+  if (
+    trimmedFertiliser &&
+    !applications.some(
+      (application) =>
+        application.productName === trimmedFertiliser,
+    )
+  ) {
+    applications.push(
+      createTreatmentApplication({
+        productName: trimmedFertiliser,
+        productType: "Fertiliser",
+      }),
+    );
+  }
+
+  if (
+    trimmedHerbicide &&
+    !applications.some(
+      (application) =>
+        application.productName === trimmedHerbicide,
+    )
+  ) {
+    applications.push(
+      createTreatmentApplication({
+        productName: trimmedHerbicide,
+        productType: "Herbicide",
+      }),
+    );
+  }
+
+  if (
+    trimmedOtherMaterials &&
+    !applications.some(
+      (application) =>
+        application.productName === trimmedOtherMaterials,
+    )
+  ) {
+    applications.push(
+      createTreatmentApplication({
+        productName: trimmedOtherMaterials,
+        productType: "Other",
+      }),
+    );
+  }
+
+  return applications;
 }
 
 function createChemicalTreatmentValues(

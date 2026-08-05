@@ -16,12 +16,18 @@ import {
   useSettingsStore,
 } from "@/components/settings-store";
 
+import {
+  type FleetVehicle,
+  useFleetStore,
+} from "@/components/fleet-store";
+
 type SettingsTab =
   | "business"
   | "invoices"
   | "wording"
   | "advisories"
-  | "branding";
+  | "branding"
+  | "fleet";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -47,6 +53,10 @@ const tabs: Array<{
     id: "branding",
     label: "Branding",
   },
+  {
+    id: "fleet",
+    label: "Fleet",
+  },
 ];
 
 export default function SettingsPage() {
@@ -64,6 +74,15 @@ export default function SettingsPage() {
     incrementInvoiceNumber,
     restoreDefaultSettings,
   } = useSettingsStore();
+
+  const {
+    vehicles,
+    activeVehicles,
+    ready: fleetReady,
+    addVehicle,
+    updateVehicle,
+    restoreDefaultFleet,
+  } = useFleetStore();
 
   const [activeTab, setActiveTab] =
     useState<SettingsTab>("business");
@@ -106,7 +125,7 @@ export default function SettingsPage() {
     );
   }
 
-  if (!ready) {
+  if (!ready || !fleetReady) {
     return (
       <AppShell>
         <main className="p-6">
@@ -239,6 +258,28 @@ export default function SettingsPage() {
                   }
                   updateSettings={
                     updateBrandingSettings
+                  }
+                />
+              )}
+
+
+              {activeTab === "fleet" && (
+                <FleetTab
+                  vehicles={vehicles}
+                  activeVehicles={
+                    activeVehicles
+                  }
+                  addVehicle={
+                    addVehicle
+                  }
+                  updateVehicle={
+                    updateVehicle
+                  }
+                  restoreDefaultFleet={
+                    restoreDefaultFleet
+                  }
+                  showMessage={
+                    showMessage
                   }
                 />
               )}
@@ -1196,6 +1237,240 @@ function BrandingTab({
             connect them to the full application
             shell in a later step.
           </p>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function FleetTab({
+  vehicles,
+  activeVehicles,
+  addVehicle,
+  updateVehicle,
+  restoreDefaultFleet,
+  showMessage,
+}: {
+  vehicles: FleetVehicle[];
+  activeVehicles: FleetVehicle[];
+  addVehicle: (
+    name?: string,
+  ) => FleetVehicle;
+  updateVehicle: (
+    vehicleId: string,
+    updates: Partial<
+      Pick<
+        FleetVehicle,
+        "name" | "active"
+      >
+    >,
+  ) => void;
+  restoreDefaultFleet: () => void;
+  showMessage: (
+    text: string,
+  ) => void;
+}) {
+  const [newVehicleName, setNewVehicleName] =
+    useState("");
+
+  function handleAddVehicle() {
+    const vehicle =
+      addVehicle(
+        newVehicleName.trim() ||
+          undefined,
+      );
+
+    setNewVehicleName("");
+
+    showMessage(
+      `${vehicle.name} added to the fleet.`,
+    );
+  }
+
+  function handleToggleVehicle(
+    vehicle: FleetVehicle,
+  ) {
+    if (
+      vehicle.active &&
+      activeVehicles.length === 1
+    ) {
+      showMessage(
+        "At least one vehicle must remain active.",
+      );
+      return;
+    }
+
+    updateVehicle(
+      vehicle.id,
+      {
+        active:
+          !vehicle.active,
+      },
+    );
+
+    showMessage(
+      vehicle.active
+        ? `${vehicle.name} deactivated.`
+        : `${vehicle.name} activated.`,
+    );
+  }
+
+  function handleRestoreDefaultFleet() {
+    const confirmed =
+      window.confirm(
+        "Restore the fleet to Van 1 only? Existing customer history will not be deleted.",
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    restoreDefaultFleet();
+
+    showMessage(
+      "Fleet restored to Van 1 only.",
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <SectionHeading
+          title="Fleet settings"
+          description="Start with Van 1 only, then add more vehicles when the business grows. Active vehicles appear automatically in Groups & Routes."
+        />
+
+        <button
+          type="button"
+          onClick={
+            handleRestoreDefaultFleet
+          }
+          className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+        >
+          Restore Van 1 only
+        </button>
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_360px]">
+        <section className="space-y-3">
+          {vehicles.map(
+            (vehicle) => (
+              <article
+                key={vehicle.id}
+                className={`rounded-2xl border p-5 ${
+                  vehicle.active
+                    ? "border-green-200 bg-green-50/40"
+                    : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                <div className="grid gap-4 md:grid-cols-[1fr_170px] md:items-end">
+                  <Field label="Vehicle name">
+                    <input
+                      value={
+                        vehicle.name
+                      }
+                      onChange={(event) =>
+                        updateVehicle(
+                          vehicle.id,
+                          {
+                            name:
+                              event.target.value,
+                          },
+                        )
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleToggleVehicle(
+                        vehicle,
+                      )
+                    }
+                    className={`h-11 rounded-xl border px-4 text-sm font-semibold ${
+                      vehicle.active
+                        ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                        : "border-green-300 bg-green-50 text-green-800 hover:bg-green-100"
+                    }`}
+                  >
+                    {vehicle.active
+                      ? "Deactivate"
+                      : "Activate"}
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-full bg-white px-3 py-1 font-bold text-slate-700">
+                    Vehicle number{" "}
+                    {vehicle.number}
+                  </span>
+
+                  <span
+                    className={`rounded-full px-3 py-1 font-bold ${
+                      vehicle.active
+                        ? "bg-green-100 text-green-800"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    {vehicle.active
+                      ? "Active"
+                      : "Inactive"}
+                  </span>
+                </div>
+              </article>
+            ),
+          )}
+        </section>
+
+        <aside className="h-fit rounded-2xl border border-slate-200 bg-slate-50 p-5">
+          <div className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Add another vehicle
+          </div>
+
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            The next available vehicle number will be assigned automatically.
+          </p>
+
+          <div className="mt-4">
+            <Field label="Vehicle name">
+              <input
+                value={newVehicleName}
+                onChange={(event) =>
+                  setNewVehicleName(
+                    event.target.value,
+                  )
+                }
+                placeholder={`Van ${
+                  vehicles.reduce(
+                    (
+                      highest,
+                      vehicle,
+                    ) =>
+                      Math.max(
+                        highest,
+                        vehicle.number,
+                      ),
+                    0,
+                  ) + 1
+                }`}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAddVehicle}
+            className="mt-4 w-full rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+          >
+            + Add vehicle
+          </button>
+
+          <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            Deactivating a vehicle hides it from new assignments but does not remove historic customer or route records.
+          </div>
         </aside>
       </div>
     </div>

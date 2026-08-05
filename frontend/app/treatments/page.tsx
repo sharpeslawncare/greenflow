@@ -10,8 +10,12 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
 import {
+  type TreatmentApplication,
   type TreatmentRecord,
   type TreatmentStatus,
+  getTreatmentApplications,
+  getTreatmentProductNames,
+  getTreatmentTotalProductCost,
   useTreatmentStore,
 } from "@/components/treatment-store";
 
@@ -62,6 +66,19 @@ export default function TreatmentsPage() {
                 treatment.customerNumber,
             );
 
+          const productNames =
+            getTreatmentProductNames(
+              treatment,
+            );
+
+          const productTypes =
+            getTreatmentApplications(
+              treatment,
+            ).map(
+              (application) =>
+                application.productType,
+            );
+
           const matchesStatus =
             statusFilter === "All" ||
             treatment.status ===
@@ -75,9 +92,8 @@ export default function TreatmentsPage() {
               customer?.address ?? "",
               customer?.postcode ?? "",
               treatment.treatmentName,
-              treatment.chemicalName,
-              treatment.fertiliser,
-              treatment.herbicide,
+              ...productNames,
+              ...productTypes,
               treatment.invoiceNumber,
               treatment.notes,
             ].some((value) =>
@@ -140,12 +156,13 @@ export default function TreatmentsPage() {
       0,
     );
 
-  const totalChemicalCost =
+  const totalProductCost =
     completedTreatments.reduce(
       (total, treatment) =>
         total +
-        treatment
-          .estimatedProductCost,
+        getTreatmentTotalProductCost(
+          treatment,
+        ),
       0,
     );
 
@@ -292,11 +309,11 @@ export default function TreatmentsPage() {
             />
 
             <SummaryCard
-              label="Chemical cost"
-              value={`£${totalChemicalCost.toFixed(
+              label="Product cost"
+              value={`£${totalProductCost.toFixed(
                 2,
               )}`}
-              detail="Completed records"
+              detail="All products used"
             />
           </section>
 
@@ -350,14 +367,14 @@ export default function TreatmentsPage() {
             </div>
           </section>
 
-          <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_470px]">
+          <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_500px]">
             <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="grid grid-cols-[115px_1.25fr_1.2fr_150px_130px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+              <div className="grid grid-cols-[115px_1.2fr_1.15fr_150px_1.2fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                 <span>Date</span>
                 <span>Customer</span>
                 <span>Treatment</span>
                 <span>Status</span>
-                <span>Product</span>
+                <span>Products</span>
               </div>
 
               <div className="max-h-[64vh] overflow-y-auto">
@@ -381,6 +398,11 @@ export default function TreatmentsPage() {
                         selectedTreatment?.id ===
                         treatment.id;
 
+                      const products =
+                        getTreatmentProductNames(
+                          treatment,
+                        );
+
                       return (
                         <button
                           key={
@@ -392,7 +414,7 @@ export default function TreatmentsPage() {
                               treatment.id,
                             )
                           }
-                          className={`grid w-full grid-cols-[115px_1.25fr_1.2fr_150px_130px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm transition last:border-0 ${
+                          className={`grid w-full grid-cols-[115px_1.2fr_1.15fr_150px_1.2fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm transition last:border-0 ${
                             selected
                               ? "bg-green-50"
                               : "hover:bg-slate-50"
@@ -451,11 +473,10 @@ export default function TreatmentsPage() {
                             }
                           />
 
-                          <span className="truncate text-slate-600">
-                            {treatment.chemicalName ||
-                              treatment.fertiliser ||
-                              treatment.herbicide ||
-                              "None"}
+                          <span className="line-clamp-2 text-slate-600">
+                            {products.length > 0
+                              ? products.join(", ")
+                              : "None"}
                           </span>
                         </button>
                       );
@@ -543,146 +564,31 @@ export default function TreatmentsPage() {
                     </div>
 
                     <Section
-                      title="Products and application"
+                      title="Products and applications"
                     >
-                      <DetailGrid>
-                        <DetailItem
-                          label="Chemical"
-                          value={
-                            selectedTreatment.chemicalName ||
-                            "None recorded"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Chemical type"
-                          value={
-                            selectedTreatment.chemicalType ||
-                            "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Application rate"
-                          value={
-                            selectedTreatment.applicationRate >
-                            0
-                              ? `${selectedTreatment.applicationRate} ${selectedTreatment.applicationRateUnit}`
-                              : "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Product required"
-                          value={
-                            selectedTreatment.productRequired >
-                            0
-                              ? `${selectedTreatment.productRequired} ${selectedTreatment.productUnit}`
-                              : "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Water required"
-                          value={
-                            selectedTreatment.waterRequiredLitres >
-                            0
-                              ? `${selectedTreatment.waterRequiredLitres} L`
-                              : "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Estimated cost"
-                          value={`£${selectedTreatment.estimatedProductCost.toFixed(
-                            2,
-                          )}`}
-                        />
-
-                        <DetailItem
-                          label="Fertiliser"
-                          value={
-                            selectedTreatment.fertiliser ||
-                            "None"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Herbicide"
-                          value={
-                            selectedTreatment.herbicide ||
-                            "None"
-                          }
-                        />
-                      </DetailGrid>
+                      <ProductApplicationList
+                        applications={getTreatmentApplications(
+                          selectedTreatment,
+                        )}
+                      />
                     </Section>
 
-                    <Section title="Equipment">
+                    <Section title="Totals">
                       <DetailGrid>
                         <DetailItem
-                          label="Knapsack"
-                          value={
-                            [
-                              selectedTreatment.knapsackMake,
-                              selectedTreatment.knapsackModel,
-                            ]
-                              .filter(Boolean)
-                              .join(" ") ||
-                            "—"
-                          }
+                          label="Products recorded"
+                          value={String(
+                            getTreatmentApplications(
+                              selectedTreatment,
+                            ).length,
+                          )}
                         />
 
                         <DetailItem
-                          label="Nozzle"
-                          value={
-                            [
-                              selectedTreatment.nozzleColour,
-                              selectedTreatment.nozzleType,
-                            ]
-                              .filter(Boolean)
-                              .join(" ") ||
-                            "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Walking speed"
-                          value={
-                            selectedTreatment.walkingSpeedKph >
-                            0
-                              ? `${selectedTreatment.walkingSpeedKph} km/h`
-                              : "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Flow rate"
-                          value={
-                            selectedTreatment.flowRateLitresPerMinute >
-                            0
-                              ? `${selectedTreatment.flowRateLitresPerMinute} L/min`
-                              : "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Spray width"
-                          value={
-                            selectedTreatment.sprayWidthMetres >
-                            0
-                              ? `${selectedTreatment.sprayWidthMetres} m`
-                              : "—"
-                          }
-                        />
-
-                        <DetailItem
-                          label="Pressure"
-                          value={
-                            selectedTreatment.pressureBar >
-                            0
-                              ? `${selectedTreatment.pressureBar} bar`
-                              : "—"
-                          }
+                          label="Estimated product cost"
+                          value={`£${getTreatmentTotalProductCost(
+                            selectedTreatment,
+                          ).toFixed(2)}`}
                         />
                       </DetailGrid>
                     </Section>
@@ -735,6 +641,191 @@ export default function TreatmentsPage() {
       </main>
     </AppShell>
   );
+}
+
+function ProductApplicationList({
+  applications,
+}: {
+  applications: TreatmentApplication[];
+}) {
+  if (applications.length === 0) {
+    return (
+      <p className="text-sm text-slate-500">
+        No products were recorded for this visit.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {applications.map(
+        (application) => (
+          <div
+            key={application.id}
+            className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="font-bold">
+                  {application.productName}
+                </div>
+
+                <div className="mt-1 text-xs text-slate-500">
+                  {application.productType ||
+                    "Uncategorised"}
+                </div>
+              </div>
+
+              <div className="text-right text-sm font-bold text-[#176b37]">
+                {formatProductAmount(
+                  application.productRequired,
+                  application.productUnit,
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <DetailItem
+                label="Application rate"
+                value={
+                  application.applicationRate >
+                  0
+                    ? `${application.applicationRate} ${application.applicationRateUnit}`
+                    : "—"
+                }
+              />
+
+              <DetailItem
+                label="Estimated cost"
+                value={`£${application.estimatedProductCost.toFixed(
+                  2,
+                )}`}
+              />
+
+              <DetailItem
+                label="Water required"
+                value={
+                  application.waterRequiredLitres >
+                  0
+                    ? `${application.waterRequiredLitres} L`
+                    : "—"
+                }
+              />
+
+              <DetailItem
+                label="Tank fills"
+                value={
+                  application.tankFills >
+                  0
+                    ? application.tankFills.toFixed(
+                        3,
+                      )
+                    : "—"
+                }
+              />
+
+              <DetailItem
+                label="Knapsack"
+                value={
+                  [
+                    application.knapsackMake,
+                    application.knapsackModel,
+                  ]
+                    .filter(Boolean)
+                    .join(" ") ||
+                  "—"
+                }
+              />
+
+              <DetailItem
+                label="Nozzle"
+                value={
+                  [
+                    application.nozzleColour,
+                    application.nozzleType,
+                  ]
+                    .filter(Boolean)
+                    .join(" ") ||
+                  "—"
+                }
+              />
+
+              <DetailItem
+                label="Walking speed"
+                value={
+                  application.walkingSpeedKph >
+                  0
+                    ? `${application.walkingSpeedKph} km/h`
+                    : "—"
+                }
+              />
+
+              <DetailItem
+                label="Flow rate"
+                value={
+                  application.flowRateLitresPerMinute >
+                  0
+                    ? `${application.flowRateLitresPerMinute} L/min`
+                    : "—"
+                }
+              />
+
+              <DetailItem
+                label="Spray width"
+                value={
+                  application.sprayWidthMetres >
+                  0
+                    ? `${application.sprayWidthMetres} m`
+                    : "—"
+                }
+              />
+
+              <DetailItem
+                label="Pressure"
+                value={
+                  application.pressureBar >
+                  0
+                    ? `${application.pressureBar} bar`
+                    : "—"
+                }
+              />
+            </div>
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
+function formatProductAmount(
+  amount: number,
+  unit: string,
+) {
+  if (!unit || amount <= 0) {
+    return "Not recorded";
+  }
+
+  if (
+    unit === "L" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} ml`;
+  }
+
+  if (
+    unit === "kg" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} g`;
+  }
+
+  return `${amount.toFixed(
+    3,
+  )} ${unit}`;
 }
 
 function getRecordDate(

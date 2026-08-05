@@ -11,43 +11,70 @@ import { AppShell } from "@/components/app-shell";
 import { useChemicalStore } from "@/components/chemical-store";
 import { useCustomerStore } from "@/components/customer-store";
 import {
+  type TreatmentApplication,
   type TreatmentRecord,
+  getTreatmentApplications,
   useTreatmentStore,
 } from "@/components/treatment-store";
 
 type UsageRow = {
+  id: string;
   treatmentId: string;
+  applicationId: string;
+
   date: string;
+
   customerNumber: string;
   customerName: string;
+
   treatmentName: string;
-  chemicalId: string;
-  chemicalName: string;
-  chemicalType: string;
+
+  productId: string;
+  productName: string;
+  productType: string;
+
   applicationRate: number;
   applicationRateUnit: string;
+
   areaSquareMetres: number;
+
   productRequired: number;
   productUnit: string;
+
   waterRequiredLitres: number;
   tankFills: number;
+
   estimatedProductCost: number;
+
   invoiceNumber: string;
+  notes: string;
 };
 
-type ChemicalSummary = {
-  chemicalId: string;
-  chemicalName: string;
-  chemicalType: string;
+type ProductSummary = {
+  productId: string;
+  productName: string;
+  productType: string;
+
   applications: number;
+  visits: number;
   customers: number;
+
   totalAreaSquareMetres: number;
+
   totalProductBaseAmount: number;
   baseUnit: "g" | "ml" | "";
+
   displayAmount: number;
-  displayUnit: "kg" | "g" | "L" | "ml" | "";
+  displayUnit:
+    | "kg"
+    | "g"
+    | "L"
+    | "ml"
+    | "";
+
   totalWaterLitres: number;
   totalCost: number;
+
   currentStock: number | null;
   stockUnit: string;
   reorderLevel: number | null;
@@ -84,7 +111,7 @@ export default function ChemicalUsagePage() {
   const [dateTo, setDateTo] =
     useState(today);
 
-  const [chemicalId, setChemicalId] =
+  const [productId, setProductId] =
     useState("all");
 
   const [search, setSearch] =
@@ -96,44 +123,31 @@ export default function ChemicalUsagePage() {
   const [message, setMessage] =
     useState("");
 
-  const completedUsage =
-    useMemo(
-      () =>
-        treatments.filter(
-          (treatment) =>
-            treatment.status ===
-              "Completed" &&
-            Boolean(
-              treatment.chemicalName,
-            ) &&
-            treatment.productRequired >
-              0,
-        ),
-      [treatments],
-    );
-
   const usageRows =
     useMemo<UsageRow[]>(() => {
       const query =
         search.trim().toLowerCase();
 
-      return completedUsage
-        .filter((treatment) => {
+      return treatments
+        .filter(
+          (treatment) =>
+            treatment.status ===
+            "Completed",
+        )
+        .flatMap((treatment) => {
           const date =
             getUsageDate(
               treatment,
             );
 
-          const withinDateRange =
-            (!dateFrom ||
-              date >= dateFrom) &&
-            (!dateTo ||
-              date <= dateTo);
-
-          const matchesChemical =
-            chemicalId === "all" ||
-            treatment.chemicalId ===
-              chemicalId;
+          if (
+            (dateFrom &&
+              date < dateFrom) ||
+            (dateTo &&
+              date > dateTo)
+          ) {
+            return [];
+          }
 
           const customer =
             customers.find(
@@ -142,109 +156,91 @@ export default function ChemicalUsagePage() {
                 treatment.customerNumber,
             );
 
-          const matchesSearch =
-            !query ||
-            [
-              treatment.customerNumber,
-              customer?.fullName ?? "",
-              treatment.treatmentName,
-              treatment.chemicalName,
-              treatment.chemicalType,
-              treatment.invoiceNumber,
-              treatment.notes,
-            ].some((value) =>
-              value
-                .toLowerCase()
-                .includes(query),
+          const applications =
+            getTreatmentApplications(
+              treatment,
             );
 
-          return (
-            withinDateRange &&
-            matchesChemical &&
-            matchesSearch
-          );
-        })
-        .map((treatment) => {
-          const customer =
-            customers.find(
-              (item) =>
-                item.customerNumber ===
+          return applications
+            .filter(
+              (application) =>
+                Boolean(
+                  application.productName,
+                ) &&
+                application.productRequired >
+                  0,
+            )
+            .filter(
+              (application) =>
+                productId === "all" ||
+                application.productId ===
+                  productId,
+            )
+            .filter((application) => {
+              if (!query) {
+                return true;
+              }
+
+              return [
                 treatment.customerNumber,
+                customer?.fullName ?? "",
+                treatment.treatmentName,
+                application.productName,
+                application.productType,
+                treatment.invoiceNumber,
+                treatment.notes,
+              ].some((value) =>
+                value
+                  .toLowerCase()
+                  .includes(query),
+              );
+            })
+            .map(
+              (application) =>
+                createUsageRow(
+                  treatment,
+                  application,
+                  customer?.fullName ??
+                    treatment.customerNumber,
+                ),
             );
-
-          return {
-            treatmentId:
-              treatment.id,
-
-            date:
-              getUsageDate(
-                treatment,
-              ),
-
-            customerNumber:
-              treatment.customerNumber,
-
-            customerName:
-              customer?.fullName ??
-              treatment.customerNumber,
-
-            treatmentName:
-              treatment.treatmentName,
-
-            chemicalId:
-              treatment.chemicalId,
-
-            chemicalName:
-              treatment.chemicalName,
-
-            chemicalType:
-              treatment.chemicalType,
-
-            applicationRate:
-              treatment.applicationRate,
-
-            applicationRateUnit:
-              treatment.applicationRateUnit,
-
-            areaSquareMetres:
-              treatment.treatmentAreaSquareMetres,
-
-            productRequired:
-              treatment.productRequired,
-
-            productUnit:
-              treatment.productUnit,
-
-            waterRequiredLitres:
-              treatment.waterRequiredLitres,
-
-            tankFills:
-              treatment.tankFills,
-
-            estimatedProductCost:
-              treatment.estimatedProductCost,
-
-            invoiceNumber:
-              treatment.invoiceNumber,
-          };
         })
-        .sort(
-          (first, second) =>
+        .sort((first, second) => {
+          const dateDifference =
             second.date.localeCompare(
               first.date,
-            ),
-        );
+            );
+
+          if (dateDifference !== 0) {
+            return dateDifference;
+          }
+
+          const customerDifference =
+            first.customerName.localeCompare(
+              second.customerName,
+            );
+
+          if (
+            customerDifference !== 0
+          ) {
+            return customerDifference;
+          }
+
+          return first.productName.localeCompare(
+            second.productName,
+          );
+        });
     }, [
-      completedUsage,
+      treatments,
       customers,
       dateFrom,
       dateTo,
-      chemicalId,
+      productId,
       search,
     ]);
 
-  const chemicalSummaries =
-    useMemo<ChemicalSummary[]>(() => {
+  const productSummaries =
+    useMemo<ProductSummary[]>(() => {
       const groups =
         new Map<
           string,
@@ -253,8 +249,8 @@ export default function ChemicalUsagePage() {
 
       for (const row of usageRows) {
         const key =
-          row.chemicalId ||
-          row.chemicalName;
+          row.productId ||
+          row.productName;
 
         const current =
           groups.get(key) ?? [];
@@ -266,115 +262,136 @@ export default function ChemicalUsagePage() {
       return Array.from(
         groups.entries(),
       )
-        .map(
-          ([key, rows]) => {
-            const first =
-              rows[0];
+        .map(([key, rows]) => {
+          const first = rows[0];
 
-            const product =
-              chemicals.find(
-                (item) =>
-                  item.id ===
-                  first.chemicalId,
+          const product =
+            chemicals.find(
+              (item) =>
+                item.id ===
+                first.productId,
+            );
+
+          const baseUnit =
+            getBaseUnit(
+              first.productUnit,
+            );
+
+          const totalBaseAmount =
+            rows.reduce(
+              (total, row) =>
+                total +
+                convertToBaseUnit(
+                  row.productRequired,
+                  row.productUnit,
+                ),
+              0,
+            );
+
+          const display =
+            formatBaseAmount(
+              totalBaseAmount,
+              baseUnit,
+            );
+
+          const uniqueVisits =
+            new Map<
+              string,
+              UsageRow
+            >();
+
+          for (const row of rows) {
+            if (
+              !uniqueVisits.has(
+                row.treatmentId,
+              )
+            ) {
+              uniqueVisits.set(
+                row.treatmentId,
+                row,
               );
+            }
+          }
 
-            const baseUnit =
-              getBaseUnit(
-                first.productUnit,
-              );
+          return {
+            productId: key,
 
-            const totalBaseAmount =
+            productName:
+              first.productName,
+
+            productType:
+              first.productType,
+
+            applications:
+              rows.length,
+
+            visits:
+              uniqueVisits.size,
+
+            customers:
+              new Set(
+                rows.map(
+                  (row) =>
+                    row.customerNumber,
+                ),
+              ).size,
+
+            totalAreaSquareMetres:
+              Array.from(
+                uniqueVisits.values(),
+              ).reduce(
+                (total, row) =>
+                  total +
+                  row.areaSquareMetres,
+                0,
+              ),
+
+            totalProductBaseAmount:
+              totalBaseAmount,
+
+            baseUnit,
+
+            displayAmount:
+              display.amount,
+
+            displayUnit:
+              display.unit,
+
+            totalWaterLitres:
               rows.reduce(
                 (total, row) =>
                   total +
-                  convertToBaseUnit(
-                    row.productRequired,
-                    row.productUnit,
-                  ),
+                  row.waterRequiredLitres,
                 0,
-              );
+              ),
 
-            const display =
-              formatBaseAmount(
-                totalBaseAmount,
-                baseUnit,
-              );
+            totalCost:
+              rows.reduce(
+                (total, row) =>
+                  total +
+                  row.estimatedProductCost,
+                0,
+              ),
 
-            return {
-              chemicalId: key,
+            currentStock:
+              product?.currentStock ??
+              null,
 
-              chemicalName:
-                first.chemicalName,
+            stockUnit:
+              product
+                ? `pack${
+                    product.currentStock ===
+                    1
+                      ? ""
+                      : "s"
+                  }`
+                : "",
 
-              chemicalType:
-                first.chemicalType,
-
-              applications:
-                rows.length,
-
-              customers:
-                new Set(
-                  rows.map(
-                    (row) =>
-                      row.customerNumber,
-                  ),
-                ).size,
-
-              totalAreaSquareMetres:
-                rows.reduce(
-                  (total, row) =>
-                    total +
-                    row.areaSquareMetres,
-                  0,
-                ),
-
-              totalProductBaseAmount:
-                totalBaseAmount,
-
-              baseUnit,
-
-              displayAmount:
-                display.amount,
-
-              displayUnit:
-                display.unit,
-
-              totalWaterLitres:
-                rows.reduce(
-                  (total, row) =>
-                    total +
-                    row.waterRequiredLitres,
-                  0,
-                ),
-
-              totalCost:
-                rows.reduce(
-                  (total, row) =>
-                    total +
-                    row.estimatedProductCost,
-                  0,
-                ),
-
-              currentStock:
-                product?.currentStock ??
-                null,
-
-              stockUnit:
-                product
-                  ? `pack${
-                      product.currentStock ===
-                      1
-                        ? ""
-                        : "s"
-                    }`
-                  : "",
-
-              reorderLevel:
-                product?.reorderLevel ??
-                null,
-            };
-          },
-        )
+            reorderLevel:
+              product?.reorderLevel ??
+              null,
+          };
+        })
         .sort(
           (first, second) =>
             second.totalCost -
@@ -388,7 +405,7 @@ export default function ChemicalUsagePage() {
   const selectedRow =
     usageRows.find(
       (row) =>
-        row.treatmentId ===
+        row.id ===
         selectedRowId,
     ) ??
     usageRows[0] ??
@@ -396,6 +413,14 @@ export default function ChemicalUsagePage() {
 
   const totalApplications =
     usageRows.length;
+
+  const totalVisits =
+    new Set(
+      usageRows.map(
+        (row) =>
+          row.treatmentId,
+      ),
+    ).size;
 
   const totalCustomers =
     new Set(
@@ -406,7 +431,16 @@ export default function ChemicalUsagePage() {
     ).size;
 
   const totalArea =
-    usageRows.reduce(
+    Array.from(
+      new Map(
+        usageRows.map(
+          (row) => [
+            row.treatmentId,
+            row,
+          ],
+        ),
+      ).values(),
+    ).reduce(
       (total, row) =>
         total +
         row.areaSquareMetres,
@@ -461,8 +495,8 @@ export default function ChemicalUsagePage() {
       "Customer Number",
       "Customer",
       "Treatment",
-      "Chemical",
-      "Chemical Type",
+      "Product",
+      "Product Type",
       "Application Rate",
       "Application Rate Unit",
       "Area m2",
@@ -481,8 +515,8 @@ export default function ChemicalUsagePage() {
           row.customerNumber,
           row.customerName,
           row.treatmentName,
-          row.chemicalName,
-          row.chemicalType,
+          row.productName,
+          row.productType,
           row.applicationRate,
           row.applicationRateUnit,
           row.areaSquareMetres,
@@ -519,8 +553,9 @@ export default function ChemicalUsagePage() {
       document.createElement("a");
 
     anchor.href = url;
+
     anchor.download =
-      `greenflow-chemical-usage-${dateFrom || "start"}-${dateTo || "end"}.csv`;
+      `greenflow-product-usage-${dateFrom || "start"}-${dateTo || "end"}.csv`;
 
     document.body.appendChild(
       anchor,
@@ -532,7 +567,7 @@ export default function ChemicalUsagePage() {
     URL.revokeObjectURL(url);
 
     showMessage(
-      `${usageRows.length} chemical usage record${
+      `${usageRows.length} product application record${
         usageRows.length === 1
           ? ""
           : "s"
@@ -546,7 +581,7 @@ export default function ChemicalUsagePage() {
     );
 
     setDateTo(today);
-    setChemicalId("all");
+    setProductId("all");
     setSearch("");
     setSelectedRowId("");
   }
@@ -579,11 +614,10 @@ export default function ChemicalUsagePage() {
               </h1>
 
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Review chemical applications recorded
-                through completed jobs. Usage,
-                treatment area, water, cost and
-                equipment details come directly from
-                Treatment Records.
+                Review every fertiliser, herbicide,
+                wetting agent, seaweed and additional
+                product recorded through completed
+                visits.
               </p>
             </div>
 
@@ -611,13 +645,21 @@ export default function ChemicalUsagePage() {
             </div>
           )}
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <SummaryCard
-              label="Applications"
+              label="Product applications"
               value={String(
                 totalApplications,
               )}
-              detail="Completed chemical records"
+              detail="Individual products recorded"
+            />
+
+            <SummaryCard
+              label="Completed visits"
+              value={String(
+                totalVisits,
+              )}
+              detail="Unique treatment records"
             />
 
             <SummaryCard
@@ -633,15 +675,15 @@ export default function ChemicalUsagePage() {
               value={`${totalArea.toLocaleString(
                 "en-GB",
               )} m²`}
-              detail="Filtered period"
+              detail="Counted once per visit"
             />
 
             <SummaryCard
-              label="Water used"
+              label="Water recorded"
               value={`${totalWater.toFixed(
                 2,
               )} L`}
-              detail="Recorded applications"
+              detail="Across product applications"
             />
 
             <SummaryCard
@@ -654,7 +696,7 @@ export default function ChemicalUsagePage() {
           </section>
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[170px_170px_260px_1fr_auto] xl:items-end">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[170px_170px_280px_1fr_auto] xl:items-end">
               <Field label="From">
                 <input
                   type="date"
@@ -681,18 +723,18 @@ export default function ChemicalUsagePage() {
                 />
               </Field>
 
-              <Field label="Chemical">
+              <Field label="Product">
                 <select
-                  value={chemicalId}
+                  value={productId}
                   onChange={(event) =>
-                    setChemicalId(
+                    setProductId(
                       event.target.value,
                     )
                   }
                   className={inputClass}
                 >
                   <option value="all">
-                    All chemicals
+                    All products
                   </option>
 
                   {chemicals
@@ -751,48 +793,51 @@ export default function ChemicalUsagePage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Totals are normalised before being
-                  displayed, so grams and kilograms
-                  or millilitres and litres are not
-                  mixed incorrectly.
+                  Every product inside a treatment
+                  record is totalled separately.
+                  Grams and kilograms, or millilitres
+                  and litres, are normalised before
+                  display.
                 </p>
               </div>
 
-              <div className="grid grid-cols-[1.35fr_100px_125px_120px_110px_110px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                <span>Chemical</span>
+              <div className="grid grid-cols-[1.35fr_90px_90px_120px_120px_105px_105px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <span>Product</span>
                 <span>Uses</span>
+                <span>Visits</span>
                 <span>Area</span>
                 <span>Product</span>
                 <span>Water</span>
                 <span>Cost</span>
               </div>
 
-              <div className="max-h-[400px] overflow-y-auto">
-                {chemicalSummaries.length ===
+              <div className="max-h-[420px] overflow-y-auto">
+                {productSummaries.length ===
                 0 ? (
                   <div className="p-10 text-center text-sm text-slate-500">
-                    No completed chemical usage
+                    No completed product usage
                     matches the selected filters.
                   </div>
                 ) : (
-                  chemicalSummaries.map(
+                  productSummaries.map(
                     (summary) => (
                       <div
                         key={
-                          summary.chemicalId
+                          summary.productId
                         }
-                        className="grid grid-cols-[1.35fr_100px_125px_120px_110px_110px] items-center gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-0"
+                        className="grid grid-cols-[1.35fr_90px_90px_120px_120px_105px_105px] items-center gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-0"
                       >
                         <div>
                           <div className="font-bold">
                             {
-                              summary.chemicalName
+                              summary.productName
                             }
                           </div>
 
                           <div className="mt-1 text-xs text-slate-500">
                             {
-                              summary.chemicalType
+                              summary.productType ||
+                              "Uncategorised"
                             }{" "}
                             ·{" "}
                             {
@@ -831,6 +876,12 @@ export default function ChemicalUsagePage() {
                           }
                         </span>
 
+                        <span className="font-semibold">
+                          {
+                            summary.visits
+                          }
+                        </span>
+
                         <span>
                           {summary.totalAreaSquareMetres.toLocaleString(
                             "en-GB",
@@ -839,15 +890,10 @@ export default function ChemicalUsagePage() {
                         </span>
 
                         <span className="font-semibold">
-                          {summary.displayAmount.toFixed(
-                            summary.displayAmount <
-                              10
-                              ? 3
-                              : 2,
-                          )}{" "}
-                          {
-                            summary.displayUnit
-                          }
+                          {formatSummaryAmount(
+                            summary.displayAmount,
+                            summary.displayUnit,
+                          )}
                         </span>
 
                         <span>
@@ -880,8 +926,8 @@ export default function ChemicalUsagePage() {
                       </h2>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        Recorded values for one
-                        completed treatment.
+                        One product recorded during
+                        one completed treatment.
                       </p>
                     </div>
 
@@ -924,28 +970,36 @@ export default function ChemicalUsagePage() {
                     <Section title="Product">
                       <DetailGrid>
                         <DetailItem
-                          label="Chemical"
+                          label="Product"
                           value={
-                            selectedRow.chemicalName
+                            selectedRow.productName
                           }
                         />
 
                         <DetailItem
                           label="Type"
                           value={
-                            selectedRow.chemicalType ||
+                            selectedRow.productType ||
                             "—"
                           }
                         />
 
                         <DetailItem
                           label="Application rate"
-                          value={`${selectedRow.applicationRate} ${selectedRow.applicationRateUnit}`}
+                          value={
+                            selectedRow.applicationRate >
+                            0
+                              ? `${selectedRow.applicationRate} ${selectedRow.applicationRateUnit}`
+                              : "Not recorded"
+                          }
                         />
 
                         <DetailItem
                           label="Product required"
-                          value={`${selectedRow.productRequired} ${selectedRow.productUnit}`}
+                          value={formatProductAmount(
+                            selectedRow.productRequired,
+                            selectedRow.productUnit,
+                          )}
                         />
 
                         <DetailItem
@@ -969,16 +1023,26 @@ export default function ChemicalUsagePage() {
                       <DetailGrid>
                         <DetailItem
                           label="Water required"
-                          value={`${selectedRow.waterRequiredLitres.toFixed(
-                            3,
-                          )} L`}
+                          value={
+                            selectedRow.waterRequiredLitres >
+                            0
+                              ? `${selectedRow.waterRequiredLitres.toFixed(
+                                  3,
+                                )} L`
+                              : "Not recorded"
+                          }
                         />
 
                         <DetailItem
                           label="Tank fills"
-                          value={selectedRow.tankFills.toFixed(
-                            3,
-                          )}
+                          value={
+                            selectedRow.tankFills >
+                            0
+                              ? selectedRow.tankFills.toFixed(
+                                  3,
+                                )
+                              : "Not recorded"
+                          }
                         />
                       </DetailGrid>
                     </Section>
@@ -1002,119 +1066,118 @@ export default function ChemicalUsagePage() {
           <article className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
               <h2 className="text-lg font-bold">
-                Application records
+                Product application records
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Every row is linked to a completed
-                treatment record.
+                A multi-product visit creates one row
+                for each fertiliser, herbicide,
+                wetting agent, seaweed or additional
+                product used.
               </p>
             </div>
 
-            <div className="grid grid-cols-[115px_1.15fr_1.15fr_1.15fr_120px_120px_100px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+            <div className="grid grid-cols-[115px_1.1fr_1.1fr_1.2fr_120px_120px_100px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
               <span>Date</span>
               <span>Customer</span>
               <span>Treatment</span>
-              <span>Chemical</span>
-              <span>Area</span>
               <span>Product</span>
+              <span>Area</span>
+              <span>Quantity</span>
               <span>Cost</span>
             </div>
 
-            <div className="max-h-[500px] overflow-y-auto">
+            <div className="max-h-[520px] overflow-y-auto">
               {usageRows.length === 0 ? (
                 <div className="p-12 text-center text-sm text-slate-500">
-                  No completed chemical usage
-                  records found.
+                  No completed product usage records
+                  found.
                 </div>
               ) : (
-                usageRows.map(
-                  (row) => {
-                    const selected =
-                      selectedRow?.treatmentId ===
-                      row.treatmentId;
+                usageRows.map((row) => {
+                  const selected =
+                    selectedRow?.id ===
+                    row.id;
 
-                    return (
-                      <button
-                        key={
-                          row.treatmentId
-                        }
-                        type="button"
-                        onClick={() =>
-                          setSelectedRowId(
-                            row.treatmentId,
-                          )
-                        }
-                        className={`grid w-full grid-cols-[115px_1.15fr_1.15fr_1.15fr_120px_120px_100px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm transition last:border-0 ${
-                          selected
-                            ? "bg-green-50"
-                            : "hover:bg-slate-50"
-                        }`}
-                      >
-                        <span>
-                          {formatDate(
-                            row.date,
-                          )}
-                        </span>
+                  return (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedRowId(
+                          row.id,
+                        )
+                      }
+                      className={`grid w-full grid-cols-[115px_1.1fr_1.1fr_1.2fr_120px_120px_100px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm transition last:border-0 ${
+                        selected
+                          ? "bg-green-50"
+                          : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <span>
+                        {formatDate(
+                          row.date,
+                        )}
+                      </span>
 
-                        <div>
-                          <div className="font-bold">
-                            {
-                              row.customerName
-                            }
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            {
-                              row.customerNumber
-                            }
-                          </div>
-                        </div>
-
-                        <span className="font-semibold">
+                      <div>
+                        <div className="font-bold">
                           {
-                            row.treatmentName
+                            row.customerName
                           }
-                        </span>
-
-                        <div>
-                          <div className="font-semibold">
-                            {
-                              row.chemicalName
-                            }
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            {
-                              row.chemicalType
-                            }
-                          </div>
                         </div>
 
-                        <span>
-                          {row.areaSquareMetres.toLocaleString(
-                            "en-GB",
-                          )}{" "}
-                          m²
-                        </span>
-
-                        <span>
+                        <div className="mt-1 text-xs text-slate-500">
                           {
-                            row.productRequired
-                          }{" "}
-                          {row.productUnit}
-                        </span>
+                            row.customerNumber
+                          }
+                        </div>
+                      </div>
 
-                        <span className="font-semibold">
-                          £
-                          {row.estimatedProductCost.toFixed(
-                            2,
-                          )}
-                        </span>
-                      </button>
-                    );
-                  },
-                )
+                      <span className="font-semibold">
+                        {
+                          row.treatmentName
+                        }
+                      </span>
+
+                      <div>
+                        <div className="font-semibold">
+                          {
+                            row.productName
+                          }
+                        </div>
+
+                        <div className="mt-1 text-xs text-slate-500">
+                          {
+                            row.productType ||
+                            "Uncategorised"
+                          }
+                        </div>
+                      </div>
+
+                      <span>
+                        {row.areaSquareMetres.toLocaleString(
+                          "en-GB",
+                        )}{" "}
+                        m²
+                      </span>
+
+                      <span>
+                        {formatProductAmount(
+                          row.productRequired,
+                          row.productUnit,
+                        )}
+                      </span>
+
+                      <span className="font-semibold">
+                        £
+                        {row.estimatedProductCost.toFixed(
+                          2,
+                        )}
+                      </span>
+                    </button>
+                  );
+                })
               )}
             </div>
           </article>
@@ -1122,6 +1185,74 @@ export default function ChemicalUsagePage() {
       </main>
     </AppShell>
   );
+}
+
+function createUsageRow(
+  treatment: TreatmentRecord,
+  application: TreatmentApplication,
+  customerName: string,
+): UsageRow {
+  return {
+    id: `${treatment.id}-${application.id}`,
+
+    treatmentId:
+      treatment.id,
+
+    applicationId:
+      application.id,
+
+    date:
+      getUsageDate(
+        treatment,
+      ),
+
+    customerNumber:
+      treatment.customerNumber,
+
+    customerName,
+
+    treatmentName:
+      treatment.treatmentName,
+
+    productId:
+      application.productId,
+
+    productName:
+      application.productName,
+
+    productType:
+      application.productType,
+
+    applicationRate:
+      application.applicationRate,
+
+    applicationRateUnit:
+      application.applicationRateUnit,
+
+    areaSquareMetres:
+      treatment.treatmentAreaSquareMetres,
+
+    productRequired:
+      application.productRequired,
+
+    productUnit:
+      application.productUnit,
+
+    waterRequiredLitres:
+      application.waterRequiredLitres,
+
+    tankFills:
+      application.tankFills,
+
+    estimatedProductCost:
+      application.estimatedProductCost,
+
+    invoiceNumber:
+      treatment.invoiceNumber,
+
+    notes:
+      treatment.notes,
+  };
 }
 
 function getUsageDate(
@@ -1219,6 +1350,52 @@ function formatBaseAmount(
     amount: baseAmount,
     unit: "",
   };
+}
+
+function formatSummaryAmount(
+  amount: number,
+  unit: string,
+) {
+  if (!unit) {
+    return "—";
+  }
+
+  return `${amount.toFixed(
+    amount < 10
+      ? 3
+      : 2,
+  )} ${unit}`;
+}
+
+function formatProductAmount(
+  amount: number,
+  unit: string,
+) {
+  if (!unit) {
+    return "Not recorded";
+  }
+
+  if (
+    unit === "L" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} ml`;
+  }
+
+  if (
+    unit === "kg" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} g`;
+  }
+
+  return `${amount.toFixed(
+    3,
+  )} ${unit}`;
 }
 
 function csvValue(

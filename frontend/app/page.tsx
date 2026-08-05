@@ -9,6 +9,12 @@ import {
   useState,
 } from "react";
 
+import {
+  formatDateWithDay,
+  getTodayDateValue,
+  parseDate,
+} from "@/lib/date-utils";
+
 import { AppShell } from "@/components/app-shell";
 
 import { useCustomerStore } from "@/components/customer-store";
@@ -91,9 +97,11 @@ export default function DashboardPage() {
   });
 
   const [
-    selectedDate,
-    setSelectedDate,
-  ] = useState("");
+  selectedDate,
+  setSelectedDate,
+  ] = useState(() =>
+  getTodayDateValue(),
+  );
 
   useEffect(() => {
     loadLocalModules();
@@ -201,56 +209,6 @@ export default function DashboardPage() {
         ),
       [customers],
     );
-
-  const availableDates =
-    useMemo(() => {
-      return Array.from(
-        new Set(
-          programmes.flatMap(
-            (programme) =>
-              programme.visits
-                .filter(
-                  (visit) =>
-                    visit.status ===
-                      "Scheduled" ||
-                    visit.status ===
-                      "Planned",
-                )
-                .map(
-                  (visit) =>
-                    visit.scheduledDate,
-                ),
-          ),
-        ),
-      ).sort();
-    }, [programmes]);
-
-  useEffect(() => {
-    if (
-      selectedDate ||
-      availableDates.length ===
-        0
-    ) {
-      return;
-    }
-
-    const today =
-      toDateValue(new Date());
-
-    const nextAvailableDate =
-      availableDates.find(
-        (date) =>
-          date >= today,
-      ) ??
-      availableDates[0];
-
-    setSelectedDate(
-      nextAvailableDate,
-    );
-  }, [
-    availableDates,
-    selectedDate,
-  ]);
 
   const scheduledVisits =
     useMemo(() => {
@@ -451,7 +409,7 @@ export default function DashboardPage() {
   const upcomingVisits =
     useMemo(() => {
       const today =
-        toDateValue(new Date());
+        getTodayDateValue();
 
       return programmes
         .flatMap((programme) =>
@@ -539,35 +497,30 @@ export default function DashboardPage() {
 
             <div className="flex flex-wrap items-end gap-3">
               <Field label="Working date">
-                <select
-                  value={selectedDate}
-                  onChange={(event) =>
-                    setSelectedDate(
-                      event.target.value,
-                    )
-                  }
-                  className="min-w-[260px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
-                >
-                  {availableDates.length ===
-                  0 ? (
-                    <option value="">
-                      No scheduled dates
-                    </option>
-                  ) : (
-                    availableDates.map(
-                      (date) => (
-                        <option
-                          key={date}
-                          value={date}
-                        >
-                          {formatDateWithDay(
-                            date,
-                          )}
-                        </option>
-                      ),
-                    )
-                  )}
-                </select>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(event) =>
+                      setSelectedDate(
+                        event.target.value,
+                      )
+                    }
+                    className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedDate(
+                        getTodayDateValue(),
+                      )
+                    }
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Today
+                  </button>
+                </div>
               </Field>
 
               <Link
@@ -578,27 +531,24 @@ export default function DashboardPage() {
               </Link>
 
               <Link
-                href="/jobs"
+                href={`/jobs?date=${selectedDate}`}
                 className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125b2f]"
               >
-                Open Today&apos;s Jobs
+                Open jobs for this date
               </Link>
             </div>
           </header>
 
-          {availableDates.length ===
-            0 && (
-            <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-              No scheduled programme
-              dates are available. Create
-              customer schedules in{" "}
-              <Link
-                href="/programmes"
-                className="font-bold underline"
-              >
-                Annual Programmes
-              </Link>
-              .
+          {scheduledVisits.length === 0 && (
+            <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
+              No jobs are scheduled for{" "}
+              <strong>
+                {formatDateWithDay(
+                  selectedDate,
+                )}
+              </strong>
+              . You can still review the rest of the
+              dashboard or choose another calendar date.
             </section>
           )}
 
@@ -1261,52 +1211,6 @@ export default function DashboardPage() {
       </main>
     </AppShell>
   );
-}
-
-function toDateValue(
-  date: Date,
-) {
-  const year =
-    date.getFullYear();
-
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
-
-  const day = String(
-    date.getDate(),
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function parseDate(
-  value: string,
-) {
-  const [year, month, day] =
-    value
-      .split("-")
-      .map(Number);
-
-  return new Date(
-    year,
-    month - 1,
-    day,
-  );
-}
-
-function formatDateWithDay(
-  value: string,
-) {
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    },
-  ).format(parseDate(value));
 }
 
 function formatShortDate(

@@ -16,6 +16,13 @@ import {
 import { useProgrammeStore } from "@/components/programme-store";
 import { useSeasonStore } from "@/components/season-store";
 import { useTreatmentStore } from "@/components/treatment-store";
+import { useFleetStore } from "@/components/fleet-store";
+import { useRouteOrderStore } from "@/components/route-order-store";
+import {
+  formatDate,
+  formatDateWithDay,
+  getTodayDateValue,
+} from "@/lib/date-utils";
 
 type RouteCustomer = {
   customer: StoredCustomer;
@@ -53,6 +60,22 @@ export default function RoutesPage() {
     ready: treatmentsReady,
   } = useTreatmentStore();
 
+
+  const {
+    activeVehicles,
+    ready: fleetReady,
+    getVehicle,
+  } = useFleetStore();
+
+  const {
+    ready: routeOrderReady,
+    getRouteOrder,
+    saveRouteOrder,
+    clearRouteOrder,
+    createPostcodeOrder,
+    sortBySavedRoute,
+  } = useRouteOrderStore();
+
   const currentYear =
     new Date().getFullYear();
 
@@ -60,7 +83,9 @@ export default function RoutesPage() {
     useState(currentYear);
 
   const [selectedDate, setSelectedDate] =
-    useState("");
+    useState(() =>
+      getTodayDateValue(),
+    );
 
   const [selectedGroup, setSelectedGroup] =
     useState(1);
@@ -126,6 +151,51 @@ export default function RoutesPage() {
       [customers],
     );
 
+
+  useEffect(() => {
+    if (
+      !fleetReady ||
+      activeVehicles.length === 0
+    ) {
+      return;
+    }
+
+    const activeVanNumbers =
+      new Set(
+        activeVehicles.map(
+          (vehicle) =>
+            vehicle.number,
+        ),
+      );
+
+    const fallbackVanNumber =
+      activeVehicles[0].number;
+
+    for (
+      const customer of
+      activeCustomers
+    ) {
+      if (
+        activeVanNumbers.has(
+          customer.vanNumber,
+        )
+      ) {
+        continue;
+      }
+
+      updateCustomer({
+        ...customer,
+        vanNumber:
+          fallbackVanNumber,
+      });
+    }
+  }, [
+    activeCustomers,
+    activeVehicles,
+    fleetReady,
+    updateCustomer,
+  ]);
+
   const groupNumbers =
     useMemo(() => {
       const configuredGroups =
@@ -160,49 +230,6 @@ export default function RoutesPage() {
       activeCustomers,
     ]);
 
-  const seasonDates =
-    useMemo(() => {
-      if (!selectedSeason) {
-        return [];
-      }
-
-      return Array.from(
-        new Set(
-          selectedSeason.groupDates.flatMap(
-            (group) =>
-              group.treatmentDates,
-          ),
-        ),
-      ).sort();
-    }, [selectedSeason]);
-
-  useEffect(() => {
-    if (
-      selectedDate &&
-      seasonDates.includes(
-        selectedDate,
-      )
-    ) {
-      return;
-    }
-
-    const today =
-      toDateValue(new Date());
-
-    const nextDate =
-      seasonDates.find(
-        (date) =>
-          date >= today,
-      ) ??
-      seasonDates[0] ??
-      "";
-
-    setSelectedDate(nextDate);
-  }, [
-    seasonDates,
-    selectedDate,
-  ]);
-
   useEffect(() => {
     if (
       groupNumbers.includes(
@@ -227,13 +254,37 @@ export default function RoutesPage() {
     selectedGroup,
   ]);
 
+
+  useEffect(() => {
+    const activeNumbers =
+      activeVehicles.map(
+        (vehicle) =>
+          vehicle.number,
+      );
+
+    if (
+      activeNumbers.includes(
+        destinationVan,
+      )
+    ) {
+      return;
+    }
+
+    setDestinationVan(
+      activeNumbers[0] ?? 1,
+    );
+  }, [
+    activeVehicles,
+    destinationVan,
+  ]);
+
   const routeCustomers =
     useMemo<RouteCustomer[]>(() => {
       if (!selectedDate) {
         return [];
       }
 
-      return programmes
+      const items = programmes
         .flatMap((programme) => {
           const customer =
             activeCustomers.find(
@@ -315,37 +366,19 @@ export default function RoutesPage() {
               };
             });
         })
-        .sort((first, second) => {
-          if (
-            first.customer.vanNumber !==
-            second.customer.vanNumber
-          ) {
-            return (
-              first.customer.vanNumber -
-              second.customer.vanNumber
-            );
-          }
+        ;
 
-          if (
-            first.customer.groupNumber !==
-            second.customer.groupNumber
-          ) {
-            return (
-              first.customer.groupNumber -
-              second.customer.groupNumber
-            );
-          }
-
-          return first.customer.fullName.localeCompare(
-            second.customer.fullName,
-          );
-        });
+      return sortBySavedRoute(
+        items,
+        selectedDate,
+      );
     }, [
       programmes,
       activeCustomers,
       selectedSeason,
       treatments,
       selectedDate,
+      sortBySavedRoute,
     ]);
 
   const groupsDueOnDate =
@@ -531,6 +564,104 @@ export default function RoutesPage() {
     selectedRouteCustomers.length -
     completedRouteCount;
 
+
+  const vanSummaries =
+    useMemo(() => {
+      const vanNumbers =
+        activeVehicles.map(
+          (vehicle) =>
+            vehicle.number,
+        );
+
+      return vanNumbers.map(
+        (vanNumber) => {
+          const vanJobs =
+            routeCustomers.filter(
+              (item) =>
+                item.customer.vanNumber ===
+                vanNumber,
+            );
+
+          const completedJobs =
+            vanJobs.filter(
+              (item) =>
+                item.completed,
+            );
+
+          const remainingJobs =
+            vanJobs.filter(
+              (item) =>
+                !item.completed,
+            );
+
+          const totalArea =
+            vanJobs.reduce(
+              (total, item) =>
+                total +
+                item.customer.lawnSize,
+              0,
+            );
+
+          const completedArea =
+            completedJobs.reduce(
+              (total, item) =>
+                total +
+                item.customer.lawnSize,
+              0,
+            );
+
+          const remainingValue =
+            remainingJobs.reduce(
+              (total, item) =>
+                total +
+                item.customer.treatmentPrice,
+              0,
+            );
+
+          const progress =
+            vanJobs.length > 0
+              ? Math.round(
+                  (completedJobs.length /
+                    vanJobs.length) *
+                    100,
+                )
+              : 0;
+
+          return {
+            vanNumber,
+            totalJobs:
+              vanJobs.length,
+            completedJobs:
+              completedJobs.length,
+            remainingJobs:
+              remainingJobs.length,
+            totalArea,
+            completedArea,
+            remainingValue,
+            progress,
+            lockedGates:
+              vanJobs.filter(
+                (item) =>
+                  item.customer.lockedGate,
+              ).length,
+            dogs:
+              vanJobs.filter(
+                (item) =>
+                  item.customer.dogOnProperty,
+              ).length,
+            overrides:
+              vanJobs.filter(
+                (item) =>
+                  item.overridden,
+              ).length,
+          };
+        },
+      );
+    }, [
+      activeVehicles,
+      routeCustomers,
+    ]);
+
   const selectedArea =
     selectedCustomers.reduce(
       (total, customerNumber) => {
@@ -672,7 +803,12 @@ export default function RoutesPage() {
         movedCount === 1
           ? ""
           : "s"
-      } moved to Group ${destinationGroup}, Van ${destinationVan}. Their future programme dates will follow the new group automatically.`,
+      } moved to Group ${destinationGroup}, ${
+        getVehicle(
+          destinationVan,
+        )?.name ??
+        `Van ${destinationVan}`
+      }. Their future programme dates will follow the new group automatically.`,
     );
   }
 
@@ -686,7 +822,73 @@ export default function RoutesPage() {
     });
 
     showMessage(
-      `${customer.fullName} assigned to Van ${vanNumber}.`,
+      `${customer.fullName} assigned to ${
+        getVehicle(
+          vanNumber,
+        )?.name ??
+        `Van ${vanNumber}`
+      }.`,
+    );
+  }
+
+  function optimiseVanRoute(
+    vanNumber: number,
+  ) {
+    const remainingCustomers =
+      routeCustomers
+        .filter(
+          (item) =>
+            item.customer.vanNumber ===
+              vanNumber &&
+            !item.completed,
+        )
+        .map(
+          (item) =>
+            item.customer,
+        );
+
+    if (
+      remainingCustomers.length === 0
+    ) {
+      showMessage(
+        "There are no remaining customers to optimise.",
+      );
+      return;
+    }
+
+    saveRouteOrder(
+      selectedDate,
+      vanNumber,
+      createPostcodeOrder(
+        remainingCustomers,
+      ),
+    );
+
+    showMessage(
+      `${
+        getVehicle(
+          vanNumber,
+        )?.name ??
+        `Van ${vanNumber}`
+      } ordered by postcode area.`,
+    );
+  }
+
+  function resetVanRoute(
+    vanNumber: number,
+  ) {
+    clearRouteOrder(
+      selectedDate,
+      vanNumber,
+    );
+
+    showMessage(
+      `${
+        getVehicle(
+          vanNumber,
+        )?.name ??
+        `Van ${vanNumber}`
+      } route order reset.`,
     );
   }
 
@@ -704,7 +906,9 @@ export default function RoutesPage() {
     customersReady &&
     programmesReady &&
     seasonsReady &&
-    treatmentsReady;
+    treatmentsReady &&
+    fleetReady &&
+    routeOrderReady;
 
   if (!ready) {
     return (
@@ -773,38 +977,64 @@ export default function RoutesPage() {
               </Field>
 
               <Field label="Working date">
-                <select
-                  value={selectedDate}
-                  onChange={(event) => {
-                    setSelectedDate(
-                      event.target.value,
-                    );
-                    setSelectedCustomers(
-                      [],
-                    );
-                  }}
-                  className="min-w-[270px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
-                >
-                  {seasonDates.length ===
-                  0 ? (
-                    <option value="">
-                      No season dates
-                    </option>
-                  ) : (
-                    seasonDates.map(
-                      (date) => (
-                        <option
-                          key={date}
-                          value={date}
-                        >
-                          {formatDateWithDay(
-                            date,
-                          )}
-                        </option>
-                      ),
-                    )
-                  )}
-                </select>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(event) => {
+                      const nextDate =
+                        event.target.value;
+
+                      setSelectedDate(
+                        nextDate,
+                      );
+
+                      if (nextDate) {
+                        setSelectedYear(
+                          Number(
+                            nextDate.slice(
+                              0,
+                              4,
+                            ),
+                          ),
+                        );
+                      }
+
+                      setSelectedCustomers(
+                        [],
+                      );
+                    }}
+                    className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const today =
+                        getTodayDateValue();
+
+                      setSelectedDate(
+                        today,
+                      );
+
+                      setSelectedYear(
+                        Number(
+                          today.slice(
+                            0,
+                            4,
+                          ),
+                        ),
+                      );
+
+                      setSelectedCustomers(
+                        [],
+                      );
+                    }}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Today
+                  </button>
+                </div>
               </Field>
 
               <Link
@@ -839,6 +1069,20 @@ export default function RoutesPage() {
               .
             </section>
           )}
+
+          {selectedSeason &&
+            routeCustomers.length === 0 && (
+              <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
+                No routes or customer visits are scheduled for{" "}
+                <strong>
+                  {formatDateWithDay(
+                    selectedDate,
+                  )}
+                </strong>
+                . The working date remains on the actual calendar date rather
+                than jumping to the next treatment day.
+              </section>
+            )}
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
@@ -896,6 +1140,217 @@ export default function RoutesPage() {
                 .toFixed(2)}`}
               detail="Remaining jobs"
             />
+          </section>
+
+          <section className="mt-4">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold">
+                  Daily Route Board
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Van workload and progress for{" "}
+                  {formatDateWithDay(
+                    selectedDate,
+                  )}.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+              {vanSummaries.map(
+                (van) => (
+                  <article
+                    key={van.vanNumber}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#338b45]">
+                          Route
+                        </div>
+
+                        <h3 className="mt-1 text-2xl font-bold">
+                          {getVehicle(
+                            van.vanNumber,
+                          )?.name ??
+                            `Van ${van.vanNumber}`}
+                        </h3>
+                      </div>
+
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">
+                        {van.totalJobs} job
+                        {van.totalJobs === 1
+                          ? ""
+                          : "s"}
+                      </span>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="font-semibold text-slate-600">
+                          Progress
+                        </span>
+
+                        <span className="font-bold">
+                          {van.completedJobs} /{" "}
+                          {van.totalJobs}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className="h-full rounded-full bg-[#176b37] transition-all"
+                          style={{
+                            width: `${van.progress}%`,
+                          }}
+                        />
+                      </div>
+
+                      <div className="mt-1 text-right text-xs font-semibold text-slate-500">
+                        {van.progress}%
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <InfoBox
+                        label="Remaining"
+                        value={String(
+                          van.remainingJobs,
+                        )}
+                        detail="Jobs left"
+                      />
+
+                      <InfoBox
+                        label="Remaining value"
+                        value={`£${van.remainingValue.toFixed(
+                          2,
+                        )}`}
+                        detail="Standard prices"
+                      />
+
+                      <InfoBox
+                        label="Route area"
+                        value={`${van.totalArea.toLocaleString(
+                          "en-GB",
+                        )} m²`}
+                        detail="All due lawns"
+                      />
+
+                      <InfoBox
+                        label="Completed area"
+                        value={`${van.completedArea.toLocaleString(
+                          "en-GB",
+                        )} m²`}
+                        detail="Recorded work"
+                      />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {van.lockedGates > 0 && (
+                        <span className="rounded-full bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700">
+                          {van.lockedGates} locked gate
+                          {van.lockedGates === 1
+                            ? ""
+                            : "s"}
+                        </span>
+                      )}
+
+                      {van.dogs > 0 && (
+                        <span className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800">
+                          {van.dogs} dog warning
+                          {van.dogs === 1
+                            ? ""
+                            : "s"}
+                        </span>
+                      )}
+
+                      {van.overrides > 0 && (
+                        <span className="rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-800">
+                          {van.overrides} override
+                          {van.overrides === 1
+                            ? ""
+                            : "s"}
+                        </span>
+                      )}
+                    </div>
+
+                    {getRouteOrder(
+                      selectedDate,
+                      van.vanNumber,
+                    ).length > 0 && (
+                      <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                        <div className="text-xs font-bold uppercase tracking-wide text-blue-800">
+                          Saved route order
+                        </div>
+
+                        <div className="mt-2 text-sm leading-6 text-blue-950">
+                          {routeCustomers
+                            .filter(
+                              (item) =>
+                                item.customer.vanNumber ===
+                                  van.vanNumber &&
+                                !item.completed,
+                            )
+                            .slice(0, 5)
+                            .map(
+                              (item, index) =>
+                                `${index + 1}. ${item.customer.fullName}`,
+                            )
+                            .join(" · ")}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          optimiseVanRoute(
+                            van.vanNumber,
+                          )
+                        }
+                        className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                      >
+                        Optimise by postcode
+                      </button>
+
+                      {getRouteOrder(
+                        selectedDate,
+                        van.vanNumber,
+                      ).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            resetVanRoute(
+                              van.vanNumber,
+                            )
+                          }
+                          className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Reset order
+                        </button>
+                      )}
+
+                      <Link
+                        href={`/jobs?date=${selectedDate}&van=${van.vanNumber}`}
+                        className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                      >
+                        Open in Jobs
+                      </Link>
+
+                      <Link
+                        href={`/visit-centre?date=${selectedDate}&van=${van.vanNumber}`}
+                        className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                      >
+                        Open route
+                      </Link>
+                    </div>
+                  </article>
+                ),
+              )}
+            </div>
           </section>
 
           <section className="mt-4 grid gap-4 xl:grid-cols-[350px_1fr]">
@@ -1087,6 +1542,21 @@ export default function RoutesPage() {
                     />
                   </div>
                 )}
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <Link
+                    href={`/jobs?date=${selectedDate}`}
+                    className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                  >
+                    Open group date in Jobs
+                  </Link>
+
+                  <Link
+                    href={`/visit-centre?date=${selectedDate}&group=${selectedGroup}`}
+                    className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                  >
+                    Open group in Visit Centre
+                  </Link>
+                </div>
               </article>
 
               <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1154,13 +1624,19 @@ export default function RoutesPage() {
                       }
                       className={inputClass}
                     >
-                      {[1, 2, 3].map(
-                        (van) => (
+                      {activeVehicles.map(
+                        (vehicle) => (
                           <option
-                            key={van}
-                            value={van}
+                            key={
+                              vehicle.id
+                            }
+                            value={
+                              vehicle.number
+                            }
                           >
-                            Van {van}
+                            {
+                              vehicle.name
+                            }
                           </option>
                         ),
                       )}
@@ -1309,13 +1785,19 @@ export default function RoutesPage() {
                               }
                               className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
                             >
-                              {[1, 2, 3].map(
-                                (van) => (
+                              {activeVehicles.map(
+                                (vehicle) => (
                                   <option
-                                    key={van}
-                                    value={van}
+                                    key={
+                                      vehicle.id
+                                    }
+                                    value={
+                                      vehicle.number
+                                    }
                                   >
-                                    Van {van}
+                                    {
+                                      vehicle.name
+                                    }
                                   </option>
                                 ),
                               )}
@@ -1363,97 +1845,6 @@ export default function RoutesPage() {
       </main>
     </AppShell>
   );
-}
-
-function parseDate(
-  value: string,
-) {
-  const [year, month, day] =
-    value
-      .split("-")
-      .map(Number);
-
-  return new Date(
-    year,
-    month - 1,
-    day,
-  );
-}
-
-function isDateValue(
-  value: string,
-) {
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(
-      value,
-    )
-  ) {
-    return false;
-  }
-
-  const date =
-    parseDate(value);
-
-  return (
-    !Number.isNaN(
-      date.getTime(),
-    ) &&
-    toDateValue(date) === value
-  );
-}
-
-function toDateValue(
-  date: Date,
-) {
-  const year =
-    date.getFullYear();
-
-  const month =
-    String(
-      date.getMonth() + 1,
-    ).padStart(2, "0");
-
-  const day =
-    String(
-      date.getDate(),
-    ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatDate(
-  value: string,
-) {
-  if (!isDateValue(value)) {
-    return "No date";
-  }
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    },
-  ).format(parseDate(value));
-}
-
-function formatDateWithDay(
-  value: string,
-) {
-  if (!isDateValue(value)) {
-    return "No date";
-  }
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    },
-  ).format(parseDate(value));
 }
 
 function Field({

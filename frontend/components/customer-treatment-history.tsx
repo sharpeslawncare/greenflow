@@ -7,8 +7,12 @@ import {
 } from "react";
 
 import {
+  type TreatmentApplication,
   type TreatmentRecord,
   type TreatmentStatus,
+  getTreatmentApplications,
+  getTreatmentProductNames,
+  getTreatmentTotalProductCost,
   useTreatmentStore,
 } from "@/components/treatment-store";
 
@@ -49,6 +53,22 @@ export function CustomerTreatmentHistory({
           total +
           treatment
             .treatmentAreaSquareMetres,
+        0,
+      );
+
+  const totalProductCost =
+    treatments
+      .filter(
+        (treatment) =>
+          treatment.status ===
+          "Completed",
+      )
+      .reduce(
+        (total, treatment) =>
+          total +
+          getTreatmentTotalProductCost(
+            treatment,
+          ),
         0,
       );
 
@@ -95,7 +115,7 @@ export function CustomerTreatmentHistory({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <MiniSummary
           label="Records"
           value={String(
@@ -115,6 +135,13 @@ export function CustomerTreatmentHistory({
           value={`${completedArea.toLocaleString(
             "en-GB",
           )} m²`}
+        />
+
+        <MiniSummary
+          label="Product cost"
+          value={`£${totalProductCost.toFixed(
+            2,
+          )}`}
         />
       </div>
 
@@ -139,7 +166,7 @@ export function CustomerTreatmentHistory({
       )}
 
       <div className="overflow-hidden rounded-xl border border-slate-200">
-        <div className="grid grid-cols-[115px_145px_1.2fr_1.3fr_115px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+        <div className="grid grid-cols-[115px_145px_1.2fr_1.4fr_115px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
           <span>Date</span>
           <span>Status</span>
           <span>Treatment</span>
@@ -147,11 +174,11 @@ export function CustomerTreatmentHistory({
           <span>Next visit</span>
         </div>
 
-        <div className="max-h-[44vh] overflow-y-auto">
+        <div className="max-h-[50vh] overflow-y-auto">
           {treatments.map(
             (treatment) => {
               const products =
-                getProducts(
+                getTreatmentProductNames(
                   treatment,
                 );
 
@@ -173,7 +200,7 @@ export function CustomerTreatmentHistory({
                           : treatment.id,
                       )
                     }
-                    className="grid w-full grid-cols-[115px_145px_1.2fr_1.3fr_115px] gap-3 px-4 py-3 text-left text-sm hover:bg-slate-50"
+                    className="grid w-full grid-cols-[115px_145px_1.2fr_1.4fr_115px] gap-3 px-4 py-3 text-left text-sm hover:bg-slate-50"
                   >
                     <span className="text-slate-600">
                       {formatDate(
@@ -204,9 +231,10 @@ export function CustomerTreatmentHistory({
                       </div>
                     </div>
 
-                    <span className="text-slate-600">
-                      {products ||
-                        "No products recorded"}
+                    <span className="line-clamp-2 text-slate-600">
+                      {products.length > 0
+                        ? products.join(", ")
+                        : "No products recorded"}
                     </span>
 
                     <span className="text-slate-600">
@@ -219,42 +247,53 @@ export function CustomerTreatmentHistory({
                   </button>
 
                   {expanded && (
-                    <div className="grid gap-3 border-t border-slate-100 bg-slate-50 px-4 py-4 text-sm sm:grid-cols-4">
-                      <Detail
-                        label="Area"
-                        value={`${treatment.treatmentAreaSquareMetres.toLocaleString(
-                          "en-GB",
-                        )} m²`}
-                      />
+                    <div className="border-t border-slate-100 bg-slate-50 px-4 py-4">
+                      <div className="grid gap-3 text-sm sm:grid-cols-4">
+                        <Detail
+                          label="Area"
+                          value={`${treatment.treatmentAreaSquareMetres.toLocaleString(
+                            "en-GB",
+                          )} m²`}
+                        />
 
-                      <Detail
-                        label="Product required"
-                        value={
-                          treatment.productRequired >
-                          0
-                            ? `${treatment.productRequired} ${treatment.productUnit}`
-                            : "—"
-                        }
-                      />
+                        <Detail
+                          label="Products recorded"
+                          value={String(
+                            getTreatmentApplications(
+                              treatment,
+                            ).length,
+                          )}
+                        />
 
-                      <Detail
-                        label="Water"
-                        value={
-                          treatment.waterRequiredLitres >
-                          0
-                            ? `${treatment.waterRequiredLitres} L`
-                            : "—"
-                        }
-                      />
+                        <Detail
+                          label="Product cost"
+                          value={`£${getTreatmentTotalProductCost(
+                            treatment,
+                          ).toFixed(2)}`}
+                        />
 
-                      <Detail
-                        label="Chemical cost"
-                        value={`£${treatment.estimatedProductCost.toFixed(
-                          2,
-                        )}`}
-                      />
+                        <Detail
+                          label="Invoice"
+                          value={
+                            treatment.invoiceNumber ||
+                            "Not recorded"
+                          }
+                        />
+                      </div>
 
-                      <div className="sm:col-span-4">
+                      <div className="mt-4">
+                        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Internal product applications
+                        </div>
+
+                        <HistoryApplicationList
+                          applications={getTreatmentApplications(
+                            treatment,
+                          )}
+                        />
+                      </div>
+
+                      <div className="mt-4">
                         <Detail
                           label="Notes"
                           value={
@@ -284,21 +323,108 @@ export function CustomerTreatmentHistory({
   );
 }
 
-function getProducts(
-  treatment: TreatmentRecord,
+function HistoryApplicationList({
+  applications,
+}: {
+  applications: TreatmentApplication[];
+}) {
+  if (applications.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+        No products were recorded for this visit.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {applications.map(
+        (application) => (
+          <div
+            key={application.id}
+            className="rounded-xl border border-slate-200 bg-white p-4"
+          >
+            <div className="font-bold">
+              {application.productName}
+            </div>
+
+            <div className="mt-1 text-xs text-slate-500">
+              {application.productType ||
+                "Uncategorised"}
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Detail
+                label="Quantity"
+                value={formatProductAmount(
+                  application.productRequired,
+                  application.productUnit,
+                )}
+              />
+
+              <Detail
+                label="Rate"
+                value={
+                  application.applicationRate >
+                  0
+                    ? `${application.applicationRate} ${application.applicationRateUnit}`
+                    : "—"
+                }
+              />
+
+              <Detail
+                label="Water"
+                value={
+                  application.waterRequiredLitres >
+                  0
+                    ? `${application.waterRequiredLitres} L`
+                    : "—"
+                }
+              />
+
+              <Detail
+                label="Cost"
+                value={`£${application.estimatedProductCost.toFixed(
+                  2,
+                )}`}
+              />
+            </div>
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
+function formatProductAmount(
+  amount: number,
+  unit: string,
 ) {
-  return [
-    treatment.chemicalName,
-    treatment.fertiliser,
-    treatment.herbicide,
-    treatment.otherMaterials,
-  ]
-    .filter(
-      (value) =>
-        value &&
-        value !== "None",
-    )
-    .join(", ");
+  if (!unit || amount <= 0) {
+    return "Not recorded";
+  }
+
+  if (
+    unit === "L" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} ml`;
+  }
+
+  if (
+    unit === "kg" &&
+    amount < 1
+  ) {
+    return `${(
+      amount * 1000
+    ).toFixed(1)} g`;
+  }
+
+  return `${amount.toFixed(
+    3,
+  )} ${unit}`;
 }
 
 function getRecordDate(

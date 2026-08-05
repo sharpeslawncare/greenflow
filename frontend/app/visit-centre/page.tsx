@@ -27,6 +27,8 @@ import {
   useProgrammeStore,
 } from "@/components/programme-store";
 import { useSeasonStore } from "@/components/season-store";
+import { getTodayDateValue } from "@/lib/date-utils";
+import { useRouteOrderStore } from "@/components/route-order-store";
 import {
   createTreatmentApplication,
   createTreatmentRecord,
@@ -57,6 +59,14 @@ type ProductSelection = {
   chemicalId: string;
 };
 
+type StandardMix = {
+  fertiliserId: string;
+  herbicideId: string;
+  additionalProductIds: string[];
+};
+
+type StandardMixStore = Record<string, StandardMix>;
+
 type ApplicationCalculation = {
   productRequired: number;
   productUnit: ChemicalUnit;
@@ -73,6 +83,22 @@ type ProductRequirement = {
   requiredUnit: ChemicalUnit;
 };
 
+type CompletionResult = {
+  outcome: VisitOutcome;
+  completedAt: string;
+  treatmentRecords: Array<{
+    treatmentId: string;
+    customerNumber: string;
+    customerName: string;
+    invoiceNumber: string;
+  }>;
+  stockDeductions: Array<{
+    productName: string;
+    amount: number;
+    unit: ChemicalUnit;
+  }>;
+};
+
 const observationOptions = [
   "Healthy",
   "Dry",
@@ -85,6 +111,15 @@ const observationOptions = [
   "Pet damage",
 ] as const;
 
+const STANDARD_MIX_STORAGE_KEY =
+  "greenflow-visit-centre-standard-mixes-v1";
+
+const emptyStandardMix: StandardMix = {
+  fertiliserId: "",
+  herbicideId: "",
+  additionalProductIds: [],
+};
+
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
@@ -92,6 +127,33 @@ export default function VisitCentrePage() {
   const searchParams = useSearchParams();
   const requestedDate = searchParams.get("date");
   const requestedCustomer = searchParams.get("customer");
+
+  const requestedGroupValue =
+    searchParams.get("group");
+
+  const requestedGroup =
+    requestedGroupValue &&
+    /^\d+$/.test(
+      requestedGroupValue,
+    )
+      ? Number(
+          requestedGroupValue,
+        )
+      : 0;
+
+
+  const requestedVanValue =
+    searchParams.get("van");
+
+  const requestedVan =
+    requestedVanValue &&
+    /^\d+$/.test(
+      requestedVanValue,
+    )
+      ? Number(
+          requestedVanValue,
+        )
+      : 0;
 
   const {
     customers,
@@ -121,28 +183,15 @@ export default function VisitCentrePage() {
     deductChemicalStock,
   } = useChemicalStore();
 
-  const availableDates = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          programmes.flatMap((programme) =>
-            programme.visits
-              .filter(
-                (visit) =>
-                  visit.status === "Scheduled" ||
-                  visit.status === "Planned",
-              )
-              .map((visit) => visit.scheduledDate),
-          ),
-        ),
-      ).sort(),
-    [programmes],
-  );
+  const {
+    ready: routeOrderReady,
+    sortBySavedRoute,
+  } = useRouteOrderStore();
 
   const [selectedDate, setSelectedDate] = useState(
     isDateValue(requestedDate ?? "")
       ? requestedDate!
-      : toDateValue(new Date()),
+      : getTodayDateValue(),
   );
 
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
@@ -156,8 +205,21 @@ export default function VisitCentrePage() {
     ProductSelection[]
   >([]);
 
+  const [standardMix, setStandardMix] =
+    useState<StandardMix>(emptyStandardMix);
+
+  const [standardMixReady, setStandardMixReady] =
+    useState(false);
+
   const [replacementDate, setReplacementDate] = useState("");
   const [message, setMessage] = useState("");
+
+  const [reviewOpen, setReviewOpen] = useState(false);
+
+  const [
+    completionResult,
+    setCompletionResult,
+  ] = useState<CompletionResult | null>(null);
 
   useEffect(() => {
     if (isDateValue(requestedDate ?? "")) {
@@ -166,23 +228,15 @@ export default function VisitCentrePage() {
   }, [requestedDate]);
 
   useEffect(() => {
-    if (
-      selectedDate !== toDateValue(new Date()) ||
-      availableDates.length === 0 ||
-      availableDates.includes(selectedDate)
-    ) {
-      return;
-    }
-
-    const today = toDateValue(new Date());
-    const nextDate =
-      availableDates.find((date) => date >= today) ?? availableDates[0];
-
-    setSelectedDate(nextDate);
-  }, [availableDates, selectedDate]);
+    const savedMixes = readStandardMixStore();
+    setStandardMix(
+      savedMixes[selectedDate] ?? emptyStandardMix,
+    );
+    setStandardMixReady(true);
+  }, [selectedDate]);
 
   const jobs = useMemo<VisitJob[]>(() => {
-    return programmes
+    const items = programmes
       .flatMap((programme) => {
         const customer = customers.find(
           (item) => item.customerNumber === programme.customerNumber,
@@ -212,6 +266,19 @@ export default function VisitCentrePage() {
                 customer.customerNumber,
               ),
           )
+          .filter(
+            () =>
+              (
+                requestedGroup === 0 ||
+                customer.groupNumber ===
+                  requestedGroup
+              ) &&
+              (
+                requestedVan === 0 ||
+                customer.vanNumber ===
+                  requestedVan
+              ),
+          )
           .map((visit) => {
             const standardGroupDate =
               groupDates?.treatmentDates[visit.visitNumber - 1] ??
@@ -227,22 +294,31 @@ export default function VisitCentrePage() {
             };
           });
       })
-      .sort((first, second) => {
-        if (first.customer.vanNumber !== second.customer.vanNumber) {
-          return first.customer.vanNumber - second.customer.vanNumber;
-        }
+      ;
 
-        if (first.customer.groupNumber !== second.customer.groupNumber) {
-          return first.customer.groupNumber - second.customer.groupNumber;
-        }
-
-        return first.customer.fullName.localeCompare(second.customer.fullName);
-      });
-  }, [programmes, customers, seasons, treatments, selectedDate]);
+    return sortBySavedRoute(
+      items,
+      selectedDate,
+    );
+  }, [
+    programmes,
+    customers,
+    seasons,
+    treatments,
+    selectedDate,
+    requestedGroup,
+    requestedVan,
+    sortBySavedRoute,
+  ]);
 
   useEffect(() => {
     if (jobs.length === 0) {
-      setSelectedJobIds([]);
+      setSelectedJobIds(
+        (current) =>
+          current.length === 0
+            ? current
+            : [],
+      );
       return;
     }
 
@@ -309,6 +385,23 @@ export default function VisitCentrePage() {
     )
     .filter((chemical): chemical is ChemicalRecord => Boolean(chemical));
 
+  const standardMixProductIds = Array.from(
+    new Set(
+      [
+        standardMix.fertiliserId,
+        standardMix.herbicideId,
+        ...standardMix.additionalProductIds,
+      ].filter(Boolean),
+    ),
+  );
+
+  const standardMixProducts = standardMixProductIds
+    .map(
+      (id) =>
+        activeChemicals.find((chemical) => chemical.id === id) ?? null,
+    )
+    .filter((chemical): chemical is ChemicalRecord => Boolean(chemical));
+
   const totalSelectedArea = selectedJobs.reduce(
     (total, job) => total + job.customer.lawnSize,
     0,
@@ -348,7 +441,8 @@ export default function VisitCentrePage() {
     programmesReady &&
     seasonsReady &&
     treatmentsReady &&
-    chemicalsReady;
+    chemicalsReady &&
+    routeOrderReady;
 
   if (!ready) {
     return (
@@ -413,6 +507,148 @@ export default function VisitCentrePage() {
     );
   }
 
+  function updateStandardMix(
+    updates: Partial<StandardMix>,
+  ) {
+    setStandardMix((current) => ({
+      ...current,
+      ...updates,
+    }));
+  }
+
+  function addStandardAdditionalProduct() {
+    setStandardMix((current) => ({
+      ...current,
+      additionalProductIds: [
+        ...current.additionalProductIds,
+        "",
+      ],
+    }));
+  }
+
+  function updateStandardAdditionalProduct(
+    index: number,
+    chemicalId: string,
+  ) {
+    setStandardMix((current) => ({
+      ...current,
+      additionalProductIds:
+        current.additionalProductIds.map(
+          (item, itemIndex) =>
+            itemIndex === index
+              ? chemicalId
+              : item,
+        ),
+    }));
+  }
+
+  function removeStandardAdditionalProduct(
+    index: number,
+  ) {
+    setStandardMix((current) => ({
+      ...current,
+      additionalProductIds:
+        current.additionalProductIds.filter(
+          (_item, itemIndex) =>
+            itemIndex !== index,
+        ),
+    }));
+  }
+
+  function saveStandardMix() {
+    const cleanedMix: StandardMix = {
+      fertiliserId:
+        standardMix.fertiliserId,
+      herbicideId:
+        standardMix.herbicideId,
+      additionalProductIds:
+        Array.from(
+          new Set(
+            standardMix.additionalProductIds.filter(
+              Boolean,
+            ),
+          ),
+        ),
+    };
+
+    const savedMixes =
+      readStandardMixStore();
+
+    savedMixes[selectedDate] =
+      cleanedMix;
+
+    window.localStorage.setItem(
+      STANDARD_MIX_STORAGE_KEY,
+      JSON.stringify(savedMixes),
+    );
+
+    setStandardMix(cleanedMix);
+
+    showMessage(
+      `Standard mix saved for ${formatDateWithDay(
+        selectedDate,
+      )}.`,
+    );
+  }
+
+  function applyStandardMix() {
+    if (
+      standardMixProductIds.length === 0
+    ) {
+      showMessage(
+        "Choose and save at least one product in the standard mix first.",
+      );
+      return;
+    }
+
+    setFertiliserId(
+      standardMix.fertiliserId,
+    );
+
+    setHerbicideId(
+      standardMix.herbicideId,
+    );
+
+    setAdditionalProducts(
+      standardMix.additionalProductIds
+        .filter(Boolean)
+        .map((chemicalId) => ({
+          id: createSelectionId(),
+          chemicalId,
+        })),
+    );
+
+    showMessage(
+      `Standard mix applied to ${selectedJobs.length} selected visit${
+        selectedJobs.length === 1
+          ? ""
+          : "s"
+      }.`,
+    );
+  }
+
+  function clearStandardMix() {
+    const savedMixes =
+      readStandardMixStore();
+
+    delete savedMixes[selectedDate];
+
+    window.localStorage.setItem(
+      STANDARD_MIX_STORAGE_KEY,
+      JSON.stringify(savedMixes),
+    );
+
+    setStandardMix(
+      emptyStandardMix,
+    );
+
+    showMessage(
+      `Standard mix cleared for ${formatDateWithDay(
+        selectedDate,
+      )}.`,
+    );
+  }
+
   function saveVisits(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -438,7 +674,7 @@ export default function VisitCentrePage() {
       return;
     }
 
-    if (needsReplacement && replacementDate < toDateValue(new Date())) {
+    if (needsReplacement && replacementDate < getTodayDateValue()) {
       showMessage("The replacement date cannot be in the past.");
       return;
     }
@@ -508,7 +744,7 @@ export default function VisitCentrePage() {
           recordedDate: new Date().toISOString(),
           completedDate:
             outcome === "Completed"
-              ? toDateValue(new Date())
+              ? getTodayDateValue()
               : "",
           status: treatmentStatus,
           treatmentName: job.visit.treatmentName,
@@ -572,7 +808,46 @@ export default function VisitCentrePage() {
 
     const completedCount = selectedJobs.length;
 
+    setCompletionResult({
+      outcome,
+      completedAt: new Date().toISOString(),
+      treatmentRecords: createdTreatments.map(
+        (treatment) => {
+          const customer = selectedJobs.find(
+            (job) =>
+              job.customer.customerNumber ===
+              treatment.customerNumber,
+          )?.customer;
+
+          return {
+            treatmentId: treatment.id,
+            customerNumber:
+              treatment.customerNumber,
+            customerName:
+              customer?.fullName ??
+              treatment.customerNumber,
+            invoiceNumber:
+              treatment.invoiceNumber,
+          };
+        },
+      ),
+      stockDeductions:
+        outcome === "Completed"
+          ? requirements.map(
+              (requirement) => ({
+                productName:
+                  requirement.chemical.name,
+                amount:
+                  requirement.requiredAmount,
+                unit:
+                  requirement.requiredUnit,
+              }),
+            )
+          : [],
+    });
+
     setSelectedJobIds([]);
+    setReviewOpen(false);
     resetSharedForm();
 
     showMessage(
@@ -641,34 +916,230 @@ export default function VisitCentrePage() {
             </div>
 
             <Field label="Working date">
-              <select
-                value={selectedDate}
-                onChange={(event) => {
-                  setSelectedDate(event.target.value);
-                  setSelectedJobIds([]);
-                  resetSharedForm();
-                }}
-                className="min-w-[285px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
-              >
-                {!availableDates.includes(selectedDate) && (
-                  <option value={selectedDate}>
-                    {formatDateWithDay(selectedDate)}
-                  </option>
-                )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => {
+                    setSelectedDate(event.target.value);
+                    setSelectedJobIds([]);
+                    resetSharedForm();
+                  }}
+                  className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                />
 
-                {availableDates.map((date) => (
-                  <option key={date} value={date}>
-                    {formatDateWithDay(date)}
-                  </option>
-                ))}
-              </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDate(getTodayDateValue());
+                    setSelectedJobIds([]);
+                    resetSharedForm();
+                  }}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Today
+                </button>
+              </div>
             </Field>
           </header>
+
+          {(requestedGroup > 0 ||
+            requestedVan > 0) && (
+            <section className="mb-4 rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+                    Route filter active
+                  </div>
+
+                  <h2 className="mt-1 text-xl font-bold text-green-950">
+                    {requestedGroup > 0 &&
+                    requestedVan > 0
+                      ? `Viewing Group ${requestedGroup}, Van ${requestedVan}`
+                      : requestedGroup > 0
+                        ? `Viewing Group ${requestedGroup}`
+                        : `Viewing Van ${requestedVan}`}
+                  </h2>
+
+                  <p className="mt-1 text-sm text-green-800">
+                    Showing only matching visits scheduled for{" "}
+                    <strong>
+                      {formatDateWithDay(
+                        selectedDate,
+                      )}
+                    </strong>
+                    .
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/routes?date=${selectedDate}`}
+                    className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+                  >
+                    Back to Groups & Routes
+                  </Link>
+
+                  <Link
+                    href={`/visit-centre?date=${selectedDate}`}
+                    className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                  >
+                    Clear route filter
+                  </Link>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {jobs.length === 0 && (
+            <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
+              {requestedGroup > 0 ||
+              requestedVan > 0
+                ? `No remaining visits match this route filter on ${formatDateWithDay(
+                    selectedDate,
+                  )}.`
+                : `No visits are scheduled for ${formatDateWithDay(
+                    selectedDate,
+                  )}.`}{" "}
+              Choose another calendar date
+              {requestedGroup > 0 ||
+              requestedVan > 0
+                ? " or clear the route filter."
+                : " or return to Today’s Jobs."}
+            </section>
+          )}
 
           {message && (
             <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
               {message}
             </div>
+          )}
+
+          {completionResult && (
+            <section className="mb-4 rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+                    Visit processing complete
+                  </div>
+
+                  <h2 className="mt-2 text-xl font-bold text-green-950">
+                    {completionResult.treatmentRecords.length} visit
+                    {completionResult.treatmentRecords.length === 1
+                      ? ""
+                      : "s"}{" "}
+                    saved successfully
+                  </h2>
+
+                  <p className="mt-1 text-sm text-green-800">
+                    Treatment records, programme updates and internal product usage have been saved.
+                    {completionResult.outcome === "Completed"
+                      ? " Customer documents are now available from each treatment record."
+                      : ""}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCompletionResult(null)
+                  }
+                  className="rounded-xl border border-green-300 bg-white px-4 py-2 text-sm font-semibold text-green-800 hover:bg-green-100"
+                >
+                  Dismiss
+                </button>
+              </div>
+
+              {completionResult.stockDeductions.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-sm font-bold text-green-950">
+                    Stock deducted
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {completionResult.stockDeductions.map(
+                      (item) => (
+                        <span
+                          key={`${item.productName}-${item.unit}`}
+                          className="rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-semibold text-green-800"
+                        >
+                          {item.productName}:{" "}
+                          {formatApplicationAmount(
+                            item.amount,
+                            item.unit,
+                          )}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {completionResult.treatmentRecords.map(
+                  (record) => (
+                    <div
+                      key={record.treatmentId}
+                      className="rounded-xl border border-green-200 bg-white p-3"
+                    >
+                      <div className="font-bold text-slate-900">
+                        {record.customerName}
+                      </div>
+
+                      <div className="mt-1 text-xs text-slate-500">
+                        Customer {record.customerNumber}
+                        {record.invoiceNumber
+                          ? ` · ${record.invoiceNumber}`
+                          : ""}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Link
+                          href={`/customers/${record.customerNumber}`}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+                        >
+                          Customer
+                        </Link>
+
+                        {completionResult.outcome === "Completed" && (
+                          <Link
+                            href={`/documents/${record.treatmentId}`}
+                            className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-semibold text-white hover:bg-[#125b2f]"
+                          >
+                            Open document
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href="/treatments"
+                  className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+                >
+                  Open treatment records
+                </Link>
+
+                {completionResult.outcome === "Completed" && (
+                  <Link
+                    href="/documents"
+                    className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+                  >
+                    Open document centre
+                  </Link>
+                )}
+
+                <Link
+                  href="/chemical-usage"
+                  className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+                >
+                  Review product usage
+                </Link>
+              </div>
+            </section>
           )}
 
           <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -711,6 +1182,12 @@ export default function VisitCentrePage() {
 
                     <p className="mt-1 text-xs text-slate-500">
                       {selectedJobs.length} selected
+                      {requestedGroup > 0
+                        ? ` · Group ${requestedGroup}`
+                        : ""}
+                      {requestedVan > 0
+                        ? ` · Van ${requestedVan}`
+                        : ""}
                     </p>
                   </div>
 
@@ -860,7 +1337,7 @@ export default function VisitCentrePage() {
                           <Field label="Replacement date">
                             <input
                               type="date"
-                              min={toDateValue(new Date())}
+                              min={getTodayDateValue()}
                               value={replacementDate}
                               onChange={(event) =>
                                 setReplacementDate(event.target.value)
@@ -914,6 +1391,149 @@ export default function VisitCentrePage() {
                     </div>
                   </Panel>
                 </section>
+
+                {outcome === "Completed" && standardMixReady && (
+                  <Panel title="Today’s Standard Mix">
+                    <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-green-900">
+                            Reusable products for {formatDateWithDay(selectedDate)}
+                          </div>
+
+                          <p className="mt-1 text-sm leading-6 text-green-800">
+                            Save the products used for this working date, then
+                            apply them to the selected customers in one click.
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-green-800">
+                          {standardMixProducts.length} product
+                          {standardMixProducts.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <Field label="Standard fertiliser">
+                        <select
+                          value={standardMix.fertiliserId}
+                          onChange={(event) =>
+                            updateStandardMix({
+                              fertiliserId: event.target.value,
+                            })
+                          }
+                          className={inputClass}
+                        >
+                          <option value="">No fertiliser</option>
+
+                          {fertilisers.map((chemical) => (
+                            <option key={chemical.id} value={chemical.id}>
+                              {chemical.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+
+                      <Field label="Standard herbicide">
+                        <select
+                          value={standardMix.herbicideId}
+                          onChange={(event) =>
+                            updateStandardMix({
+                              herbicideId: event.target.value,
+                            })
+                          }
+                          className={inputClass}
+                        >
+                          <option value="">No herbicide</option>
+
+                          {herbicides.map((chemical) => (
+                            <option key={chemical.id} value={chemical.id}>
+                              {chemical.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {standardMix.additionalProductIds.map(
+                        (chemicalId, index) => (
+                          <div
+                            key={`${index}-${chemicalId}`}
+                            className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_auto] sm:items-end"
+                          >
+                            <Field label={`Standard additional product ${index + 1}`}>
+                              <select
+                                value={chemicalId}
+                                onChange={(event) =>
+                                  updateStandardAdditionalProduct(
+                                    index,
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                              >
+                                <option value="">Choose product</option>
+
+                                {activeChemicals.map((chemical) => (
+                                  <option key={chemical.id} value={chemical.id}>
+                                    {chemical.name} — {chemical.type}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeStandardAdditionalProduct(index)
+                              }
+                              className="h-11 rounded-xl border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ),
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={addStandardAdditionalProduct}
+                        className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                      >
+                        + Add another standard product
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={saveStandardMix}
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                      >
+                        Save standard mix
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={applyStandardMix}
+                        disabled={standardMixProductIds.length === 0}
+                        className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        Apply to {selectedJobs.length} selected
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={clearStandardMix}
+                        className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                      >
+                        Clear saved mix
+                      </button>
+                    </div>
+                  </Panel>
+                )}
 
                 {outcome === "Completed" && (
                   <Panel title="Products used">
@@ -1061,7 +1681,8 @@ export default function VisitCentrePage() {
                   </div>
 
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={() => setReviewOpen(true)}
                     disabled={
                       selectedJobs.length === 0 ||
                       (outcome !== "Completed" && selectedJobs.length > 1)
@@ -1069,21 +1690,214 @@ export default function VisitCentrePage() {
                     className="rounded-xl bg-[#176b37] px-8 py-3 text-base font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {outcome === "Completed"
-                      ? `Complete ${selectedJobs.length || ""} visit${
+                      ? `Review ${selectedJobs.length || ""} visit${
                           selectedJobs.length === 1 ? "" : "s"
                         }`
                       : outcome === "Cancelled"
-                        ? "Save cancellation"
-                        : "Save and reschedule"}
+                        ? "Review cancellation"
+                        : "Review reschedule"}
                   </button>
                 </div>
               </section>
             </section>
+
+            {reviewOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+                <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+                  <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
+                    <div>
+                      <h2 className="text-2xl font-bold">
+                        Review bulk completion
+                      </h2>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        Check the customers, outcome and products before GreenFlow creates the individual records.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setReviewOpen(false)}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div className="space-y-5 p-5">
+                    <div className="grid gap-3 sm:grid-cols-4">
+                      <ReviewStat label="Working date" value={formatDateWithDay(selectedDate)} />
+                      <ReviewStat label="Customers" value={String(selectedJobs.length)} />
+                      <ReviewStat label="Combined area" value={`${totalSelectedArea.toLocaleString("en-GB")} m²`} />
+                      <ReviewStat label="Outcome" value={outcome} />
+                    </div>
+
+                    <section className="rounded-xl border border-slate-200">
+                      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-bold">
+                        Selected customers
+                      </div>
+
+                      <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+                        {selectedJobs.map((job) => (
+                          <div
+                            key={job.id}
+                            className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_120px_120px]"
+                          >
+                            <div>
+                              <div className="font-bold">{job.customer.fullName}</div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {job.customer.address}, {job.customer.postcode}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold text-slate-500">Group</div>
+                              <div className="mt-1 font-semibold">{job.customer.groupNumber}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold text-slate-500">Area</div>
+                              <div className="mt-1 font-semibold">
+                                {job.customer.lawnSize.toLocaleString("en-GB")} m²
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    {outcome === "Completed" && (
+                      <section className="rounded-xl border border-slate-200 p-4">
+                        <h3 className="font-bold">Products to record</h3>
+
+                        {selectedProducts.length === 0 ? (
+                          <p className="mt-3 text-sm text-amber-700">
+                            No products are selected. You will be asked to confirm this when completing.
+                          </p>
+                        ) : (
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            {combinedPreview.map(({ chemical, calculation }) => (
+                              <div
+                                key={chemical.id}
+                                className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                              >
+                                <div className="font-bold">{chemical.name}</div>
+                                <div className="mt-1 text-xs text-slate-500">{chemical.type}</div>
+                                <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                                  <span className="text-slate-500">Combined requirement</span>
+                                  <span className="font-bold">
+                                    {formatApplicationAmount(
+                                      calculation.productRequired,
+                                      calculation.productUnit,
+                                    )}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    )}
+
+                    {(observations.length > 0 || notes.trim()) && (
+                      <section className="rounded-xl border border-slate-200 p-4">
+                        <h3 className="font-bold">Shared visit information</h3>
+
+                        {observations.length > 0 && (
+                          <p className="mt-3 text-sm text-slate-700">
+                            <strong>Observations:</strong> {observations.join(", ")}
+                          </p>
+                        )}
+
+                        {notes.trim() && (
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                            {notes.trim()}
+                          </p>
+                        )}
+                      </section>
+                    )}
+                  </div>
+
+                  <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4">
+                    <p className="text-sm text-slate-500">
+                      GreenFlow will create one separate treatment record and invoice for every selected completed visit.
+                    </p>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setReviewOpen(false)}
+                        className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold hover:bg-slate-50"
+                      >
+                        Go back
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="rounded-xl bg-[#176b37] px-6 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                      >
+                        {outcome === "Completed"
+                          ? `Complete ${selectedJobs.length} visit${selectedJobs.length === 1 ? "" : "s"}`
+                          : outcome === "Cancelled"
+                            ? "Confirm cancellation"
+                            : "Confirm and reschedule"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </div>
       </main>
     </AppShell>
   );
+}
+
+function ReviewStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className="mt-1 font-bold">{value}</div>
+    </div>
+  );
+}
+
+function readStandardMixStore(): StandardMixStore {
+  if (
+    typeof window === "undefined"
+  ) {
+    return {};
+  }
+
+  const saved =
+    window.localStorage.getItem(
+      STANDARD_MIX_STORAGE_KEY,
+    );
+
+  if (!saved) {
+    return {};
+  }
+
+  try {
+    const parsed =
+      JSON.parse(saved) as StandardMixStore;
+
+    return parsed &&
+      typeof parsed === "object"
+      ? parsed
+      : {};
+  } catch {
+    window.localStorage.removeItem(
+      STANDARD_MIX_STORAGE_KEY,
+    );
+
+    return {};
+  }
 }
 
 function aggregateProductRequirements(
