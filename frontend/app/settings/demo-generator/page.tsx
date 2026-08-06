@@ -8,6 +8,8 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
+import { useTreatmentStore } from "@/components/treatment-store";
+import { useEnquiryStore } from "@/components/enquiry-store";
 import {
   type DemoCustomerCount,
   generateDemoCustomers,
@@ -25,9 +27,26 @@ const customerCountOptions: DemoCustomerCount[] = [
 export default function DemoGeneratorPage() {
   const {
     customers,
-    ready,
+    ready: customersReady,
     replaceCustomers,
   } = useCustomerStore();
+
+  const {
+    treatments,
+    ready: treatmentsReady,
+    deleteTreatment,
+  } = useTreatmentStore();
+
+  const {
+    enquiries,
+    ready: enquiriesReady,
+    clearEnquiries,
+  } = useEnquiryStore();
+
+  const ready =
+    customersReady &&
+    treatmentsReady &&
+    enquiriesReady;
 
   const [
     customerCount,
@@ -85,22 +104,59 @@ export default function DemoGeneratorPage() {
   function generateCustomers() {
     const confirmed =
       window.confirm(
-        `Replace the current ${customers.length} customers with ${customerCount} generated demo customers? This step changes customers only. Treatments, enquiries and programmes are not cleared yet.`,
+        `Create a clean ${customerCount}-customer demo database? This replaces ${customers.length} current customers and removes ${treatments.length} treatment records plus ${enquiries.length} enquiries, arranged site visits and quotes. Annual programmes will rebuild from the Season Planner after reload.`,
       );
 
     if (!confirmed) return;
 
-    replaceCustomers(
-      previewCustomers,
-    );
+    try {
+      for (const treatment of treatments) {
+        deleteTreatment(
+          treatment.id,
+        );
+      }
 
-    setMessage(
-      `${customerCount} demo customers created across ${groupSummary.length} groups.`,
-    );
+      clearEnquiries();
 
-    window.setTimeout(() => {
-      setMessage("");
-    }, 3500);
+      window.localStorage.removeItem(
+        "greenflow-customer-programmes-v1",
+      );
+
+      window.localStorage.removeItem(
+        "greenflow-route-orders-v1",
+      );
+
+      window.localStorage.removeItem(
+        "greenflow-visit-centre-standard-mixes-v1",
+      );
+
+      replaceCustomers(
+        previewCustomers,
+      );
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "greenflow:route-orders-updated",
+        ),
+      );
+
+      setMessage(
+        `${customerCount} demo customers created. GreenFlow will now reload and rebuild their annual programmes.`,
+      );
+
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    } catch (error) {
+      console.error(
+        "Demo database generation failed:",
+        error,
+      );
+
+      setMessage(
+        "The demo database was not generated successfully. Restore your latest backup before retrying.",
+      );
+    }
   }
 
   if (!ready) {
@@ -132,7 +188,7 @@ export default function DemoGeneratorPage() {
             </h1>
 
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Generate a predictable customer database for testing. This first version changes customers only.
+              Generate a predictable, clean database for testing. Customers are replaced and operational history is cleared.
             </p>
           </header>
 
@@ -200,6 +256,20 @@ export default function DemoGeneratorPage() {
                   label="Status"
                   value="Active"
                 />
+
+                <SettingSummary
+                  label="Treatments removed"
+                  value={String(
+                    treatments.length,
+                  )}
+                />
+
+                <SettingSummary
+                  label="Enquiries removed"
+                  value={String(
+                    enquiries.length,
+                  )}
+                />
               </div>
 
               <button
@@ -209,11 +279,11 @@ export default function DemoGeneratorPage() {
                 }
                 className="mt-6 w-full rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
-                Generate Customers
+                Generate Clean Demo Database
               </button>
 
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                This replaces the current customer list. Create a backup first when the existing customer data matters.
+                This replaces customers and clears treatments, chemical-usage history, invoices, enquiries, arranged site visits, quotes, saved route ordering and Today’s Mix. Create a backup first when the current data matters.
               </div>
             </aside>
 
