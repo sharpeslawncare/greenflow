@@ -52,6 +52,10 @@ type CustomerStoreValue = {
   getNextCustomerNumber: () => string;
 
   restoreDemoCustomers: () => void;
+
+  replaceCustomers: (
+    customers: Customer[],
+  ) => void;
 };
 
 const CustomerStoreContext =
@@ -263,6 +267,26 @@ export function CustomerStoreProvider({
     );
   }
 
+  function replaceCustomers(
+    replacementCustomers: Customer[],
+  ) {
+    const normalisedCustomers =
+      normaliseEstablishedCustomers(
+        replacementCustomers,
+      );
+
+    setCustomers(
+      normalisedCustomers,
+    );
+
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(
+        normalisedCustomers,
+      ),
+    );
+  }
+
   const value =
     useMemo<CustomerStoreValue>(
       () => ({
@@ -276,6 +300,7 @@ export function CustomerStoreProvider({
         getNextCustomerNumber,
 
         restoreDemoCustomers,
+        replaceCustomers,
       }),
       [customers, ready],
     );
