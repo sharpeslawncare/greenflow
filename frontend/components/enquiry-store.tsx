@@ -135,6 +135,7 @@ type EnquiryStoreValue = {
   ) => void;
 
   restoreDemoEnquiries: () => void;
+  clearEnquiries: () => void;
 };
 
 const STORAGE_KEY =
@@ -145,121 +146,7 @@ const EnquiryStoreContext =
     null,
   );
 
-const defaultDemoEnquiries: EnquiryRecord[] = [
-  {
-    id: "enquiry-demo-1",
-    enquiryNumber: "ENQ-0001",
-
-    createdAt: "2028-04-15T09:30:00.000Z",
-    updatedAt: "2028-04-15T09:30:00.000Z",
-
-    status: "Visit Arranged",
-    source: "Recommendation",
-    referredBy: "John Smith",
-
-    firstName: "Emily",
-    surname: "Carter",
-    fullName: "Emily Carter",
-
-    address: "24 Meadow Close",
-    postcode: "DEMO 4GF",
-
-    emailAddress: "emily.carter@example.com",
-    homePhone: "",
-    mobilePhone: "07700 900456",
-
-    initialMessage:
-      "Recommended by an existing customer. Would like a quotation for regular seasonal lawn treatments.",
-    internalNotes:
-      "Front and rear lawns. Access appears straightforward.",
-
-    siteVisitDate: "2028-04-18",
-    siteVisitTime: "10:30",
-
-    lawnMeasured: false,
-    lawnSizeSquareMetres: 0,
-
-    minimumPriceApplied: false,
-    pricePerSquareMetre: 0.18,
-    calculatedTreatmentPrice: 0,
-    quotedTreatmentPrice: 0,
-
-    quoteStatus: "Not Prepared",
-    quoteDate: "",
-    quoteExpiryDate: "",
-    quoteNotes: "",
-
-    treatmentStartedImmediately: false,
-
-    suggestedGroupNumber: 7,
-    suggestedVanNumber: 1,
-
-    extraWorkRequired: false,
-    extraWorkDescription: "",
-    preferredExtraWorkSeason: "",
-
-    convertedCustomerNumber: "",
-    convertedAt: "",
-  },
-
-  {
-    id: "enquiry-demo-2",
-    enquiryNumber: "ENQ-0002",
-
-    createdAt: "2028-04-16T13:10:00.000Z",
-    updatedAt: "2028-04-16T15:45:00.000Z",
-
-    status: "Quote Prepared",
-    source: "Website",
-    referredBy: "",
-
-    firstName: "Michael",
-    surname: "Turner",
-    fullName: "Michael Turner",
-
-    address: "8 Orchard View",
-    postcode: "DEMO 8LT",
-
-    emailAddress: "michael.turner@example.com",
-    homePhone: "",
-    mobilePhone: "07700 900789",
-
-    initialMessage:
-      "Website enquiry requesting help with a lawn containing moss and broad-leaved weeds.",
-    internalNotes:
-      "Measured during site visit. Customer interested in beginning immediately.",
-
-    siteVisitDate: "2028-04-17",
-    siteVisitTime: "14:00",
-
-    lawnMeasured: true,
-    lawnSizeSquareMetres: 165,
-
-    minimumPriceApplied: false,
-    pricePerSquareMetre: 0.18,
-    calculatedTreatmentPrice: 29.7,
-    quotedTreatmentPrice: 30,
-
-    quoteStatus: "Presented",
-    quoteDate: "2028-04-17",
-    quoteExpiryDate: "2028-05-17",
-    quoteNotes:
-      "Regular seasonal treatment quoted at £30.00 including VAT.",
-
-    treatmentStartedImmediately: false,
-
-    suggestedGroupNumber: 9,
-    suggestedVanNumber: 1,
-
-    extraWorkRequired: true,
-    extraWorkDescription:
-      "Possible autumn scarification followed by overseeding.",
-    preferredExtraWorkSeason: "Autumn",
-
-    convertedCustomerNumber: "",
-    convertedAt: "",
-  },
-];
+const defaultDemoEnquiries: EnquiryRecord[] = [];
 
 export function EnquiryStoreProvider({
   children,
@@ -530,16 +417,18 @@ export function EnquiryStoreProvider({
   }
 
   function restoreDemoEnquiries() {
-    setEnquiries(
-      defaultDemoEnquiries.map(
-        (enquiry) => ({
-          ...enquiry,
-        }),
-      ),
-    );
-
-    window.localStorage.removeItem(
+    setEnquiries([]);
+    window.localStorage.setItem(
       STORAGE_KEY,
+      JSON.stringify([]),
+    );
+  }
+
+  function clearEnquiries() {
+    setEnquiries([]);
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([]),
     );
   }
 
@@ -555,6 +444,7 @@ export function EnquiryStoreProvider({
         calculateQuote,
         markConverted,
         restoreDemoEnquiries,
+        clearEnquiries,
       }),
       [enquiries, ready],
     );

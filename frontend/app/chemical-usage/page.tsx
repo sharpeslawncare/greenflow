@@ -41,6 +41,11 @@ type UsageRow = {
   productRequired: number;
   productUnit: string;
 
+  applicationMethod: string;
+  fullLawnProductRequired: number;
+  actualProductRequired: number;
+  spotSprayPercentage: number;
+
   waterRequiredLitres: number;
   tankFills: number;
 
@@ -985,6 +990,14 @@ export default function ChemicalUsagePage() {
                         />
 
                         <DetailItem
+                          label="Application method"
+                          value={
+                            selectedRow.applicationMethod ||
+                            "Not applicable"
+                          }
+                        />
+
+                        <DetailItem
                           label="Application rate"
                           value={
                             selectedRow.applicationRate >
@@ -995,12 +1008,29 @@ export default function ChemicalUsagePage() {
                         />
 
                         <DetailItem
-                          label="Product required"
+                          label={
+                            selectedRow.applicationMethod ===
+                            "Spot Spray"
+                              ? "Actual product used"
+                              : "Product used"
+                          }
                           value={formatProductAmount(
-                            selectedRow.productRequired,
+                            selectedRow.actualProductRequired ||
+                              selectedRow.productRequired,
                             selectedRow.productUnit,
                           )}
                         />
+
+                        {selectedRow.applicationMethod ===
+                          "Spot Spray" && (
+                          <DetailItem
+                            label="Full-lawn equivalent"
+                            value={formatProductAmount(
+                              selectedRow.fullLawnProductRequired,
+                              selectedRow.productUnit,
+                            )}
+                          />
+                        )}
 
                         <DetailItem
                           label="Estimated cost"
@@ -1147,11 +1177,28 @@ export default function ChemicalUsagePage() {
                           }
                         </div>
 
-                        <div className="mt-1 text-xs text-slate-500">
-                          {
-                            row.productType ||
-                            "Uncategorised"
-                          }
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span>
+                            {
+                              row.productType ||
+                              "Uncategorised"
+                            }
+                          </span>
+
+                          {row.applicationMethod && (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                row.applicationMethod ===
+                                "Spot Spray"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-green-100 text-green-800"
+                              }`}
+                            >
+                              {
+                                row.applicationMethod
+                              }
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1237,6 +1284,18 @@ function createUsageRow(
 
     productUnit:
       application.productUnit,
+
+    applicationMethod:
+      application.applicationMethod,
+
+    fullLawnProductRequired:
+      application.fullLawnProductRequired,
+
+    actualProductRequired:
+      application.actualProductRequired,
+
+    spotSprayPercentage:
+      application.spotSprayPercentage,
 
     waterRequiredLitres:
       application.waterRequiredLitres,

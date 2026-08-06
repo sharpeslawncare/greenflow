@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import {
+  type ChangeEvent,
   type ReactNode,
+  useEffect,
   useState,
 } from "react";
 
@@ -20,8 +22,15 @@ import {
   type FleetVehicle,
   useFleetStore,
 } from "@/components/fleet-store";
+import { useCustomerStore } from "@/components/customer-store";
+import { useProgrammeStore } from "@/components/programme-store";
+import { useTreatmentStore } from "@/components/treatment-store";
+import { useChemicalStore } from "@/components/chemical-store";
 
 type SettingsTab =
+  | "maintenance"
+  | "health"
+  | "backups"
   | "business"
   | "invoices"
   | "wording"
@@ -33,6 +42,18 @@ const tabs: Array<{
   id: SettingsTab;
   label: string;
 }> = [
+  {
+    id: "maintenance",
+    label: "Operational",
+  },
+  {
+    id: "health",
+    label: "System Health",
+  },
+  {
+    id: "backups",
+    label: "Backup & Restore",
+  },
   {
     id: "business",
     label: "Business details",
@@ -84,11 +105,50 @@ export default function SettingsPage() {
     restoreDefaultFleet,
   } = useFleetStore();
 
+  const {
+    customers,
+    ready: customersReady,
+  } = useCustomerStore();
+
+  const {
+    programmes,
+    ready: programmesReady,
+  } = useProgrammeStore();
+
+  const {
+    treatments,
+    ready: treatmentsReady,
+  } = useTreatmentStore();
+
+  const {
+    chemicals,
+    ready: chemicalsReady,
+  } = useChemicalStore();
+
   const [activeTab, setActiveTab] =
-    useState<SettingsTab>("business");
+    useState<SettingsTab>("maintenance");
 
   const [message, setMessage] =
     useState("");
+
+  const [healthCheckRun, setHealthCheckRun] =
+    useState(false);
+
+  const [lastBackupAt, setLastBackupAt] =
+    useState("");
+
+  useEffect(() => {
+    const backupDate =
+      window.localStorage.getItem(
+        "greenflow-last-backup-at",
+      );
+
+    if (backupDate) {
+      setLastBackupAt(
+        backupDate,
+      );
+    }
+  }, []);
 
   function showMessage(text: string) {
     setMessage(text);
@@ -96,6 +156,178 @@ export default function SettingsPage() {
     window.setTimeout(() => {
       setMessage("");
     }, 2800);
+  }
+
+  function createBackup() {
+    const payload: Record<string, string> = {};
+
+    for (
+      let index = 0;
+      index < window.localStorage.length;
+      index += 1
+    ) {
+      const key =
+        window.localStorage.key(index);
+
+      if (
+        !key ||
+        !key.startsWith("greenflow-")
+      ) {
+        continue;
+      }
+
+      const value =
+        window.localStorage.getItem(key);
+
+      if (value !== null) {
+        payload[key] = value;
+      }
+    }
+
+    const createdAt =
+      new Date().toISOString();
+
+    const backup = {
+      application: "GreenFlow",
+      version: 1,
+      createdAt,
+      items: payload,
+    };
+
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          backup,
+          null,
+          2,
+        ),
+      ],
+      {
+        type: "application/json",
+      },
+    );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const link =
+      document.createElement("a");
+
+    link.href = url;
+    link.download =
+      `greenflow-backup-${createdAt
+        .slice(0, 19)
+        .replaceAll(":", "-")}.json`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+
+    window.localStorage.setItem(
+      "greenflow-last-backup-at",
+      createdAt,
+    );
+
+    setLastBackupAt(createdAt);
+
+    showMessage(
+      "GreenFlow backup downloaded.",
+    );
+  }
+
+  async function restoreBackup(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file =
+      event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) return;
+
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(
+        await file.text(),
+      );
+    } catch {
+      showMessage(
+        "The selected file is not valid JSON.",
+      );
+      return;
+    }
+
+    if (
+      !isGreenFlowBackup(parsed)
+    ) {
+      showMessage(
+        "The selected file is not a valid GreenFlow backup.",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Restore the backup created ${formatBackupDate(
+        parsed.createdAt,
+      )}? Existing GreenFlow browser data will be replaced.`,
+    );
+
+    if (!confirmed) return;
+
+    const currentGreenFlowKeys: string[] =
+      [];
+
+    for (
+      let index = 0;
+      index < window.localStorage.length;
+      index += 1
+    ) {
+      const key =
+        window.localStorage.key(index);
+
+      if (
+        key?.startsWith(
+          "greenflow-",
+        )
+      ) {
+        currentGreenFlowKeys.push(
+          key,
+        );
+      }
+    }
+
+    currentGreenFlowKeys.forEach(
+      (key) =>
+        window.localStorage.removeItem(
+          key,
+        ),
+    );
+
+    Object.entries(
+      parsed.items,
+    ).forEach(
+      ([key, value]) => {
+        if (
+          key.startsWith(
+            "greenflow-",
+          )
+        ) {
+          window.localStorage.setItem(
+            key,
+            value,
+          );
+        }
+      },
+    );
+
+    window.alert(
+      "Backup restored successfully. GreenFlow will now reload.",
+    );
+
+    window.location.reload();
   }
 
   function restoreDefaults() {
@@ -109,6 +341,85 @@ export default function SettingsPage() {
     showMessage(
       "Default GreenFlow settings restored.",
     );
+  }
+
+  function startNewTestDay() {
+    const confirmed = window.confirm(
+      "Start a new test day? This clears treatment outcomes, chemical-usage history, treatment documents and Visit Centre dashboard totals. Customers, programmes, routes, chemicals, stock, fleet and settings are preserved.",
+    );
+
+    if (!confirmed) return;
+
+    const treatmentKeys = [
+      "greenflow-treatments-v3",
+      "greenflow-treatments-v2",
+      "greenflow-treatments-v1",
+    ];
+
+    treatmentKeys.forEach((key) =>
+      window.localStorage.removeItem(key),
+    );
+
+    const programmeKeys = [
+      "greenflow-programmes-v3",
+      "greenflow-programmes-v2",
+      "greenflow-programmes-v1",
+    ];
+
+    programmeKeys.forEach((key) => {
+      const saved =
+        window.localStorage.getItem(key);
+
+      if (!saved) return;
+
+      try {
+        const programmes = JSON.parse(saved) as Array<{
+          visits?: Array<{
+            status?: string;
+            notes?: string;
+            [key: string]: unknown;
+          }>;
+          [key: string]: unknown;
+        }>;
+
+        const resetProgrammes = Array.isArray(programmes)
+          ? programmes.map((programme) => ({
+              ...programme,
+              visits: Array.isArray(programme.visits)
+                ? programme.visits.map((visit) => ({
+                    ...visit,
+                    status:
+                      visit.status === "Planned"
+                        ? "Planned"
+                        : "Scheduled",
+                    notes: removeOutcomeNotes(
+                      typeof visit.notes === "string"
+                        ? visit.notes
+                        : "",
+                    ),
+                  }))
+                : programme.visits,
+            }))
+          : programmes;
+
+        window.localStorage.setItem(
+          key,
+          JSON.stringify(resetProgrammes),
+        );
+      } catch {
+        // Leave unreadable programme data untouched.
+      }
+    });
+
+    window.localStorage.removeItem(
+      "greenflow-visit-centre-standard-mixes-v1",
+    );
+
+    window.alert(
+      "Operational data cleared. GreenFlow will now reload.",
+    );
+
+    window.location.reload();
   }
 
   function testInvoiceNumber() {
@@ -125,7 +436,14 @@ export default function SettingsPage() {
     );
   }
 
-  if (!ready || !fleetReady) {
+  if (
+    !ready ||
+    !fleetReady ||
+    !customersReady ||
+    !programmesReady ||
+    !treatmentsReady ||
+    !chemicalsReady
+  ) {
     return (
       <AppShell>
         <main className="p-6">
@@ -150,9 +468,13 @@ export default function SettingsPage() {
                 ← Dashboard
               </Link>
 
-              <h1 className="mt-2 text-3xl font-bold">
-                Business Settings
+              <h1 className="text-3xl font-bold">
+              Maintenance
               </h1>
+
+            <p className="mt-2 text-slate-500">
+             System administration, operational resets, backups and diagnostic tools.
+            </p>
 
               <p className="mt-1 text-sm text-slate-500">
                 Manage Sharpes Lawn Care details,
@@ -197,6 +519,47 @@ export default function SettingsPage() {
             </nav>
 
             <div className="p-5 md:p-6">
+              {activeTab === "maintenance" && (
+                <OperationalMaintenanceTab
+                  onStartNewTestDay={
+                    startNewTestDay
+                  }
+                />
+              )}
+
+              {activeTab === "health" && (
+                <SystemHealthTab
+                  customers={customers}
+                  programmes={programmes}
+                  treatments={treatments}
+                  chemicals={chemicals}
+                  vehicles={vehicles}
+                  healthCheckRun={
+                    healthCheckRun
+                  }
+                  onRunHealthCheck={() => {
+                    setHealthCheckRun(true);
+                    showMessage(
+                      "System health check completed.",
+                    );
+                  }}
+                />
+              )}
+
+              {activeTab === "backups" && (
+                <BackupRestoreTab
+                  lastBackupAt={
+                    lastBackupAt
+                  }
+                  onCreateBackup={
+                    createBackup
+                  }
+                  onRestoreBackup={
+                    restoreBackup
+                  }
+                />
+              )}
+
               {activeTab === "business" && (
                 <BusinessTab
                   settings={settings.business}
@@ -300,6 +663,620 @@ export default function SettingsPage() {
       </main>
     </AppShell>
   );
+}
+
+function BackupRestoreTab({
+  lastBackupAt,
+  onCreateBackup,
+  onRestoreBackup,
+}: {
+  lastBackupAt: string;
+  onCreateBackup: () => void;
+  onRestoreBackup: (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => void;
+}) {
+  return (
+    <div>
+      <SectionHeading
+        title="Backup and restore"
+        description="Create a portable copy of all GreenFlow browser data before resets, testing or major changes."
+      />
+
+      <div className="mt-6 grid gap-5 xl:grid-cols-2">
+        <article className="rounded-2xl border border-green-200 bg-green-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+            Create backup
+          </div>
+
+          <h3 className="mt-2 text-2xl font-bold text-green-950">
+            Download GreenFlow data
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-green-800">
+            Downloads customers, programmes, treatments, chemicals, stock, routes, fleet, settings and saved working-day data as one JSON file.
+          </p>
+
+          <button
+            type="button"
+            onClick={onCreateBackup}
+            className="mt-6 rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+          >
+            Create Backup
+          </button>
+
+          <div className="mt-4 rounded-xl border border-green-200 bg-white p-4 text-sm text-green-900">
+            <strong>Last backup:</strong>{" "}
+            {lastBackupAt
+              ? formatBackupDate(
+                  lastBackupAt,
+                )
+              : "No backup recorded in this browser."}
+          </div>
+        </article>
+
+        <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
+            Restore backup
+          </div>
+
+          <h3 className="mt-2 text-2xl font-bold text-amber-950">
+            Replace current browser data
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-amber-900">
+            Select a GreenFlow backup file. The restore process replaces existing GreenFlow data in this browser and then reloads the application.
+          </p>
+
+          <label className="mt-6 inline-flex cursor-pointer rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800">
+            Choose Backup File
+
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={
+                onRestoreBackup
+              }
+              className="hidden"
+            />
+          </label>
+
+          <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm leading-6 text-amber-900">
+            Create a fresh backup before restoring another file. Restore does not merge data; it replaces GreenFlow’s current browser records.
+          </div>
+        </article>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+        Backups are local JSON files. Keep them somewhere secure, such as your GreenFlow project backup folder or OneDrive.
+      </div>
+    </div>
+  );
+}
+
+function isGreenFlowBackup(
+  value: unknown,
+): value is {
+  application: "GreenFlow";
+  version: number;
+  createdAt: string;
+  items: Record<string, string>;
+} {
+  if (
+    !value ||
+    typeof value !== "object"
+  ) {
+    return false;
+  }
+
+  const candidate =
+    value as {
+      application?: unknown;
+      version?: unknown;
+      createdAt?: unknown;
+      items?: unknown;
+    };
+
+  return (
+    candidate.application ===
+      "GreenFlow" &&
+    typeof candidate.version ===
+      "number" &&
+    typeof candidate.createdAt ===
+      "string" &&
+    Boolean(
+      candidate.items &&
+        typeof candidate.items ===
+          "object" &&
+        !Array.isArray(
+          candidate.items,
+        ),
+    ) &&
+    Object.values(
+      candidate.items as Record<
+        string,
+        unknown
+      >,
+    ).every(
+      (item) =>
+        typeof item === "string",
+    )
+  );
+}
+
+function formatBackupDate(
+  value: string,
+) {
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "Unknown date";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      dateStyle: "medium",
+      timeStyle: "short",
+    },
+  ).format(date);
+}
+
+function SystemHealthTab({
+  customers,
+  programmes,
+  treatments,
+  chemicals,
+  vehicles,
+  healthCheckRun,
+  onRunHealthCheck,
+}: {
+  customers: Array<{
+    customerNumber: string;
+    fullName: string;
+    status: string;
+    vanNumber: number;
+  }>;
+  programmes: Array<{
+    id: string;
+    customerNumber: string;
+    visits: unknown[];
+  }>;
+  treatments: Array<{
+    id: string;
+    customerNumber: string;
+    programmeId: string;
+  }>;
+  chemicals: Array<{
+    id: string;
+    name: string;
+    active: boolean;
+    currentStock: number;
+    reorderLevel: number;
+  }>;
+  vehicles: FleetVehicle[];
+  healthCheckRun: boolean;
+  onRunHealthCheck: () => void;
+}) {
+  const customerNumbers =
+    customers.map(
+      (customer) =>
+        customer.customerNumber,
+    );
+
+  const duplicateCustomerNumbers =
+    Array.from(
+      new Set(
+        customerNumbers.filter(
+          (customerNumber, index) =>
+            customerNumbers.indexOf(
+              customerNumber,
+            ) !== index,
+        ),
+      ),
+    );
+
+  const customersWithoutProgrammes =
+    customers.filter(
+      (customer) =>
+        customer.status === "Active" &&
+        !programmes.some(
+          (programme) =>
+            programme.customerNumber ===
+            customer.customerNumber,
+        ),
+    );
+
+  const orphanTreatmentRecords =
+    treatments.filter(
+      (treatment) =>
+        !customers.some(
+          (customer) =>
+            customer.customerNumber ===
+            treatment.customerNumber,
+        ),
+    );
+
+  const treatmentsWithoutProgrammes =
+    treatments.filter(
+      (treatment) =>
+        Boolean(
+          treatment.programmeId,
+        ) &&
+        !programmes.some(
+          (programme) =>
+            programme.id ===
+            treatment.programmeId,
+        ),
+    );
+
+  const lowStockProducts =
+    chemicals.filter(
+      (chemical) =>
+        chemical.active &&
+        chemical.currentStock <=
+          chemical.reorderLevel,
+    );
+
+  const activeVehicleNumbers =
+    new Set(
+      vehicles
+        .filter(
+          (vehicle) =>
+            vehicle.active,
+        )
+        .map(
+          (vehicle) =>
+            vehicle.number,
+        ),
+    );
+
+  const customersOnInactiveVehicles =
+    customers.filter(
+      (customer) =>
+        customer.status === "Active" &&
+        !activeVehicleNumbers.has(
+          customer.vanNumber,
+        ),
+    );
+
+  const checks = [
+    {
+      id: "duplicates",
+      label: "Duplicate customer numbers",
+      count:
+        duplicateCustomerNumbers.length,
+      detail:
+        duplicateCustomerNumbers.length > 0
+          ? duplicateCustomerNumbers.join(
+              ", ",
+            )
+          : "Every customer number is unique.",
+    },
+    {
+      id: "programmes",
+      label: "Active customers without programmes",
+      count:
+        customersWithoutProgrammes.length,
+      detail:
+        customersWithoutProgrammes.length > 0
+          ? customersWithoutProgrammes
+              .slice(0, 5)
+              .map(
+                (customer) =>
+                  `${customer.fullName} (#${customer.customerNumber})`,
+              )
+              .join(", ")
+          : "Every active customer has an annual programme.",
+    },
+    {
+      id: "orphans",
+      label: "Treatment records without customers",
+      count:
+        orphanTreatmentRecords.length,
+      detail:
+        orphanTreatmentRecords.length > 0
+          ? "Treatment records reference customer numbers that do not exist."
+          : "Every treatment record has a matching customer.",
+    },
+    {
+      id: "treatment-programmes",
+      label: "Treatment records without programmes",
+      count:
+        treatmentsWithoutProgrammes.length,
+      detail:
+        treatmentsWithoutProgrammes.length > 0
+          ? "Some treatment records reference programme IDs that do not exist."
+          : "Every linked treatment record has a matching programme.",
+    },
+    {
+      id: "stock",
+      label: "Products at or below reorder level",
+      count:
+        lowStockProducts.length,
+      detail:
+        lowStockProducts.length > 0
+          ? lowStockProducts
+              .slice(0, 5)
+              .map(
+                (chemical) =>
+                  chemical.name,
+              )
+              .join(", ")
+          : "All active products are above their reorder levels.",
+    },
+    {
+      id: "vehicles",
+      label: "Active customers on inactive vehicles",
+      count:
+        customersOnInactiveVehicles.length,
+      detail:
+        customersOnInactiveVehicles.length > 0
+          ? customersOnInactiveVehicles
+              .slice(0, 5)
+              .map(
+                (customer) =>
+                  `${customer.fullName} (Van ${customer.vanNumber})`,
+              )
+              .join(", ")
+          : "Every active customer is assigned to an active vehicle.",
+    },
+  ];
+
+  const issueCount =
+    checks.reduce(
+      (total, check) =>
+        total + check.count,
+      0,
+    );
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <SectionHeading
+          title="System health"
+          description="Scan GreenFlow for missing links, duplicate records, low stock and invalid operational assignments."
+        />
+
+        <button
+          type="button"
+          onClick={onRunHealthCheck}
+          className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+        >
+          Run Health Check
+        </button>
+      </div>
+
+      {!healthCheckRun ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+          <div className="text-xl font-bold">
+            Health check not yet run
+          </div>
+
+          <p className="mt-2 text-sm text-slate-500">
+            Run the check to inspect customers, programmes, treatments, stock and fleet assignments.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div
+            className={`mt-6 rounded-2xl border p-5 ${
+              issueCount === 0
+                ? "border-green-200 bg-green-50"
+                : "border-amber-200 bg-amber-50"
+            }`}
+          >
+            <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">
+              Overall status
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h3
+                  className={`text-3xl font-bold ${
+                    issueCount === 0
+                      ? "text-green-950"
+                      : "text-amber-950"
+                  }`}
+                >
+                  {issueCount === 0
+                    ? "Healthy"
+                    : `${issueCount} issue${
+                        issueCount === 1
+                          ? ""
+                          : "s"
+                      } found`}
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-600">
+                  {checks.length} automatic checks completed.
+                </p>
+              </div>
+
+              <span
+                className={`rounded-full px-4 py-2 text-sm font-bold ${
+                  issueCount === 0
+                    ? "bg-green-700 text-white"
+                    : "bg-amber-500 text-amber-950"
+                }`}
+              >
+                {issueCount === 0
+                  ? "All clear"
+                  : "Review required"}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {checks.map((check) => (
+              <article
+                key={check.id}
+                className={`rounded-2xl border p-5 ${
+                  check.count === 0
+                    ? "border-green-200 bg-green-50/40"
+                    : "border-amber-200 bg-amber-50/60"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-slate-900">
+                      {check.label}
+                    </h3>
+
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {check.detail}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-sm font-bold ${
+                      check.count === 0
+                        ? "bg-green-700 text-white"
+                        : "bg-amber-500 text-amber-950"
+                    }`}
+                  >
+                    {check.count}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+            This first health check is read-only. It identifies issues but does not change or delete any GreenFlow data.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function OperationalMaintenanceTab({
+  onStartNewTestDay,
+}: {
+  onStartNewTestDay: () => void;
+}) {
+  return (
+    <div>
+      <SectionHeading
+        title="Operational reset"
+        description="Clear day-to-day testing results without deleting the business setup you have already built."
+      />
+
+      <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_360px]">
+        <section className="rounded-2xl border border-green-200 bg-green-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+            Testing tool
+          </div>
+
+          <h3 className="mt-2 text-2xl font-bold text-green-950">
+            Start New Test Day
+          </h3>
+
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-green-800">
+            Return operational workflows to a clean state so you can test Visit Centre, dashboard totals, documents and chemical usage again.
+          </p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <ResetDetail
+              label="Cleared"
+              items={[
+                "Treatment outcomes and history",
+                "Chemical usage derived from treatment records",
+                "Treatment documents and invoices",
+                "Visit Centre progress, revenue and observation totals",
+                "Saved Today’s Mix selections",
+              ]}
+            />
+
+            <ResetDetail
+              label="Preserved"
+              items={[
+                "Customers",
+                "Annual programmes and visit dates",
+                "Groups, routes and fleet",
+                "Chemical products and stock levels",
+                "Business, invoice and branding settings",
+              ]}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={onStartNewTestDay}
+            className="mt-6 rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+          >
+            Start New Test Day
+          </button>
+        </section>
+
+        <aside className="h-fit rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="text-sm font-bold text-amber-950">
+            Before you reset
+          </div>
+
+          <p className="mt-2 text-sm leading-6 text-amber-900">
+            This action cannot be undone from GreenFlow. Use it only for testing, and create a backup first when the current results matter.
+          </p>
+
+          <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm text-amber-900">
+            Chemical stock quantities are preserved. The reset removes usage history but does not restore previously deducted stock.
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function ResetDetail({
+  label,
+  items,
+}: {
+  label: string;
+  items: string[];
+}) {
+  return (
+    <div className="rounded-xl border border-green-200 bg-white p-4">
+      <div className="font-bold text-slate-900">
+        {label}
+      </div>
+
+      <div className="mt-3 space-y-2 text-sm text-slate-600">
+        {items.map((item) => (
+          <div
+            key={item}
+            className="flex items-start gap-2"
+          >
+            <span className="mt-0.5 font-bold text-[#176b37]">
+              ✓
+            </span>
+
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function removeOutcomeNotes(
+  notes: string,
+) {
+  return notes
+    .split("\n")
+    .filter(
+      (line) =>
+        !/^(Outcome:|Replacement date:)/i.test(
+          line.trim(),
+        ),
+    )
+    .join("\n")
+    .trim();
 }
 
 function BusinessTab({

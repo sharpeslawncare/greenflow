@@ -71,7 +71,7 @@ const navigationSections: NavigationSection[] = [
     id: "business",
     label: "Business",
     items: [
-      { label: "Business Settings", href: "/settings" },
+      { label: "Maintenance", href: "/settings" },
       { label: "Season Management", href: "/settings/season-management" },
       { label: "Developer Tools", href: "/settings/developer" },
     ],

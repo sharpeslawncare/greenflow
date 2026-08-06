@@ -15,6 +15,11 @@ export type TreatmentStatus =
   | "Rescheduled"
   | "Cancelled";
 
+export type HerbicideApplicationMethod =
+  | "Full Lawn Spray"
+  | "Spot Spray"
+  | "";
+
 export type TreatmentApplication = {
   id: string;
   productId: string;
@@ -24,8 +29,33 @@ export type TreatmentApplication = {
   registrationNumber: string;
   applicationRate: number;
   applicationRateUnit: string;
+
+  /*
+   * `productRequired` remains the quantity GreenFlow
+   * records as actually used, preserving compatibility
+   * with Chemical Usage, stock and documents.
+   */
   productRequired: number;
   productUnit: string;
+
+  /*
+   * Herbicide application audit fields.
+   *
+   * For a full lawn spray:
+   * - fullLawnProductRequired and actualProductRequired
+   *   will normally be the same.
+   * - spotSprayPercentage will normally be 100.
+   *
+   * For a spot spray:
+   * - fullLawnProductRequired stores the normal blanket
+   *   calculation.
+   * - actualProductRequired stores the reduced quantity.
+   * - productRequired will also store the actual quantity.
+   */
+  applicationMethod: HerbicideApplicationMethod;
+  fullLawnProductRequired: number;
+  actualProductRequired: number;
+  spotSprayPercentage: number;
   calibratedWaterVolumePerHectare: number;
   waterRequiredLitres: number;
   tankCapacityLitres: number;
@@ -156,6 +186,14 @@ const demoTreatments: TreatmentRecord[] = [
         applicationRateUnit: "L/ha",
         productRequired: 0.05,
         productUnit: "L",
+        applicationMethod:
+          "Full Lawn Spray",
+        fullLawnProductRequired:
+          0.05,
+        actualProductRequired:
+          0.05,
+        spotSprayPercentage:
+          100,
         calibratedWaterVolumePerHectare: 215.385,
         waterRequiredLitres: 5.385,
         tankCapacityLitres: 16,
@@ -563,14 +601,64 @@ function addLegacyNamedProduct(
 function normaliseApplication(
   application: Partial<TreatmentApplication>,
 ): TreatmentApplication {
+  const productRequired =
+    safeNumber(
+      application.productRequired,
+    );
+
+  const productType =
+    application.productType ?? "";
+
+  const herbicide =
+    productType
+      .toLowerCase()
+      .includes(
+        "herbicide",
+      );
+
+  const applicationMethod =
+    normaliseApplicationMethod(
+      application.applicationMethod,
+      herbicide,
+    );
+
+  const fullLawnProductRequired =
+    typeof application.fullLawnProductRequired ===
+      "number" &&
+    Number.isFinite(
+      application.fullLawnProductRequired,
+    )
+      ? Math.max(
+          0,
+          application.fullLawnProductRequired,
+        )
+      : productRequired;
+
+  const actualProductRequired =
+    typeof application.actualProductRequired ===
+      "number" &&
+    Number.isFinite(
+      application.actualProductRequired,
+    )
+      ? Math.max(
+          0,
+          application.actualProductRequired,
+        )
+      : productRequired;
+
+  const spotSprayPercentage =
+    normaliseSpotSprayPercentage(
+      application.spotSprayPercentage,
+      applicationMethod,
+    );
+
   return {
     id:
       application.id ?? createApplicationId(),
     productId: application.productId ?? "",
     productName:
       application.productName ?? "",
-    productType:
-      application.productType ?? "",
+    productType,
     activeIngredients:
       application.activeIngredients ?? "",
     registrationNumber:
@@ -580,11 +668,13 @@ function normaliseApplication(
     ),
     applicationRateUnit:
       application.applicationRateUnit ?? "",
-    productRequired: safeNumber(
-      application.productRequired,
-    ),
+    productRequired,
     productUnit:
       application.productUnit ?? "",
+    applicationMethod,
+    fullLawnProductRequired,
+    actualProductRequired,
+    spotSprayPercentage,
     calibratedWaterVolumePerHectare:
       safeNumber(
         application.calibratedWaterVolumePerHectare,
@@ -779,6 +869,47 @@ function findType(
       .toLowerCase()
       .includes(type),
   );
+}
+
+function normaliseApplicationMethod(
+  method:
+    | HerbicideApplicationMethod
+    | string
+    | undefined,
+  herbicide: boolean,
+): HerbicideApplicationMethod {
+  if (
+    method === "Full Lawn Spray" ||
+    method === "Spot Spray"
+  ) {
+    return method;
+  }
+
+  return herbicide
+    ? "Full Lawn Spray"
+    : "";
+}
+
+function normaliseSpotSprayPercentage(
+  value: number | undefined,
+  method: HerbicideApplicationMethod,
+) {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  ) {
+    return Math.min(
+      100,
+      Math.max(
+        0,
+        value,
+      ),
+    );
+  }
+
+  return method === "Spot Spray"
+    ? 20
+    : 100;
 }
 
 function normaliseStatus(

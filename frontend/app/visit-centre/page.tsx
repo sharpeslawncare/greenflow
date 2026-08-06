@@ -54,6 +54,14 @@ type VisitOutcome =
   | "Customer Request"
   | "Cancelled";
 
+type HerbicideApplicationMethod =
+  | "Full Lawn Spray"
+  | "Spot Spray";
+
+type VisitProductMode =
+  | "today"
+  | "custom";
+
 type ProductSelection = {
   id: string;
   chemicalId: string;
@@ -81,6 +89,20 @@ type ProductRequirement = {
   chemical: ChemicalRecord;
   requiredAmount: number;
   requiredUnit: ChemicalUnit;
+};
+
+type DailyProductUsage = {
+  key: string;
+  productName: string;
+  productType: string;
+  amount: number;
+  unit: string;
+  applications: number;
+};
+
+type DailyObservationSummary = {
+  label: string;
+  count: number;
 };
 
 type CompletionResult = {
@@ -113,6 +135,8 @@ const observationOptions = [
 
 const STANDARD_MIX_STORAGE_KEY =
   "greenflow-visit-centre-standard-mixes-v1";
+
+const SPOT_SPRAY_PERCENTAGE = 20;
 
 const emptyStandardMix: StandardMix = {
   fertiliserId: "",
@@ -201,6 +225,12 @@ export default function VisitCentrePage() {
 
   const [fertiliserId, setFertiliserId] = useState("");
   const [herbicideId, setHerbicideId] = useState("");
+  const [herbicideApplicationMethod, setHerbicideApplicationMethod] =
+    useState<HerbicideApplicationMethod>("Full Lawn Spray");
+
+  const [visitProductMode, setVisitProductMode] =
+    useState<VisitProductMode>("today");
+
   const [additionalProducts, setAdditionalProducts] = useState<
     ProductSelection[]
   >([]);
@@ -346,6 +376,12 @@ export default function VisitCentrePage() {
     selectedJobIds.includes(job.id),
   );
 
+  const spotSprayAvailable =
+    selectedJobs.length > 0 &&
+    selectedJobs.every((job) =>
+      isSeasonalWeedAndFeed(job.visit.treatmentName),
+    );
+
   const activeChemicals = useMemo(
     () =>
       chemicals
@@ -364,18 +400,54 @@ export default function VisitCentrePage() {
     isProductType(chemical.type, "herbicide"),
   );
 
+  const effectiveFertiliserId =
+    visitProductMode === "today"
+      ? standardMix.fertiliserId
+      : fertiliserId;
+
+  const effectiveHerbicideId =
+    visitProductMode === "today"
+      ? standardMix.herbicideId
+      : herbicideId;
+
+  const effectiveAdditionalProductIds =
+    visitProductMode === "today"
+      ? standardMix.additionalProductIds
+      : additionalProducts.map(
+          (item) =>
+            item.chemicalId,
+        );
+
+  useEffect(() => {
+    if (
+      !spotSprayAvailable ||
+      !effectiveHerbicideId
+    ) {
+      setHerbicideApplicationMethod(
+        "Full Lawn Spray",
+      );
+    }
+  }, [
+    spotSprayAvailable,
+    effectiveHerbicideId,
+  ]);
+
   const selectedProductIds = useMemo(
     () =>
       Array.from(
         new Set(
           [
-            fertiliserId,
-            herbicideId,
-            ...additionalProducts.map((item) => item.chemicalId),
+            effectiveFertiliserId,
+            effectiveHerbicideId,
+            ...effectiveAdditionalProductIds,
           ].filter(Boolean),
         ),
       ),
-    [fertiliserId, herbicideId, additionalProducts],
+    [
+      effectiveFertiliserId,
+      effectiveHerbicideId,
+      effectiveAdditionalProductIds,
+    ],
   );
 
   const selectedProducts = selectedProductIds
@@ -402,35 +474,310 @@ export default function VisitCentrePage() {
     )
     .filter((chemical): chemical is ChemicalRecord => Boolean(chemical));
 
+  const todayMixAvailable =
+    standardMixProductIds.length > 0;
+
+  useEffect(() => {
+    if (
+      standardMixReady &&
+      !todayMixAvailable &&
+      visitProductMode === "today"
+    ) {
+      setVisitProductMode(
+        "custom",
+      );
+    }
+  }, [
+    standardMixReady,
+    todayMixAvailable,
+    visitProductMode,
+  ]);
+
   const totalSelectedArea = selectedJobs.reduce(
     (total, job) => total + job.customer.lawnSize,
     0,
   );
 
   const combinedPreview = selectedProducts.map((chemical) => {
-    const calculation = calculateApplication(
-      chemical,
-      totalSelectedArea,
-    );
+    const fullLawnCalculation =
+      calculateApplication(
+        chemical,
+        totalSelectedArea,
+      );
+
+    const calculation =
+      applyHerbicideApplicationMethod(
+        chemical,
+        fullLawnCalculation,
+        herbicideApplicationMethod,
+        spotSprayAvailable,
+      );
 
     return {
       chemical,
       calculation,
+      fullLawnCalculation,
     };
   });
 
-  const completedOnDate = treatments.filter(
-    (treatment) =>
-      treatment.scheduledDate === selectedDate &&
-      treatment.status === "Completed",
-  ).length;
+  const recordedOutcomesOnDate =
+    treatments.filter(
+      (treatment) =>
+        treatment.scheduledDate ===
+        selectedDate,
+    );
 
-  const totalScheduled = jobs.length + completedOnDate;
+  const completedOnDate =
+    recordedOutcomesOnDate.filter(
+      (treatment) =>
+        treatment.status ===
+        "Completed",
+    ).length;
+
+  const cancelledOnDate =
+    recordedOutcomesOnDate.filter(
+      (treatment) =>
+        treatment.status ===
+        "Cancelled",
+    ).length;
+
+  const needsReschedulingOnDate =
+    recordedOutcomesOnDate.filter(
+      (treatment) =>
+        treatment.status ===
+        "Needs Rescheduling",
+    ).length;
+
+  const rescheduledOnDate =
+    recordedOutcomesOnDate.filter(
+      (treatment) =>
+        treatment.status ===
+        "Rescheduled",
+    ).length;
+
+  const remainingOnDate =
+    jobs.length;
+
+  const processedOnDate =
+    recordedOutcomesOnDate.length;
+
+  const totalScheduled =
+    remainingOnDate +
+    processedOnDate;
 
   const progress =
     totalScheduled > 0
-      ? Math.round((completedOnDate / totalScheduled) * 100)
+      ? Math.round(
+          (processedOnDate /
+            totalScheduled) *
+            100,
+        )
       : 0;
+
+  const completedTreatmentsOnDate =
+    recordedOutcomesOnDate.filter(
+      (treatment) =>
+        treatment.status ===
+        "Completed",
+    );
+
+  const treatedAreaOnDate =
+    completedTreatmentsOnDate.reduce(
+      (total, treatment) =>
+        total +
+        treatment.treatmentAreaSquareMetres,
+      0,
+    );
+
+  const remainingAreaOnDate =
+    jobs.reduce(
+      (total, job) =>
+        total +
+        job.customer.lawnSize,
+      0,
+    );
+
+  const processedScheduledArea =
+    recordedOutcomesOnDate.reduce(
+      (total, treatment) => {
+        const customer =
+          customers.find(
+            (item) =>
+              item.customerNumber ===
+              treatment.customerNumber,
+          );
+
+        return (
+          total +
+          (customer?.lawnSize ??
+            treatment.treatmentAreaSquareMetres)
+        );
+      },
+      0,
+    );
+
+  const totalScheduledArea =
+    processedScheduledArea +
+    remainingAreaOnDate;
+
+  const invoicesCreatedOnDate =
+    completedTreatmentsOnDate.filter(
+      (treatment) =>
+        Boolean(
+          treatment.invoiceNumber,
+        ),
+    ).length;
+
+  const productUsageOnDate =
+    Array.from(
+      completedTreatmentsOnDate
+        .flatMap(
+          (treatment) =>
+            treatment.applications,
+        )
+        .reduce(
+          (
+            usageMap,
+            application,
+          ) => {
+            const key = [
+              application.productId ||
+                application.productName,
+              application.productUnit,
+            ].join("::");
+
+            const existing =
+              usageMap.get(key);
+
+            const amount =
+              application.actualProductRequired ||
+              application.productRequired;
+
+            usageMap.set(key, {
+              key,
+              productName:
+                application.productName ||
+                "Unnamed product",
+              productType:
+                application.productType ||
+                "Other",
+              amount:
+                (existing?.amount ?? 0) +
+                amount,
+              unit:
+                application.productUnit,
+              applications:
+                (existing?.applications ??
+                  0) + 1,
+            });
+
+            return usageMap;
+          },
+          new Map<
+            string,
+            DailyProductUsage
+          >(),
+        )
+        .values(),
+    ).sort(
+      (first, second) =>
+        first.productType.localeCompare(
+          second.productType,
+        ) ||
+        first.productName.localeCompare(
+          second.productName,
+        ),
+    );
+
+  const spotSprayVisitsOnDate =
+    completedTreatmentsOnDate.filter(
+      (treatment) =>
+        treatment.applications.some(
+          (application) =>
+            application.applicationMethod ===
+            "Spot Spray",
+        ),
+    ).length;
+
+  const fullLawnSprayVisitsOnDate =
+    completedTreatmentsOnDate.filter(
+      (treatment) =>
+        treatment.applications.some(
+          (application) =>
+            application.applicationMethod ===
+            "Full Lawn Spray",
+        ),
+    ).length;
+
+  const estimatedRevenueOnDate =
+    completedTreatmentsOnDate.reduce(
+      (total, treatment) => {
+        const customer =
+          customers.find(
+            (item) =>
+              item.customerNumber ===
+              treatment.customerNumber,
+          );
+
+        return (
+          total +
+          (customer?.treatmentPrice ??
+            0)
+        );
+      },
+      0,
+    );
+
+  const averageCompletedVisitValue =
+    completedTreatmentsOnDate.length > 0
+      ? estimatedRevenueOnDate /
+        completedTreatmentsOnDate.length
+      : 0;
+
+  const observationCounts =
+    completedTreatmentsOnDate.reduce(
+      (counts, treatment) => {
+        extractRecordedObservations(
+          treatment.notes,
+        ).forEach(
+          (observation) => {
+            counts.set(
+              observation,
+              (counts.get(
+                observation,
+              ) ?? 0) + 1,
+            );
+          },
+        );
+
+        return counts;
+      },
+      new Map<string, number>(),
+    );
+
+  const observationSummary =
+    observationOptions
+      .map<DailyObservationSummary>(
+        (observation) => ({
+          label: observation,
+          count:
+            observationCounts.get(
+              observation,
+            ) ?? 0,
+        }),
+      )
+      .filter(
+        (observation) =>
+          observation.count > 0,
+      );
+
+  const customersProcessedOnDate =
+    new Set(
+      recordedOutcomesOnDate.map(
+        (treatment) =>
+          treatment.customerNumber,
+      ),
+    ).size;
 
   const allSelected =
     jobs.length > 0 &&
@@ -583,9 +930,12 @@ export default function VisitCentrePage() {
     );
 
     setStandardMix(cleanedMix);
+    setVisitProductMode(
+      "today",
+    );
 
     showMessage(
-      `Standard mix saved for ${formatDateWithDay(
+      `Today's mix saved and selected for ${formatDateWithDay(
         selectedDate,
       )}.`,
     );
@@ -642,8 +992,12 @@ export default function VisitCentrePage() {
       emptyStandardMix,
     );
 
+    setVisitProductMode(
+      "custom",
+    );
+
     showMessage(
-      `Standard mix cleared for ${formatDateWithDay(
+      `Today's mix cleared for ${formatDateWithDay(
         selectedDate,
       )}.`,
     );
@@ -692,6 +1046,8 @@ export default function VisitCentrePage() {
     const requirements = aggregateProductRequirements(
       selectedJobs,
       selectedProducts,
+      herbicideApplicationMethod,
+      spotSprayAvailable,
     );
 
     const stockProblem = findStockProblem(requirements);
@@ -726,6 +1082,8 @@ export default function VisitCentrePage() {
               createApplicationForCustomer(
                 chemical,
                 job.customer.lawnSize,
+                herbicideApplicationMethod,
+                spotSprayAvailable,
               ),
             )
           : [];
@@ -879,6 +1237,12 @@ export default function VisitCentrePage() {
     setNotes("");
     setFertiliserId("");
     setHerbicideId("");
+    setHerbicideApplicationMethod("Full Lawn Spray");
+    setVisitProductMode(
+      todayMixAvailable
+        ? "today"
+        : "custom",
+    );
     setAdditionalProducts([]);
     setReplacementDate("");
   }
@@ -1142,33 +1506,389 @@ export default function VisitCentrePage() {
             </section>
           )}
 
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold text-slate-500">
-                  Route progress
+                  Today’s Progress
                 </div>
 
-                <div className="mt-1 text-xl font-bold">
-                  {completedOnDate} / {totalScheduled} completed
+                <div className="mt-1 text-2xl font-bold">
+                  {processedOnDate} / {totalScheduled} processed
                 </div>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {formatDateWithDay(
+                    selectedDate,
+                  )}
+                </p>
               </div>
 
-              <div className="min-w-[260px] flex-1">
-                <div className="h-3 overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className="h-full rounded-full bg-[#176b37] transition-all"
-                    style={{
-                      width: `${progress}%`,
-                    }}
-                  />
+              <div className="rounded-xl bg-green-50 px-4 py-3 text-right">
+                <div className="text-3xl font-bold text-[#176b37]">
+                  {progress}%
                 </div>
 
-                <div className="mt-1 text-right text-xs font-semibold text-slate-500">
-                  {progress}%
+                <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-green-700">
+                  complete
                 </div>
               </div>
             </div>
+
+            <div className="mt-5">
+              <div className="h-4 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-[#176b37] transition-all duration-500"
+                  style={{
+                    width: `${progress}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <ProgressStat
+                label="Completed"
+                value={completedOnDate}
+                detail="Treatment completed"
+                tone="green"
+              />
+
+              <ProgressStat
+                label="Remaining"
+                value={remainingOnDate}
+                detail="Still on today’s route"
+                tone="slate"
+              />
+
+              <ProgressStat
+                label="Cancelled"
+                value={cancelledOnDate}
+                detail="Visit cancelled"
+                tone="red"
+              />
+
+              <ProgressStat
+                label="Needs rescheduling"
+                value={
+                  needsReschedulingOnDate
+                }
+                detail="New date required"
+                tone="amber"
+              />
+
+              <ProgressStat
+                label="Rescheduled"
+                value={rescheduledOnDate}
+                detail="Replacement arranged"
+                tone="blue"
+              />
+            </div>
+
+            {totalScheduled > 0 &&
+              remainingOnDate === 0 && (
+                <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">
+                  All visits for this working date have been processed.
+                </div>
+              )}
+          </section>
+
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-slate-500">
+                  Today’s Operations
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold">
+                  Daily workload overview
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Live figures for{" "}
+                  {formatDateWithDay(
+                    selectedDate,
+                  )}
+                  .
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Scheduled area
+                </div>
+
+                <div className="mt-1 text-xl font-bold">
+                  {totalScheduledArea.toLocaleString(
+                    "en-GB",
+                  )}{" "}
+                  m²
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <OperationStat
+                label="Area treated"
+                value={`${treatedAreaOnDate.toLocaleString(
+                  "en-GB",
+                )} m²`}
+                detail="Completed treatment area"
+              />
+
+              <OperationStat
+                label="Area remaining"
+                value={`${remainingAreaOnDate.toLocaleString(
+                  "en-GB",
+                )} m²`}
+                detail="Still scheduled today"
+              />
+
+              <OperationStat
+                label="Customers processed"
+                value={String(
+                  customersProcessedOnDate,
+                )}
+                detail="All recorded outcomes"
+              />
+
+              <OperationStat
+                label="Invoices created"
+                value={String(
+                  invoicesCreatedOnDate,
+                )}
+                detail="Completed visits with invoices"
+              />
+            </div>
+
+            {totalScheduledArea > 0 && (
+              <div className="mt-5">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+                  <span>
+                    Treated area progress
+                  </span>
+
+                  <span>
+                    {Math.round(
+                      (treatedAreaOnDate /
+                        totalScheduledArea) *
+                        100,
+                    )}
+                    %
+                  </span>
+                </div>
+
+                <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-[#176b37] transition-all duration-500"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round(
+                          (treatedAreaOnDate /
+                            totalScheduledArea) *
+                            100,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-slate-500">
+                  Products Used Today
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold">
+                  Recorded product usage
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Actual quantities saved against completed visits on{" "}
+                  {formatDateWithDay(
+                    selectedDate,
+                  )}
+                  .
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <MiniOperationStat
+                  label="Spot spray"
+                  value={
+                    spotSprayVisitsOnDate
+                  }
+                />
+
+                <MiniOperationStat
+                  label="Full spray"
+                  value={
+                    fullLawnSprayVisitsOnDate
+                  }
+                />
+              </div>
+            </div>
+
+            {productUsageOnDate.length ===
+            0 ? (
+              <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                No product usage has been recorded for this working date yet.
+              </div>
+            ) : (
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {productUsageOnDate.map(
+                  (product) => (
+                    <div
+                      key={product.key}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-slate-900">
+                            {
+                              product.productName
+                            }
+                          </div>
+
+                          <div className="mt-1 text-xs text-slate-500">
+                            {
+                              product.productType
+                            }
+                          </div>
+                        </div>
+
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600">
+                          {
+                            product.applications
+                          }{" "}
+                          application
+                          {product.applications ===
+                          1
+                            ? ""
+                            : "s"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 text-2xl font-bold text-[#176b37]">
+                        {formatApplicationAmount(
+                          product.amount,
+                          product.unit as ChemicalUnit,
+                        )}
+                      </div>
+
+                      <div className="mt-1 text-xs text-slate-500">
+                        Actual quantity recorded
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+
+            {(spotSprayVisitsOnDate > 0 ||
+              fullLawnSprayVisitsOnDate >
+                0) && (
+              <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                Spot-spray quantities are already included in the product totals above at their recorded 20% usage. Full-lawn equivalent figures remain stored in each treatment record.
+              </div>
+            )}
+          </section>
+
+          <section className="mb-4 grid gap-4 xl:grid-cols-2">
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm font-semibold text-slate-500">
+                Today’s Revenue
+              </div>
+
+              <h2 className="mt-1 text-xl font-bold">
+                Completed visit value
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Estimated from each completed customer’s current treatment price.
+              </p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <FinancialStat
+                  label="Estimated revenue"
+                  value={`£${estimatedRevenueOnDate.toFixed(
+                    2,
+                  )}`}
+                  detail="Completed visits"
+                />
+
+                <FinancialStat
+                  label="Average visit"
+                  value={`£${averageCompletedVisitValue.toFixed(
+                    2,
+                  )}`}
+                  detail="Per completed visit"
+                />
+
+                <FinancialStat
+                  label="Invoices"
+                  value={String(
+                    invoicesCreatedOnDate,
+                  )}
+                  detail="Created today"
+                />
+              </div>
+
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Revenue is an operational estimate until QuickBooks becomes the accounting source of truth.
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm font-semibold text-slate-500">
+                Today’s Observations
+              </div>
+
+              <h2 className="mt-1 text-xl font-bold">
+                Lawn conditions recorded
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Counts taken from the observations saved with completed visits.
+              </p>
+
+              {observationSummary.length ===
+              0 ? (
+                <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                  No observations have been recorded for completed visits on this date.
+                </div>
+              ) : (
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {observationSummary.map(
+                    (observation) => (
+                      <div
+                        key={
+                          observation.label
+                        }
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      >
+                        <span className="font-semibold text-slate-700">
+                          {
+                            observation.label
+                          }
+                        </span>
+
+                        <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-white px-3 text-sm font-bold text-[#176b37]">
+                          {
+                            observation.count
+                          }
+                        </span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+            </article>
           </section>
 
           <form onSubmit={saveVisits}>
@@ -1393,17 +2113,16 @@ export default function VisitCentrePage() {
                 </section>
 
                 {outcome === "Completed" && standardMixReady && (
-                  <Panel title="Today’s Standard Mix">
+                  <Panel title="Today’s Mix">
                     <div className="rounded-xl border border-green-200 bg-green-50 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="font-bold text-green-900">
-                            Reusable products for {formatDateWithDay(selectedDate)}
+                            Products planned for {formatDateWithDay(selectedDate)}
                           </div>
 
                           <p className="mt-1 text-sm leading-6 text-green-800">
-                            Save the products used for this working date, then
-                            apply them to the selected customers in one click.
+                            Set this once for the working day. Selected visits use it automatically unless you choose a custom mix below.
                           </p>
                         </div>
 
@@ -1415,7 +2134,7 @@ export default function VisitCentrePage() {
                     </div>
 
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <Field label="Standard fertiliser">
+                      <Field label="Today’s fertiliser">
                         <select
                           value={standardMix.fertiliserId}
                           onChange={(event) =>
@@ -1435,7 +2154,7 @@ export default function VisitCentrePage() {
                         </select>
                       </Field>
 
-                      <Field label="Standard herbicide">
+                      <Field label="Today’s herbicide">
                         <select
                           value={standardMix.herbicideId}
                           onChange={(event) =>
@@ -1463,7 +2182,7 @@ export default function VisitCentrePage() {
                             key={`${index}-${chemicalId}`}
                             className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_auto] sm:items-end"
                           >
-                            <Field label={`Standard additional product ${index + 1}`}>
+                            <Field label={`Today’s additional product ${index + 1}`}>
                               <select
                                 value={chemicalId}
                                 onChange={(event) =>
@@ -1504,24 +2223,15 @@ export default function VisitCentrePage() {
                         onClick={addStandardAdditionalProduct}
                         className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
                       >
-                        + Add another standard product
+                        + Add another product
                       </button>
 
                       <button
                         type="button"
                         onClick={saveStandardMix}
-                        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                        className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
                       >
-                        Save standard mix
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={applyStandardMix}
-                        disabled={standardMixProductIds.length === 0}
-                        className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
-                      >
-                        Apply to {selectedJobs.length} selected
+                        Save today’s mix
                       </button>
 
                       <button
@@ -1529,138 +2239,278 @@ export default function VisitCentrePage() {
                         onClick={clearStandardMix}
                         className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
                       >
-                        Clear saved mix
+                        Clear today’s mix
                       </button>
                     </div>
                   </Panel>
                 )}
 
                 {outcome === "Completed" && (
-                  <Panel title="Products used">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="Fertiliser">
-                        <select
-                          value={fertiliserId}
-                          onChange={(event) =>
-                            setFertiliserId(event.target.value)
-                          }
-                          className={inputClass}
-                        >
-                          <option value="">No fertiliser</option>
+                  <Panel title="Visit Products">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <ProductModeOption
+                        label="Use Today’s Mix"
+                        detail={
+                          todayMixAvailable
+                            ? `${standardMixProducts.length} saved product${
+                                standardMixProducts.length === 1 ? "" : "s"
+                              } will be used for every selected visit.`
+                            : "No mix has been saved for this working date."
+                        }
+                        checked={
+                          visitProductMode ===
+                          "today"
+                        }
+                        disabled={
+                          !todayMixAvailable
+                        }
+                        onChange={() =>
+                          setVisitProductMode(
+                            "today",
+                          )
+                        }
+                      />
 
-                          {fertilisers.map((chemical) => (
-                            <option key={chemical.id} value={chemical.id}>
-                              {chemical.name}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-
-                      <Field label="Herbicide">
-                        <select
-                          value={herbicideId}
-                          onChange={(event) =>
-                            setHerbicideId(event.target.value)
-                          }
-                          className={inputClass}
-                        >
-                          <option value="">No herbicide</option>
-
-                          {herbicides.map((chemical) => (
-                            <option key={chemical.id} value={chemical.id}>
-                              {chemical.name}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
+                      <ProductModeOption
+                        label="Custom Products"
+                        detail="Choose different products for the currently selected visits."
+                        checked={
+                          visitProductMode ===
+                          "custom"
+                        }
+                        onChange={() =>
+                          setVisitProductMode(
+                            "custom",
+                          )
+                        }
+                      />
                     </div>
 
-                    <div className="mt-4 space-y-3">
-                      {additionalProducts.map((selection, index) => (
-                        <div
-                          key={selection.id}
-                          className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_auto] sm:items-end"
-                        >
-                          <Field label={`Additional product ${index + 1}`}>
+                    {visitProductMode === "today" &&
+                      todayMixAvailable && (
+                        <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                          <div className="font-bold text-green-950">
+                            Using Today’s Mix
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {standardMixProducts.map(
+                              (chemical) => (
+                                <span
+                                  key={chemical.id}
+                                  className="rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-semibold text-green-800"
+                                >
+                                  {chemical.name}
+                                </span>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    {visitProductMode === "custom" && (
+                      <>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <Field label="Fertiliser">
                             <select
-                              value={selection.chemicalId}
+                              value={fertiliserId}
                               onChange={(event) =>
-                                updateAdditionalProduct(
-                                  selection.id,
-                                  event.target.value,
-                                )
+                                setFertiliserId(event.target.value)
                               }
                               className={inputClass}
                             >
-                              <option value="">Choose product</option>
+                              <option value="">No fertiliser</option>
 
-                              {activeChemicals.map((chemical) => (
+                              {fertilisers.map((chemical) => (
                                 <option key={chemical.id} value={chemical.id}>
-                                  {chemical.name} — {chemical.type}
+                                  {chemical.name}
                                 </option>
                               ))}
                             </select>
                           </Field>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeAdditionalProduct(selection.id)
-                            }
-                            className="h-11 rounded-xl border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                          <Field label="Herbicide">
+                            <select
+                              value={herbicideId}
+                              onChange={(event) =>
+                                setHerbicideId(event.target.value)
+                              }
+                              className={inputClass}
+                            >
+                              <option value="">No herbicide</option>
 
-                    <button
-                      type="button"
-                      onClick={addAdditionalProduct}
-                      className="mt-4 rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
-                    >
-                      + Add wetting agent, seaweed or another product
-                    </button>
+                              {herbicides.map((chemical) => (
+                                <option key={chemical.id} value={chemical.id}>
+                                  {chemical.name}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {additionalProducts.map((selection, index) => (
+                            <div
+                              key={selection.id}
+                              className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_auto] sm:items-end"
+                            >
+                              <Field label={`Additional product ${index + 1}`}>
+                                <select
+                                  value={selection.chemicalId}
+                                  onChange={(event) =>
+                                    updateAdditionalProduct(
+                                      selection.id,
+                                      event.target.value,
+                                    )
+                                  }
+                                  className={inputClass}
+                                >
+                                  <option value="">Choose product</option>
+
+                                  {activeChemicals.map((chemical) => (
+                                    <option key={chemical.id} value={chemical.id}>
+                                      {chemical.name} — {chemical.type}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeAdditionalProduct(selection.id)
+                                }
+                                className="h-11 rounded-xl border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={addAdditionalProduct}
+                          className="mt-4 rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                        >
+                          + Add wetting agent, seaweed or another product
+                        </button>
+                      </>
+                    )}
+
+                    {effectiveHerbicideId &&
+                      spotSprayAvailable && (
+                        <section className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                          <div className="font-bold text-green-950">
+                            Herbicide application
+                          </div>
+
+                          <p className="mt-1 text-sm text-green-800">
+                            This choice applies to every selected Spring, Summer or Autumn weed-and-feed visit.
+                          </p>
+
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <ApplicationMethodOption
+                              label="Full lawn spray"
+                              detail="Use the normal whole-lawn herbicide calculation."
+                              checked={
+                                herbicideApplicationMethod ===
+                                "Full Lawn Spray"
+                              }
+                              onChange={() =>
+                                setHerbicideApplicationMethod(
+                                  "Full Lawn Spray",
+                                )
+                              }
+                            />
+
+                            <ApplicationMethodOption
+                              label="Spot spray"
+                              detail={`${SPOT_SPRAY_PERCENTAGE}% of normal herbicide usage.`}
+                              checked={
+                                herbicideApplicationMethod ===
+                                "Spot Spray"
+                              }
+                              onChange={() =>
+                                setHerbicideApplicationMethod(
+                                  "Spot Spray",
+                                )
+                              }
+                            />
+                          </div>
+                        </section>
+                      )}
+
+                    {effectiveHerbicideId &&
+                      !spotSprayAvailable &&
+                      selectedJobs.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                          Spot spray is available only when all selected visits are Spring, Summer or Autumn weed-and-feed treatments.
+                        </div>
+                      )}
 
                     {combinedPreview.length > 0 && (
                       <div className="mt-5">
                         <h3 className="font-bold">
-                          Combined requirement for selected customers
+                          Requirement for selected customers
                         </h3>
 
                         <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          {combinedPreview.map(({ chemical, calculation }) => (
-                            <div
-                              key={chemical.id}
-                              className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                            >
-                              <div className="font-bold">
-                                {chemical.name}
-                              </div>
+                          {combinedPreview.map(
+                            ({
+                              chemical,
+                              calculation,
+                              fullLawnCalculation,
+                            }) => (
+                              <div
+                                key={chemical.id}
+                                className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                              >
+                                <div className="font-bold">
+                                  {chemical.name}
+                                </div>
 
-                              <div className="mt-1 text-xs text-slate-500">
-                                {chemical.type}
-                              </div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  {chemical.type}
+                                </div>
 
-                              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                                <InfoBox
-                                  label="Product"
-                                  value={formatApplicationAmount(
-                                    calculation.productRequired,
-                                    calculation.productUnit,
+                                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                  <InfoBox
+                                    label="Product"
+                                    value={formatApplicationAmount(
+                                      calculation.productRequired,
+                                      calculation.productUnit,
+                                    )}
+                                  />
+
+                                  <InfoBox
+                                    label="Cost"
+                                    value={`£${calculation.estimatedProductCost.toFixed(
+                                      2,
+                                    )}`}
+                                  />
+                                </div>
+
+                                {isProductType(
+                                  chemical.type,
+                                  "herbicide",
+                                ) &&
+                                  herbicideApplicationMethod ===
+                                    "Spot Spray" &&
+                                  spotSprayAvailable && (
+                                    <div className="mt-3 text-xs text-slate-500">
+                                      Spot-spray quantity shown above. Full-lawn equivalent:{" "}
+                                      <strong>
+                                        {formatApplicationAmount(
+                                          fullLawnCalculation.productRequired,
+                                          fullLawnCalculation.productUnit,
+                                        )}
+                                      </strong>
+                                    </div>
                                   )}
-                                />
-
-                                <InfoBox
-                                  label="Cost"
-                                  value={`£${calculation.estimatedProductCost.toFixed(
-                                    2,
-                                  )}`}
-                                />
                               </div>
-                            </div>
-                          ))}
+                            ),
+                          )}
                         </div>
                       </div>
                     )}
@@ -1766,7 +2616,15 @@ export default function VisitCentrePage() {
 
                     {outcome === "Completed" && (
                       <section className="rounded-xl border border-slate-200 p-4">
-                        <h3 className="font-bold">Products to record</h3>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h3 className="font-bold">Products to record</h3>
+
+                          {herbicideId && spotSprayAvailable && (
+                            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+                              Herbicide: {herbicideApplicationMethod}
+                            </span>
+                          )}
+                        </div>
 
                         {selectedProducts.length === 0 ? (
                           <p className="mt-3 text-sm text-amber-700">
@@ -1774,7 +2632,12 @@ export default function VisitCentrePage() {
                           </p>
                         ) : (
                           <div className="mt-3 grid gap-3 md:grid-cols-2">
-                            {combinedPreview.map(({ chemical, calculation }) => (
+                            {combinedPreview.map(
+                              ({
+                                chemical,
+                                calculation,
+                                fullLawnCalculation,
+                              }) => (
                               <div
                                 key={chemical.id}
                                 className="rounded-xl border border-slate-200 bg-slate-50 p-4"
@@ -1790,6 +2653,24 @@ export default function VisitCentrePage() {
                                     )}
                                   </span>
                                 </div>
+
+                                {isProductType(
+                                  chemical.type,
+                                  "herbicide",
+                                ) &&
+                                  herbicideApplicationMethod ===
+                                    "Spot Spray" &&
+                                  spotSprayAvailable && (
+                                    <div className="mt-2 text-xs text-slate-500">
+                                      Full-lawn equivalent:{" "}
+                                      <strong>
+                                        {formatApplicationAmount(
+                                          fullLawnCalculation.productRequired,
+                                          fullLawnCalculation.productUnit,
+                                        )}
+                                      </strong>
+                                    </div>
+                                  )}
                               </div>
                             ))}
                           </div>
@@ -1903,21 +2784,33 @@ function readStandardMixStore(): StandardMixStore {
 function aggregateProductRequirements(
   jobs: VisitJob[],
   products: ChemicalRecord[],
+  herbicideApplicationMethod:
+    HerbicideApplicationMethod,
+  spotSprayAvailable: boolean,
 ): ProductRequirement[] {
   return products.map((chemical) => {
-    const calculations = jobs.map((job) =>
-      calculateApplication(
+    const calculations = jobs.map((job) => {
+      const fullLawnCalculation =
+        calculateApplication(
+          chemical,
+          job.customer.lawnSize,
+        );
+
+      return applyHerbicideApplicationMethod(
         chemical,
-        job.customer.lawnSize,
-      ),
-    );
+        fullLawnCalculation,
+        herbicideApplicationMethod,
+        spotSprayAvailable,
+      );
+    });
 
     return {
       chemical,
       requiredAmount: roundToThreeDecimals(
         calculations.reduce(
           (total, calculation) =>
-            total + calculation.productRequired,
+            total +
+            calculation.productRequired,
           0,
         ),
       ),
@@ -2006,37 +2899,93 @@ function convertAmount(
 function createApplicationForCustomer(
   chemical: ChemicalRecord,
   areaSquareMetres: number,
+  herbicideApplicationMethod:
+    HerbicideApplicationMethod,
+  spotSprayAvailable: boolean,
 ): TreatmentApplication {
-  const calculation = calculateApplication(
-    chemical,
-    areaSquareMetres,
-  );
+  const fullLawnCalculation =
+    calculateApplication(
+      chemical,
+      areaSquareMetres,
+    );
+
+  const calculation =
+    applyHerbicideApplicationMethod(
+      chemical,
+      fullLawnCalculation,
+      herbicideApplicationMethod,
+      spotSprayAvailable,
+    );
+
+  const herbicide =
+    isProductType(
+      chemical.type,
+      "herbicide",
+    );
+
+  const applicationMethod =
+    herbicide
+      ? herbicideApplicationMethod
+      : "";
 
   return createTreatmentApplication({
     productId: chemical.id,
     productName: chemical.name,
     productType: chemical.type,
-    activeIngredients: chemical.activeIngredients,
-    registrationNumber: chemical.registrationNumber,
-    applicationRate: chemical.applicationRate,
-    applicationRateUnit: chemical.applicationRateUnit,
-    productRequired: calculation.productRequired,
-    productUnit: calculation.productUnit,
+    activeIngredients:
+      chemical.activeIngredients,
+    registrationNumber:
+      chemical.registrationNumber,
+    applicationRate:
+      chemical.applicationRate,
+    applicationRateUnit:
+      chemical.applicationRateUnit,
+
+    productRequired:
+      calculation.productRequired,
+    productUnit:
+      calculation.productUnit,
+
+    applicationMethod,
+    fullLawnProductRequired:
+      fullLawnCalculation.productRequired,
+    actualProductRequired:
+      calculation.productRequired,
+    spotSprayPercentage:
+      herbicide &&
+      applicationMethod ===
+        "Spot Spray"
+        ? SPOT_SPRAY_PERCENTAGE
+        : 100,
+
     calibratedWaterVolumePerHectare:
       calculation.calibratedWaterVolumePerHectare,
-    waterRequiredLitres: calculation.waterRequiredLitres,
-    tankCapacityLitres: chemical.tankCapacityLitres,
-    tankFills: calculation.tankFills,
-    productPerTank: calculation.productPerTank,
-    estimatedProductCost: calculation.estimatedProductCost,
-    nozzleColour: chemical.nozzleColour,
-    nozzleType: chemical.nozzleType,
-    knapsackMake: chemical.knapsackMake,
-    knapsackModel: chemical.knapsackModel,
-    walkingSpeedKph: chemical.walkingSpeedKph,
-    flowRateLitresPerMinute: chemical.flowRateLitresPerMinute,
-    sprayWidthMetres: chemical.sprayWidthMetres,
-    pressureBar: chemical.pressureBar,
+    waterRequiredLitres:
+      calculation.waterRequiredLitres,
+    tankCapacityLitres:
+      chemical.tankCapacityLitres,
+    tankFills:
+      calculation.tankFills,
+    productPerTank:
+      calculation.productPerTank,
+    estimatedProductCost:
+      calculation.estimatedProductCost,
+    nozzleColour:
+      chemical.nozzleColour,
+    nozzleType:
+      chemical.nozzleType,
+    knapsackMake:
+      chemical.knapsackMake,
+    knapsackModel:
+      chemical.knapsackModel,
+    walkingSpeedKph:
+      chemical.walkingSpeedKph,
+    flowRateLitresPerMinute:
+      chemical.flowRateLitresPerMinute,
+    sprayWidthMetres:
+      chemical.sprayWidthMetres,
+    pressureBar:
+      chemical.pressureBar,
   });
 }
 
@@ -2103,10 +3052,80 @@ function createOutcomeNote(
     : reason;
 }
 
+function extractRecordedObservations(
+  notes: string,
+) {
+  const match =
+    notes.match(
+      /Observations:\s*([^\n.]+)/i,
+    );
+
+  if (!match?.[1]) {
+    return [];
+  }
+
+  return match[1]
+    .split(",")
+    .map((item) =>
+      item.trim(),
+    )
+    .filter(Boolean);
+}
+
 function appendNote(existing: string, next: string) {
   return [existing.trim(), next.trim()]
     .filter(Boolean)
     .join("\n");
+}
+
+function applyHerbicideApplicationMethod(
+  chemical: ChemicalRecord,
+  fullLawnCalculation:
+    ApplicationCalculation,
+  herbicideApplicationMethod:
+    HerbicideApplicationMethod,
+  spotSprayAvailable: boolean,
+): ApplicationCalculation {
+  const spotSpray =
+    spotSprayAvailable &&
+    herbicideApplicationMethod ===
+      "Spot Spray" &&
+    isProductType(
+      chemical.type,
+      "herbicide",
+    );
+
+  if (!spotSpray) {
+    return fullLawnCalculation;
+  }
+
+  const factor =
+    SPOT_SPRAY_PERCENTAGE /
+    100;
+
+  return {
+    ...fullLawnCalculation,
+    productRequired:
+      roundToThreeDecimals(
+        fullLawnCalculation.productRequired *
+          factor,
+      ),
+    waterRequiredLitres:
+      roundToThreeDecimals(
+        fullLawnCalculation.waterRequiredLitres *
+          factor,
+      ),
+    tankFills:
+      roundToThreeDecimals(
+        fullLawnCalculation.tankFills *
+          factor,
+      ),
+    estimatedProductCost:
+      roundToTwoDecimals(
+        fullLawnCalculation.estimatedProductCost *
+          factor,
+      ),
+  };
 }
 
 function calculateApplication(
@@ -2284,6 +3303,236 @@ function formatDateWithDay(value: string) {
     month: "long",
     year: "numeric",
   }).format(parseDate(value));
+}
+
+function FinancialStat({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-green-700">
+        {label}
+      </div>
+
+      <div className="mt-2 text-2xl font-bold text-green-950">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-green-700">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function MiniOperationStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="min-w-28 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+      <div className="text-xl font-bold text-slate-900">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs font-semibold text-slate-500">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function OperationStat({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+
+      <div className="mt-2 text-2xl font-bold text-slate-900">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-500">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function ProgressStat({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  tone:
+    | "green"
+    | "slate"
+    | "red"
+    | "amber"
+    | "blue";
+}) {
+  const toneClasses = {
+    green:
+      "border-green-200 bg-green-50 text-green-900",
+    slate:
+      "border-slate-200 bg-slate-50 text-slate-900",
+    red:
+      "border-red-200 bg-red-50 text-red-900",
+    amber:
+      "border-amber-200 bg-amber-50 text-amber-900",
+    blue:
+      "border-blue-200 bg-blue-50 text-blue-900",
+  };
+
+  return (
+    <div
+      className={`rounded-xl border p-4 ${toneClasses[tone]}`}
+    >
+      <div className="text-2xl font-bold">
+        {value}
+      </div>
+
+      <div className="mt-1 text-sm font-bold">
+        {label}
+      </div>
+
+      <div className="mt-1 text-xs opacity-70">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function ProductModeOption({
+  label,
+  detail,
+  checked,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={disabled}
+      className={`rounded-xl border p-4 text-left transition ${
+        checked
+          ? "border-[#176b37] bg-green-50"
+          : "border-slate-200 bg-white hover:bg-slate-50"
+      } disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+            checked
+              ? "border-[#176b37]"
+              : "border-slate-300"
+          }`}
+        >
+          {checked && (
+            <span className="h-2.5 w-2.5 rounded-full bg-[#176b37]" />
+          )}
+        </span>
+
+        <span>
+          <span className="block font-bold">
+            {label}
+          </span>
+
+          <span className="mt-1 block text-sm text-slate-500">
+            {detail}
+          </span>
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function ApplicationMethodOption({
+  label,
+  detail,
+  checked,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className={`cursor-pointer rounded-xl border bg-white p-4 transition ${
+        checked
+          ? "border-[#338b45] ring-2 ring-green-100"
+          : "border-slate-200 hover:border-green-300"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <input
+          type="radio"
+          name="herbicide-application-method"
+          checked={checked}
+          onChange={onChange}
+          className="mt-1 h-4 w-4"
+        />
+
+        <div>
+          <div className="font-bold text-slate-900">
+            {label}
+          </div>
+
+          <div className="mt-1 text-xs leading-5 text-slate-500">
+            {detail}
+          </div>
+        </div>
+      </div>
+    </label>
+  );
+}
+
+function isSeasonalWeedAndFeed(treatmentName: string) {
+  const normalised = treatmentName
+    .trim()
+    .toLowerCase();
+
+  const seasonal =
+    normalised.includes("spring") ||
+    normalised.includes("summer") ||
+    normalised.includes("autumn");
+
+  const weedAndFeed =
+    normalised.includes("weed") &&
+    normalised.includes("feed");
+
+  return seasonal && weedAndFeed;
 }
 
 function isProductType(value: string, expected: string) {
