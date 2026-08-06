@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   type ReactNode,
   useMemo,
@@ -27,6 +28,13 @@ const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export default function TreatmentsPage() {
+  const searchParams =
+    useSearchParams();
+
+  const customerNumber =
+    searchParams.get("customer")?.trim() ??
+    "";
+
   const {
     customers,
     ready: customersReady,
@@ -52,12 +60,37 @@ export default function TreatmentsPage() {
   const [message, setMessage] =
     useState("");
 
+  const contextCustomer =
+    customerNumber
+      ? customers.find(
+          (customer) =>
+            customer.customerNumber ===
+            customerNumber,
+        ) ?? null
+      : null;
+
+  const scopedTreatments =
+    useMemo(
+      () =>
+        customerNumber
+          ? treatments.filter(
+              (treatment) =>
+                treatment.customerNumber ===
+                customerNumber,
+            )
+          : treatments,
+      [
+        treatments,
+        customerNumber,
+      ],
+    );
+
   const filteredTreatments =
     useMemo(() => {
       const query =
         search.trim().toLowerCase();
 
-      return [...treatments]
+      return [...scopedTreatments]
         .filter((treatment) => {
           const customer =
             customers.find(
@@ -116,7 +149,7 @@ export default function TreatmentsPage() {
             ),
         );
     }, [
-      treatments,
+      scopedTreatments,
       customers,
       search,
       statusFilter,
@@ -141,7 +174,7 @@ export default function TreatmentsPage() {
       : null;
 
   const completedTreatments =
-    treatments.filter(
+    scopedTreatments.filter(
       (treatment) =>
         treatment.status ===
         "Completed",
@@ -167,7 +200,7 @@ export default function TreatmentsPage() {
     );
 
   const awaitingReschedule =
-    treatments.filter(
+    scopedTreatments.filter(
       (treatment) =>
         treatment.status ===
         "Needs Rescheduling",
@@ -258,7 +291,11 @@ export default function TreatmentsPage() {
               </Link>
 
               <Link
-                href="/documents"
+                href={
+                  customerNumber
+                    ? `/documents?customer=${customerNumber}`
+                    : "/documents"
+                }
                 className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold hover:bg-slate-50"
               >
                 Open Documents
@@ -272,11 +309,49 @@ export default function TreatmentsPage() {
             </div>
           )}
 
+          {customerNumber && (
+            <section className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+                  Customer context
+                </div>
+
+                <div className="mt-1 text-lg font-bold text-blue-950">
+                  {contextCustomer?.fullName ??
+                    `Customer ${customerNumber}`}
+                </div>
+
+                <div className="mt-1 text-sm text-blue-800">
+                  Customer #{customerNumber}
+                  {contextCustomer
+                    ? ` · ${contextCustomer.address}, ${contextCustomer.postcode}`
+                    : ""}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/customers/${customerNumber}?tab=treatments`}
+                  className="rounded-xl border border-blue-300 bg-white px-4 py-2.5 text-sm font-semibold text-blue-900 hover:bg-blue-100"
+                >
+                  ← Return to customer
+                </Link>
+
+                <Link
+                  href="/treatments"
+                  className="rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+                >
+                  Show all treatments
+                </Link>
+              </div>
+            </section>
+          )}
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
               label="All records"
               value={String(
-                treatments.length,
+                scopedTreatments.length,
               )}
               detail="Operational history"
             />
@@ -381,8 +456,9 @@ export default function TreatmentsPage() {
                 {filteredTreatments.length ===
                 0 ? (
                   <div className="p-12 text-center text-sm text-slate-500">
-                    No treatment records match the
-                    current filters.
+                    {customerNumber
+                      ? "No treatment records match this customer and the current filters."
+                      : "No treatment records match the current filters."}
                   </div>
                 ) : (
                   filteredTreatments.map(
@@ -603,7 +679,7 @@ export default function TreatmentsPage() {
                     <div className="flex flex-wrap gap-2">
                       {selectedCustomer && (
                         <Link
-                          href={`/customers/${selectedCustomer.customerNumber}`}
+                          href={`/customers/${selectedCustomer.customerNumber}?tab=treatments`}
                           className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
                         >
                           Open customer
@@ -611,11 +687,40 @@ export default function TreatmentsPage() {
                       )}
 
                       <Link
-                        href="/documents"
+                        href={
+                          selectedTreatment
+                            ? `/documents?customer=${selectedTreatment.customerNumber}`
+                            : "/documents"
+                        }
                         className="rounded-xl border border-[#338b45] px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
                       >
                         Open document centre
                       </Link>
+
+                      {selectedTreatment && (
+                        <>
+                          <Link
+                            href={`/chemical-usage?customer=${selectedTreatment.customerNumber}`}
+                            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                          >
+                            Chemical usage
+                          </Link>
+
+                          <Link
+                            href={`/customers/${selectedTreatment.customerNumber}?tab=programme`}
+                            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                          >
+                            Annual programme
+                          </Link>
+
+                          <Link
+                            href={`/customers/${selectedTreatment.customerNumber}?tab=communications`}
+                            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                          >
+                            Communications
+                          </Link>
+                        </>
+                      )}
 
                       <button
                         type="button"

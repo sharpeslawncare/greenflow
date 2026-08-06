@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   type ReactNode,
   useMemo,
@@ -23,6 +24,12 @@ const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export default function DocumentsPage() {
+  const searchParams =
+    useSearchParams();
+
+  const customerNumber =
+    searchParams.get("customer")?.trim() ?? "";
+
   const {
     customers,
     ready: customersReady,
@@ -32,6 +39,15 @@ export default function DocumentsPage() {
     treatments,
     ready: treatmentsReady,
   } = useTreatmentStore();
+
+  const selectedCustomer =
+    customerNumber
+      ? customers.find(
+          (customer) =>
+            customer.customerNumber ===
+            customerNumber,
+        ) ?? null
+      : null;
 
   const [search, setSearch] =
     useState("");
@@ -66,6 +82,11 @@ export default function DocumentsPage() {
               treatment,
             );
 
+          const matchesCustomer =
+            !customerNumber ||
+            treatment.customerNumber ===
+              customerNumber;
+
           const matchesStatus =
             statusFilter === "All" ||
             treatment.status ===
@@ -98,6 +119,7 @@ export default function DocumentsPage() {
             );
 
           return (
+            matchesCustomer &&
             matchesStatus &&
             matchesDates &&
             matchesSearch
@@ -118,31 +140,41 @@ export default function DocumentsPage() {
       statusFilter,
       dateFrom,
       dateTo,
+      customerNumber,
     ]);
 
+  const scopedTreatments =
+    customerNumber
+      ? treatments.filter(
+          (treatment) =>
+            treatment.customerNumber ===
+            customerNumber,
+        )
+      : treatments;
+
   const completedCount =
-    treatments.filter(
+    scopedTreatments.filter(
       (treatment) =>
         treatment.status ===
         "Completed",
     ).length;
 
   const reschedulingCount =
-    treatments.filter(
+    scopedTreatments.filter(
       (treatment) =>
         treatment.status ===
         "Needs Rescheduling",
     ).length;
 
   const rescheduledCount =
-    treatments.filter(
+    scopedTreatments.filter(
       (treatment) =>
         treatment.status ===
         "Rescheduled",
     ).length;
 
   const cancelledCount =
-    treatments.filter(
+    scopedTreatments.filter(
       (treatment) =>
         treatment.status ===
         "Cancelled",
@@ -188,10 +220,9 @@ export default function DocumentsPage() {
               </h1>
 
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Print or save customer treatment
-                reports, invoices and visit-outcome
-                records generated directly from
-                Treatment Records.
+                {selectedCustomer
+                  ? `Treatment reports, invoices and visit records for ${selectedCustomer.fullName}.`
+                  : "Print or save customer treatment reports, invoices and visit-outcome records generated directly from Treatment Records."}
               </p>
             </div>
 
@@ -212,11 +243,49 @@ export default function DocumentsPage() {
             </div>
           </header>
 
+          {customerNumber && (
+            <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-green-200 bg-green-50 px-5 py-4 shadow-sm">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+                  Customer context
+                </div>
+
+                <div className="mt-1 font-bold text-green-950">
+                  {selectedCustomer
+                    ? `${selectedCustomer.fullName} · Customer ${selectedCustomer.customerNumber}`
+                    : `Customer ${customerNumber}`}
+                </div>
+
+                <p className="mt-1 text-sm text-green-800">
+                  Only documents linked to this customer are shown.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {selectedCustomer && (
+                  <Link
+                    href={`/customers/${selectedCustomer.customerNumber}?tab=documents`}
+                    className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+                  >
+                    Return to customer
+                  </Link>
+                )}
+
+                <Link
+                  href="/documents"
+                  className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                >
+                  Show all documents
+                </Link>
+              </div>
+            </section>
+          )}
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
               label="All records"
               value={String(
-                treatments.length,
+                scopedTreatments.length,
               )}
               detail="Available documents"
             />

@@ -3,12 +3,14 @@
 import Link from "next/link";
 import {
   type FormEvent,
+  type ReactNode,
   useMemo,
   useState,
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
+import { useProgrammeStore } from "@/components/programme-store";
 import type {
   Customer,
   CustomerStatus,
@@ -37,43 +39,267 @@ type CustomerForm = {
   notes: string;
 };
 
+type CustomerTab =
+  | "Active"
+  | "Paused"
+  | "Cancelled";
+
+type SortKey =
+  | "customerNumber"
+  | "fullName"
+  | "address"
+  | "postcode"
+  | "phone"
+  | "email"
+  | "vanNumber"
+  | "groupNumber"
+  | "lawnSize"
+  | "annualValue";
+
+type SortDirection =
+  | "ascending"
+  | "descending";
+
+type CustomerRow = {
+  customer: Customer;
+  annualValue: number;
+};
+
+const PAGE_SIZE = 25;
+
 export default function CustomersPage() {
   const {
     customers,
-    ready,
+    ready: customersReady,
     addCustomer,
     getNextCustomerNumber,
     restoreDemoCustomers,
   } = useCustomerStore();
 
-  const [search, setSearch] = useState("");
-  const [addingCustomer, setAddingCustomer] = useState(false);
-  const [formError, setFormError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [form, setForm] = useState<CustomerForm>(() =>
-    createEmptyForm("1006"),
-  );
+  const {
+    programmes,
+    ready: programmesReady,
+  } = useProgrammeStore();
 
-  const filteredCustomers = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const [search, setSearch] =
+    useState("");
 
-    if (!query) return customers;
+  const [activeTab, setActiveTab] =
+    useState<CustomerTab>(
+      "Active",
+    );
 
-    return customers.filter((customer) =>
-      [
-        customer.customerNumber,
-        customer.fullName,
-        customer.address,
-        customer.postcode,
-        customer.mobilePhone,
-      ].some((value) =>
-        value.toLowerCase().includes(query),
+  const [sortKey, setSortKey] =
+    useState<SortKey>(
+      "customerNumber",
+    );
+
+  const [
+    sortDirection,
+    setSortDirection,
+  ] =
+    useState<SortDirection>(
+      "ascending",
+    );
+
+  const [currentPage, setCurrentPage] =
+    useState(1);
+
+  const [
+    openMenuCustomerNumber,
+    setOpenMenuCustomerNumber,
+  ] = useState("");
+
+  const [
+    addingCustomer,
+    setAddingCustomer,
+  ] = useState(false);
+
+  const [formError, setFormError] =
+    useState("");
+
+  const [
+    successMessage,
+    setSuccessMessage,
+  ] = useState("");
+
+  const [form, setForm] =
+    useState<CustomerForm>(() =>
+      createEmptyForm("1006"),
+    );
+
+  const statusCounts =
+    useMemo(
+      () => ({
+        Active:
+          customers.filter(
+            (customer) =>
+              customer.status ===
+              "Active",
+          ).length,
+
+        Paused:
+          customers.filter(
+            (customer) =>
+              customer.status ===
+              "Paused",
+          ).length,
+
+        Cancelled:
+          customers.filter(
+            (customer) =>
+              customer.status ===
+              "Inactive",
+          ).length,
+      }),
+      [customers],
+    );
+
+  const customerRows =
+    useMemo<CustomerRow[]>(() => {
+      const query =
+        search.trim().toLowerCase();
+
+      const requiredStatus =
+        activeTab === "Cancelled"
+          ? "Inactive"
+          : activeTab;
+
+      const rows =
+        customers
+          .filter(
+            (customer) =>
+              customer.status ===
+              requiredStatus,
+          )
+          .filter(
+            (customer) =>
+              !query ||
+              [
+                customer.customerNumber,
+                customer.fullName,
+                customer.address,
+                customer.postcode,
+                customer.mobilePhone,
+                customer.homePhone,
+                customer.email,
+                String(
+                  customer.vanNumber,
+                ),
+                String(
+                  customer.groupNumber,
+                ),
+              ].some((value) =>
+                value
+                  .toLowerCase()
+                  .includes(query),
+              ),
+          )
+          .map((customer) => {
+            const customerProgrammes =
+              programmes
+                .filter(
+                  (programme) =>
+                    programme.customerNumber ===
+                    customer.customerNumber,
+                )
+                .sort(
+                  (first, second) =>
+                    second.year -
+                    first.year,
+                );
+
+            const currentProgramme =
+              customerProgrammes[0];
+
+            const chargeableVisits =
+              currentProgramme
+                ? currentProgramme.visits.filter(
+                    (visit) =>
+                      visit.status !==
+                      "Skipped",
+                  ).length
+                : 0;
+
+            return {
+              customer,
+
+              annualValue:
+                customer.treatmentPrice *
+                chargeableVisits,
+            };
+          });
+
+      return rows.sort(
+        (first, second) => {
+          const result =
+            compareRows(
+              first,
+              second,
+              sortKey,
+            );
+
+          return sortDirection ===
+            "ascending"
+            ? result
+            : -result;
+        },
+      );
+    }, [
+      customers,
+      programmes,
+      activeTab,
+      search,
+      sortKey,
+      sortDirection,
+    ]);
+
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        customerRows.length /
+          PAGE_SIZE,
       ),
     );
-  }, [customers, search]);
+
+  const safePage =
+    Math.min(
+      currentPage,
+      totalPages,
+    );
+
+  const paginatedRows =
+    customerRows.slice(
+      (safePage - 1) *
+        PAGE_SIZE,
+      safePage * PAGE_SIZE,
+    );
+
+  const firstDisplayed =
+    customerRows.length === 0
+      ? 0
+      : (safePage - 1) *
+          PAGE_SIZE +
+        1;
+
+  const lastDisplayed =
+    Math.min(
+      safePage * PAGE_SIZE,
+      customerRows.length,
+    );
+
+  const ready =
+    customersReady &&
+    programmesReady;
 
   function openAddCustomer() {
-    setForm(createEmptyForm(getNextCustomerNumber()));
+    setForm(
+      createEmptyForm(
+        getNextCustomerNumber(),
+      ),
+    );
+
     setFormError("");
     setAddingCustomer(true);
   }
@@ -83,7 +309,9 @@ export default function CustomersPage() {
     setFormError("");
   }
 
-  function handleAddCustomer(event: FormEvent<HTMLFormElement>) {
+  function handleAddCustomer(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
     setFormError("");
 
@@ -100,39 +328,101 @@ export default function CustomersPage() {
     }
 
     const customer: Customer = {
-      customerNumber: form.customerNumber.trim(),
-      firstName: form.firstName.trim(),
-      surname: form.surname.trim(),
-      fullName: form.fullName.trim(),
-      address: form.address.trim(),
-      postcode: form.postcode.trim().toUpperCase(),
-      email: form.email.trim(),
-      homePhone: form.homePhone.trim(),
-      mobilePhone: form.mobilePhone.trim(),
-      lawnSize: Number(form.lawnSize) || 0,
-      groupNumber: Number(form.groupNumber) || 1,
-      treatmentPrice: Number(form.treatmentPrice) || 18,
-      status: form.status,
-      vanNumber: Number(form.vanNumber) || 1,
+      customerNumber:
+        form.customerNumber.trim(),
+
+      firstName:
+        form.firstName.trim(),
+
+      surname:
+        form.surname.trim(),
+
+      fullName:
+        form.fullName.trim(),
+
+      address:
+        form.address.trim(),
+
+      postcode:
+        form.postcode
+          .trim()
+          .toUpperCase(),
+
+      email:
+        form.email.trim(),
+
+      homePhone:
+        form.homePhone.trim(),
+
+      mobilePhone:
+        form.mobilePhone.trim(),
+
+      lawnSize:
+        Number(
+          form.lawnSize,
+        ) || 0,
+
+      groupNumber:
+        Number(
+          form.groupNumber,
+        ) || 1,
+
+      treatmentPrice:
+        Number(
+          form.treatmentPrice,
+        ) || 18,
+
+      status:
+        form.status,
+
+      vanNumber:
+        Number(
+          form.vanNumber,
+        ) || 1,
+
       nextVisit:
-        form.nextVisit.trim() || "Not yet scheduled",
+        form.nextVisit.trim() ||
+        "Not yet scheduled",
+
       lastVisit:
-        form.lastVisit.trim() || "No previous visit",
-      lockedGate: form.lockedGate,
-      dogOnProperty: form.dogOnProperty,
-      preferredContact: form.preferredContact,
-      notes: form.notes.trim(),
+        form.lastVisit.trim() ||
+        "No previous visit",
+
+      lockedGate:
+        form.lockedGate,
+
+      dogOnProperty:
+        form.dogOnProperty,
+
+      preferredContact:
+        form.preferredContact,
+
+      notes:
+        form.notes.trim(),
     };
 
-    const result = addCustomer(customer);
+    const result =
+      addCustomer(customer);
 
     if (!result.success) {
-      setFormError(result.message);
+      setFormError(
+        result.message,
+      );
       return;
     }
 
     setAddingCustomer(false);
-    setSuccessMessage(result.message);
+    setActiveTab(
+      customer.status ===
+        "Inactive"
+        ? "Cancelled"
+        : customer.status,
+    );
+
+    setCurrentPage(1);
+    setSuccessMessage(
+      result.message,
+    );
 
     window.setTimeout(() => {
       setSuccessMessage("");
@@ -140,26 +430,76 @@ export default function CustomersPage() {
   }
 
   function handleRestoreDemoData() {
-    const confirmed = window.confirm(
-      "Restore the original Demo 2028 customers? Any customer changes made in this browser will be removed.",
-    );
+    const confirmed =
+      window.confirm(
+        "Restore the original Demo 2028 customers? Any customer changes made in this browser will be removed.",
+      );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     restoreDemoCustomers();
     setSearch("");
-    setSuccessMessage("Demo 2028 customers restored.");
+    setActiveTab("Active");
+    setCurrentPage(1);
+
+    setSuccessMessage(
+      "Demo 2028 customers restored.",
+    );
 
     window.setTimeout(() => {
       setSuccessMessage("");
     }, 3000);
   }
 
+  function changeTab(
+    tab: CustomerTab,
+  ) {
+    setActiveTab(tab);
+    setCurrentPage(1);
+    setOpenMenuCustomerNumber("");
+  }
+
+  function changeSort(
+    nextKey: SortKey,
+  ) {
+    if (sortKey === nextKey) {
+      setSortDirection(
+        (current) =>
+          current ===
+          "ascending"
+            ? "descending"
+            : "ascending",
+      );
+    } else {
+      setSortKey(nextKey);
+      setSortDirection(
+        "ascending",
+      );
+    }
+
+    setCurrentPage(1);
+    setOpenMenuCustomerNumber("");
+  }
+
+  function toggleQuickMenu(
+    customerNumber: string,
+  ) {
+    setOpenMenuCustomerNumber(
+      (current) =>
+        current ===
+        customerNumber
+          ? ""
+          : customerNumber,
+    );
+  }
+
   return (
     <AppShell>
-      <main className="p-6 md:p-10">
-        <div className="mx-auto max-w-7xl">
-          <header className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+      <main className="p-5 md:p-7">
+        <div className="mx-auto max-w-[1750px]">
+          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
               <Link
                 href="/"
@@ -168,136 +508,513 @@ export default function CustomersPage() {
                 ← Dashboard
               </Link>
 
-              <h1 className="mt-3 text-4xl font-bold tracking-tight">
-                Customers
+              <h1 className="mt-2 text-3xl font-bold tracking-tight">
+                Customer Centre
               </h1>
 
-              <p className="mt-2 text-slate-500">
-                Sharpes Lawn Care – Demo 2028
+              <p className="mt-1 text-sm text-slate-500">
+                Manage customer accounts, contact details and programme values.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={handleRestoreDemoData}
-                className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+                onClick={
+                  handleRestoreDemoData
+                }
+                className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 Restore demo data
               </button>
 
               <button
                 type="button"
-                onClick={openAddCustomer}
-                className="rounded-xl bg-[#176b37] px-5 py-3 font-semibold text-white transition hover:bg-[#125b2f]"
+                onClick={
+                  openAddCustomer
+                }
+                className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125b2f]"
               >
-                + Add customer
+                + Add Customer
               </button>
             </div>
           </header>
 
           {successMessage && (
-            <div className="mb-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 font-semibold text-green-800">
-              {successMessage}
+            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+              {
+                successMessage
+              }
             </div>
           )}
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <label className="block flex-1">
-                <span className="sr-only">
-                  Search customers
-                </span>
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <nav className="flex overflow-x-auto border-b border-slate-200 px-3">
+              <CustomerTabButton
+                label="Active"
+                count={
+                  statusCounts.Active
+                }
+                active={
+                  activeTab ===
+                  "Active"
+                }
+                onClick={() =>
+                  changeTab(
+                    "Active",
+                  )
+                }
+              />
 
+              <CustomerTabButton
+                label="Paused"
+                count={
+                  statusCounts.Paused
+                }
+                active={
+                  activeTab ===
+                  "Paused"
+                }
+                onClick={() =>
+                  changeTab(
+                    "Paused",
+                  )
+                }
+              />
+
+              <Link
+                href="/enquiries"
+                className="whitespace-nowrap border-b-2 border-transparent px-5 py-4 text-sm font-semibold text-slate-500 transition hover:border-green-200 hover:text-[#176b37]"
+              >
+                Quotes
+              </Link>
+
+              <CustomerTabButton
+                label="Cancelled"
+                count={
+                  statusCounts.Cancelled
+                }
+                active={
+                  activeTab ===
+                  "Cancelled"
+                }
+                onClick={() =>
+                  changeTab(
+                    "Cancelled",
+                  )
+                }
+              />
+            </nav>
+
+            <div className="p-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
                 <input
                   value={search}
-                  onChange={(event) =>
-                    setSearch(event.target.value)
-                  }
-                  placeholder="Search by name, customer number, address or postcode..."
+                  onChange={(event) => {
+                    setSearch(
+                      event.target.value,
+                    );
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Search by customer, number, address, postcode, phone or email"
                   className={inputClass}
                 />
-              </label>
 
-              <div className="text-sm font-medium text-slate-500">
-                {ready
-                  ? `${filteredCustomers.length} customer${
-                      filteredCustomers.length === 1
-                        ? ""
-                        : "s"
-                    }`
-                  : "Loading customers..."}
+                <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-bold text-green-900">
+                  Number of{" "}
+                  {activeTab} Customers{" "}
+                  {
+                    customerRows.length
+                  }
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="hidden grid-cols-[100px_1.3fr_1.8fr_110px_110px_110px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
-              <div>Number</div>
-              <div>Customer</div>
-              <div>Address</div>
-              <div>Group</div>
-              <div>Price</div>
-              <div>Status</div>
+          <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <div className="min-w-[1450px]">
+                <div className="sticky top-0 z-10 grid grid-cols-[100px_1.25fr_1.6fr_115px_135px_1.4fr_70px_75px_90px_110px_56px] border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-600">
+                  <SortHeader
+                    label="Cust. ID"
+                    sortKey="customerNumber"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                  />
+
+                  <SortHeader
+                    label="Customer"
+                    sortKey="fullName"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                  />
+
+                  <SortHeader
+                    label="Address"
+                    sortKey="address"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                  />
+
+                  <SortHeader
+                    label="Postcode"
+                    sortKey="postcode"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                  />
+
+                  <SortHeader
+                    label="Phone"
+                    sortKey="phone"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                  />
+
+                  <SortHeader
+                    label="Email"
+                    sortKey="email"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                  />
+
+                  <SortHeader
+                    label="Van"
+                    sortKey="vanNumber"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                    centred
+                  />
+
+                  <SortHeader
+                    label="Group"
+                    sortKey="groupNumber"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                    centred
+                  />
+
+                  <SortHeader
+                    label="Lawn"
+                    sortKey="lawnSize"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                    centred
+                  />
+
+                  <SortHeader
+                    label="Annual Value"
+                    sortKey="annualValue"
+                    currentSortKey={sortKey}
+                    direction={sortDirection}
+                    onSort={changeSort}
+                    centred
+                  />
+
+                  <div />
+                </div>
+
+                {!ready ? (
+                  <div className="p-12 text-center text-slate-500">
+                    Loading GreenFlow customers...
+                  </div>
+                ) : paginatedRows.length ===
+                  0 ? (
+                  <div className="p-12 text-center text-slate-500">
+                    No{" "}
+                    {activeTab.toLowerCase()}{" "}
+                    customers match the current search.
+                  </div>
+                ) : (
+                  <div>
+                    {paginatedRows.map(
+                      ({
+                        customer,
+                        annualValue,
+                      }, index) => (
+                        <div
+                          key={
+                            customer.customerNumber
+                          }
+                          className={`relative grid grid-cols-[100px_1.25fr_1.6fr_115px_135px_1.4fr_70px_75px_90px_110px_56px] items-center border-b border-slate-100 text-sm transition last:border-0 hover:bg-green-50 ${
+                            index %
+                              2 ===
+                            0
+                              ? "bg-white"
+                              : "bg-slate-50/70"
+                          }`}
+                        >
+                          <TableCell className="font-bold">
+                            <Link
+                              href={`/customers/${customer.customerNumber}`}
+                              className="text-[#176b37] hover:underline"
+                            >
+                              {
+                                customer.customerNumber
+                              }
+                            </Link>
+                          </TableCell>
+
+                          <TableCell>
+                            <Link
+                              href={`/customers/${customer.customerNumber}`}
+                              className="font-semibold text-slate-900 hover:text-[#176b37] hover:underline"
+                            >
+                              {
+                                customer.fullName
+                              }
+                            </Link>
+
+                            {(customer.lockedGate ||
+                              customer.dogOnProperty) && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {customer.lockedGate && (
+                                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                    Locked gate
+                                  </span>
+                                )}
+
+                                {customer.dogOnProperty && (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                    Dog
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="text-slate-700">
+                            {
+                              customer.address
+                            }
+                          </TableCell>
+
+                          <TableCell className="font-medium">
+                            {
+                              customer.postcode
+                            }
+                          </TableCell>
+
+                          <TableCell className="text-slate-700">
+                            {customer.mobilePhone ||
+                              customer.homePhone ||
+                              "—"}
+                          </TableCell>
+
+                          <TableCell className="truncate text-slate-700">
+                            {customer.email ||
+                              "—"}
+                          </TableCell>
+
+                          <TableCell centred>
+                            {
+                              customer.vanNumber
+                            }
+                          </TableCell>
+
+                          <TableCell centred>
+                            {
+                              customer.groupNumber
+                            }
+                          </TableCell>
+
+                          <TableCell centred>
+                            {customer.lawnSize.toLocaleString(
+                              "en-GB",
+                            )}{" "}
+                            m²
+                          </TableCell>
+
+                          <TableCell
+                            centred
+                            className="font-semibold"
+                          >
+                            £
+                            {annualValue.toFixed(
+                              2,
+                            )}
+                          </TableCell>
+
+                          <div className="relative flex justify-center px-2 py-3.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleQuickMenu(
+                                  customer.customerNumber,
+                                )
+                              }
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-xl font-bold text-[#176b37] transition hover:bg-green-100"
+                              aria-label={`Open actions for ${customer.fullName}`}
+                              aria-expanded={
+                                openMenuCustomerNumber ===
+                                customer.customerNumber
+                              }
+                            >
+                              ⋮
+                            </button>
+
+                            {openMenuCustomerNumber ===
+                              customer.customerNumber && (
+                              <div className="absolute right-3 top-12 z-30 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 shadow-xl">
+                                <QuickActionLink
+                                  href={`/customers/${customer.customerNumber}`}
+                                  label="Open customer"
+                                  onClick={() =>
+                                    setOpenMenuCustomerNumber("")
+                                  }
+                                />
+
+                                <QuickActionLink
+                                  href={`/customers/${customer.customerNumber}?tab=programme`}
+                                  label="Annual programme"
+                                  onClick={() =>
+                                    setOpenMenuCustomerNumber("")
+                                  }
+                                />
+
+                                <QuickActionLink
+                                  href={`/customers/${customer.customerNumber}?tab=treatments`}
+                                  label="Treatment history"
+                                  onClick={() =>
+                                    setOpenMenuCustomerNumber("")
+                                  }
+                                />
+
+                                <QuickActionLink
+                                  href={`/customers/${customer.customerNumber}?tab=documents`}
+                                  label="Documents"
+                                  onClick={() =>
+                                    setOpenMenuCustomerNumber("")
+                                  }
+                                />
+
+                                <QuickActionLink
+                                  href={`/customers/${customer.customerNumber}?tab=communications`}
+                                  label="Communications"
+                                  onClick={() =>
+                                    setOpenMenuCustomerNumber("")
+                                  }
+                                />
+
+                                <QuickActionLink
+                                  href={`/customers/${customer.customerNumber}?tab=chemicals`}
+                                  label="Chemical usage"
+                                  onClick={() =>
+                                    setOpenMenuCustomerNumber("")
+                                  }
+                                />
+
+                                <div className="my-2 border-t border-slate-100" />
+
+                                <QuickActionLink
+                                  href={`/visit-centre?customer=${customer.customerNumber}`}
+                                  label="Open in Visit Centre"
+                                  onClick={() =>
+                                    setOpenMenuCustomerNumber("")
+                                  }
+                                  emphasized
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {!ready ? (
-              <div className="p-10 text-center text-slate-500">
-                Loading GreenFlow customers...
+            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm">
+              <span className="text-slate-500">
+                Showing{" "}
+                {
+                  firstDisplayed
+                }{" "}
+                to{" "}
+                {
+                  lastDisplayed
+                }{" "}
+                of{" "}
+                {
+                  customerRows.length
+                }{" "}
+                customers
+              </span>
+
+              <div className="flex items-center gap-2">
+                <PageButton
+                  label="‹"
+                  disabled={
+                    safePage === 1
+                  }
+                  onClick={() =>
+                    setCurrentPage(
+                      Math.max(
+                        1,
+                        safePage - 1,
+                      ),
+                    )
+                  }
+                />
+
+                {getPageNumbers(
+                  safePage,
+                  totalPages,
+                ).map(
+                  (page, index) =>
+                    page ===
+                    "ellipsis" ? (
+                      <span
+                        key={`ellipsis-${index}`}
+                        className="px-2 text-slate-400"
+                      >
+                        …
+                      </span>
+                    ) : (
+                      <PageButton
+                        key={page}
+                        label={String(
+                          page,
+                        )}
+                        active={
+                          page ===
+                          safePage
+                        }
+                        onClick={() =>
+                          setCurrentPage(
+                            page,
+                          )
+                        }
+                      />
+                    ),
+                )}
+
+                <PageButton
+                  label="›"
+                  disabled={
+                    safePage ===
+                    totalPages
+                  }
+                  onClick={() =>
+                    setCurrentPage(
+                      Math.min(
+                        totalPages,
+                        safePage + 1,
+                      ),
+                    )
+                  }
+                />
               </div>
-            ) : filteredCustomers.length === 0 ? (
-              <div className="p-10 text-center text-slate-500">
-                No customers match your search.
-              </div>
-            ) : (
-              filteredCustomers.map((customer) => (
-                <Link
-                  key={customer.customerNumber}
-                  href={`/customers/${customer.customerNumber}`}
-                  className="grid gap-2 border-b border-slate-200 px-5 py-5 transition last:border-b-0 hover:bg-green-50 md:grid-cols-[100px_1.3fr_1.8fr_110px_110px_110px] md:items-center md:gap-4"
-                >
-                  <div className="font-bold text-[#176b37]">
-                    {customer.customerNumber}
-                  </div>
-
-                  <div>
-                    <div className="font-semibold">
-                      {customer.fullName}
-                    </div>
-
-                    <div className="mt-1 flex flex-wrap gap-2 text-xs md:hidden">
-                      {customer.lockedGate && (
-                        <span className="font-semibold text-red-600">
-                          Locked gate
-                        </span>
-                      )}
-
-                      {customer.dogOnProperty && (
-                        <span className="font-semibold text-amber-700">
-                          Dog
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-sm text-slate-600">
-                    {customer.address}, {customer.postcode}
-                  </div>
-
-                  <div className="text-sm font-semibold">
-                    Group {customer.groupNumber}
-                  </div>
-
-                  <div className="font-semibold">
-                    £{customer.treatmentPrice.toFixed(2)}
-                  </div>
-
-                  <div>
-                    <StatusBadge status={customer.status} />
-                  </div>
-                </Link>
-              ))
-            )}
+            </footer>
           </section>
         </div>
       </main>
@@ -353,7 +1070,7 @@ export default function CustomersPage() {
                 >
                   <option value="Active">Active</option>
                   <option value="Paused">Paused</option>
-                  <option value="Inactive">Inactive</option>
+                  <option value="Inactive">Cancelled</option>
                 </select>
               </FormField>
 
@@ -671,7 +1388,7 @@ function FormField({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className="block">
@@ -684,23 +1401,323 @@ function FormField({
   );
 }
 
-function StatusBadge({
-  status,
+
+function compareRows(
+  first: CustomerRow,
+  second: CustomerRow,
+  sortKey: SortKey,
+) {
+  const firstCustomer =
+    first.customer;
+
+  const secondCustomer =
+    second.customer;
+
+  switch (sortKey) {
+    case "customerNumber":
+      return compareCustomerNumbers(
+        firstCustomer.customerNumber,
+        secondCustomer.customerNumber,
+      );
+
+    case "fullName":
+      return firstCustomer.fullName.localeCompare(
+        secondCustomer.fullName,
+      );
+
+    case "address":
+      return firstCustomer.address.localeCompare(
+        secondCustomer.address,
+      );
+
+    case "postcode":
+      return firstCustomer.postcode.localeCompare(
+        secondCustomer.postcode,
+      );
+
+    case "phone":
+      return (
+        firstCustomer.mobilePhone ||
+        firstCustomer.homePhone
+      ).localeCompare(
+        secondCustomer.mobilePhone ||
+          secondCustomer.homePhone,
+      );
+
+    case "email":
+      return firstCustomer.email.localeCompare(
+        secondCustomer.email,
+      );
+
+    case "vanNumber":
+      return (
+        firstCustomer.vanNumber -
+        secondCustomer.vanNumber
+      );
+
+    case "groupNumber":
+      return (
+        firstCustomer.groupNumber -
+        secondCustomer.groupNumber
+      );
+
+    case "lawnSize":
+      return (
+        firstCustomer.lawnSize -
+        secondCustomer.lawnSize
+      );
+
+    case "annualValue":
+      return (
+        first.annualValue -
+        second.annualValue
+      );
+  }
+}
+
+function compareCustomerNumbers(
+  first: string,
+  second: string,
+) {
+  const firstNumber =
+    Number(first);
+
+  const secondNumber =
+    Number(second);
+
+  if (
+    Number.isFinite(
+      firstNumber,
+    ) &&
+    Number.isFinite(
+      secondNumber,
+    )
+  ) {
+    return (
+      firstNumber -
+      secondNumber
+    );
+  }
+
+  return first.localeCompare(
+    second,
+  );
+}
+
+function CustomerTabButton({
+  label,
+  count,
+  active,
+  onClick,
 }: {
-  status: CustomerStatus;
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
 }) {
-  const styles =
-    status === "Active"
-      ? "bg-green-100 text-green-800"
-      : status === "Paused"
-        ? "bg-amber-100 text-amber-800"
-        : "bg-slate-200 text-slate-700";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`whitespace-nowrap border-b-2 px-5 py-4 text-sm font-semibold transition ${
+        active
+          ? "border-[#176b37] text-[#176b37]"
+          : "border-transparent text-slate-500 hover:border-green-200 hover:text-[#176b37]"
+      }`}
+    >
+      {label} ({count})
+    </button>
+  );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  currentSortKey,
+  direction,
+  onSort,
+  centred = false,
+}: {
+  label: string;
+  sortKey: SortKey;
+  currentSortKey: SortKey;
+  direction: SortDirection;
+  onSort: (
+    sortKey: SortKey,
+  ) => void;
+  centred?: boolean;
+}) {
+  const active =
+    currentSortKey ===
+    sortKey;
 
   return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${styles}`}
+    <button
+      type="button"
+      onClick={() =>
+        onSort(sortKey)
+      }
+      className={`flex min-h-14 items-center gap-1 border-r border-slate-200 px-3 py-3 text-left transition hover:bg-green-50 ${
+        centred
+          ? "justify-center text-center"
+          : ""
+      }`}
     >
-      {status}
-    </span>
+      <span>
+        {label}
+      </span>
+
+      <span
+        className={
+          active
+            ? "text-[#176b37]"
+            : "text-slate-300"
+        }
+      >
+        {active
+          ? direction ===
+            "ascending"
+            ? "▲"
+            : "▼"
+          : "↕"}
+      </span>
+    </button>
   );
+}
+
+function TableCell({
+  children,
+  className = "",
+  centred = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  centred?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-0 px-3 py-3.5 ${
+        centred
+          ? "text-center"
+          : ""
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function QuickActionLink({
+  href,
+  label,
+  onClick,
+  emphasized = false,
+}: {
+  href: string;
+  label: string;
+  onClick: () => void;
+  emphasized?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`block px-4 py-2.5 text-sm font-semibold transition ${
+        emphasized
+          ? "text-[#176b37] hover:bg-green-50"
+          : "text-slate-700 hover:bg-slate-50"
+      }`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function PageButton({
+  label,
+  onClick,
+  disabled = false,
+  active = false,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`min-w-9 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+        active
+          ? "border-[#176b37] bg-[#176b37] text-white"
+          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+      } disabled:cursor-not-allowed disabled:opacity-40`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function getPageNumbers(
+  currentPage: number,
+  totalPages: number,
+): Array<number | "ellipsis"> {
+  if (totalPages <= 7) {
+    return Array.from(
+      {
+        length:
+          totalPages,
+      },
+      (_, index) =>
+        index + 1,
+    );
+  }
+
+  const pages:
+    Array<
+      number | "ellipsis"
+    > = [1];
+
+  if (currentPage > 4) {
+    pages.push(
+      "ellipsis",
+    );
+  }
+
+  const start =
+    Math.max(
+      2,
+      currentPage - 1,
+    );
+
+  const end =
+    Math.min(
+      totalPages - 1,
+      currentPage + 1,
+    );
+
+  for (
+    let page = start;
+    page <= end;
+    page += 1
+  ) {
+    pages.push(page);
+  }
+
+  if (
+    currentPage <
+    totalPages - 3
+  ) {
+    pages.push(
+      "ellipsis",
+    );
+  }
+
+  pages.push(
+    totalPages,
+  );
+
+  return pages;
 }

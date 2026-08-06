@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   type ReactNode,
   useEffect,
@@ -27,8 +28,10 @@ type CustomerProfileClientProps = {
 type TabId =
   | "overview"
   | "programme"
-  | "history"
-  | "pricing"
+  | "treatments"
+  | "documents"
+  | "communications"
+  | "chemicals"
   | "notes";
 
 const tabs: Array<{
@@ -44,12 +47,20 @@ const tabs: Array<{
     label: "Programme",
   },
   {
-    id: "history",
-    label: "History",
+    id: "treatments",
+    label: "Treatments",
   },
   {
-    id: "pricing",
-    label: "Pricing",
+    id: "documents",
+    label: "Documents",
+  },
+  {
+    id: "communications",
+    label: "Communications",
+  },
+  {
+    id: "chemicals",
+    label: "Chemicals",
   },
   {
     id: "notes",
@@ -57,12 +68,26 @@ const tabs: Array<{
   },
 ];
 
+function isTabId(
+  value: string | null,
+): value is TabId {
+  return tabs.some(
+    (tab) => tab.id === value,
+  );
+}
+
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export function CustomerProfileClient({
   customerNumber,
 }: CustomerProfileClientProps) {
+  const searchParams =
+    useSearchParams();
+
+  const requestedTab =
+    searchParams.get("tab");
+
   const {
     getCustomer,
     updateCustomer,
@@ -88,7 +113,11 @@ export function CustomerProfileClient({
     getCustomer(customerNumber);
 
   const [activeTab, setActiveTab] =
-    useState<TabId>("overview");
+    useState<TabId>(
+      isTabId(requestedTab)
+        ? requestedTab
+        : "overview",
+    );
 
   const [draft, setDraft] =
     useState<StoredCustomer | null>(
@@ -113,10 +142,16 @@ export function CustomerProfileClient({
     });
 
     setEditing(false);
-    setActiveTab("overview");
+
+    setActiveTab(
+      isTabId(requestedTab)
+        ? requestedTab
+        : "overview",
+    );
   }, [
     customerNumber,
     customer,
+    requestedTab,
   ]);
 
   const customerProgrammes =
@@ -197,6 +232,22 @@ export function CustomerProfileClient({
         treatments,
         customerNumber,
       ],
+    );
+
+  const customerChemicalTreatments =
+    useMemo(
+      () =>
+        customerTreatments.filter(
+          (treatment) =>
+            treatment.status ===
+              "Completed" &&
+            Boolean(
+              treatment.chemicalName,
+            ) &&
+            treatment.productRequired >
+              0,
+        ),
+      [customerTreatments],
     );
 
   const nextProgrammeVisit =
@@ -440,13 +491,6 @@ function cancelEditing() {
               Open jobs
             </Link>
 
-            <Link
-              href="/programmes"
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
-            >
-              Review programme
-            </Link>
-
             <button
               type="button"
               onClick={beginEditing}
@@ -455,27 +499,14 @@ function cancelEditing() {
               Edit customer
             </button>
 
-            <Link
-              href="/documents"
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
-            >
-              Documents
-            </Link>
-
-            <Link
-              href="/communications"
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
-            >
-              Communications
-            </Link>
           </div>
         </section>
 
         <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 px-5">
           {tabs.map((tab) => (
-            <button
+            <Link
               key={tab.id}
-              type="button"
+              href={`?tab=${tab.id}`}
               onClick={() =>
                 setActiveTab(
                   tab.id,
@@ -488,7 +519,7 @@ function cancelEditing() {
               }`}
             >
               {tab.label}
-            </button>
+            </Link>
           ))}
         </nav>
 
@@ -517,6 +548,15 @@ function cancelEditing() {
                 customerProgrammes.length >
                 0
               }
+              treatmentPrice={
+                customer.treatmentPrice
+              }
+              aerationPrice={
+                aerationPrice
+              }
+              scarificationPrice={
+                scarificationPrice
+              }
             />
           )}
 
@@ -534,7 +574,7 @@ function cancelEditing() {
           )}
 
           {activeTab ===
-            "history" && (
+            "treatments" && (
             <CustomerTreatmentHistory
               customerNumber={
                 customer.customerNumber
@@ -543,16 +583,32 @@ function cancelEditing() {
           )}
 
           {activeTab ===
-            "pricing" && (
-            <PricingTab
-              treatmentPrice={
-                customer.treatmentPrice
-              }
-              aerationPrice={
-                aerationPrice
-              }
-              scarificationPrice={
-                scarificationPrice
+            "documents" && (
+            <CustomerModuleTab
+              title="Customer documents"
+              description="Open the Document Centre already filtered to this customer."
+              href={`/documents?customer=${customer.customerNumber}`}
+              actionLabel="Open customer documents"
+              emptyText="No embedded customer document list is available yet. The linked Document Centre remains the source of truth."
+            />
+          )}
+
+          {activeTab ===
+            "communications" && (
+            <CustomerModuleTab
+              title="Customer communications"
+              description="Open Communications with this customer already identified."
+              href={`/communications?customer=${customer.customerNumber}`}
+              actionLabel="Open customer communications"
+              emptyText="Communication history will appear here once the Communications store exposes customer-linked records."
+            />
+          )}
+
+          {activeTab ===
+            "chemicals" && (
+            <ChemicalHistoryTab
+              treatments={
+                customerChemicalTreatments
               }
             />
           )}
@@ -989,11 +1045,17 @@ function OverviewTab({
   nextVisit,
   lastVisit,
   hasProgramme,
+  treatmentPrice,
+  aerationPrice,
+  scarificationPrice,
 }: {
   customer: StoredCustomer;
   nextVisit: string;
   lastVisit: string;
   hasProgramme: boolean;
+  treatmentPrice: number;
+  aerationPrice: number;
+  scarificationPrice: number;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -1091,6 +1153,28 @@ function OverviewTab({
           positive
         />
       </CompactCard>
+
+      <div className="lg:col-span-3">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <PriceCard
+            title="Standard treatment"
+            price={treatmentPrice}
+            detail="Base price including VAT"
+          />
+
+          <PriceCard
+            title="Aeration"
+            price={aerationPrice}
+            detail="Treatment price ×2"
+          />
+
+          <PriceCard
+            title="Scarification"
+            price={scarificationPrice}
+            detail="Treatment price ×3"
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1271,6 +1355,135 @@ function ProgrammeTab({
             },
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerModuleTab({
+  title,
+  description,
+  href,
+  actionLabel,
+  emptyText,
+}: {
+  title: string;
+  description: string;
+  href: string;
+  actionLabel: string;
+  emptyText: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
+      <h2 className="text-xl font-bold">
+        {title}
+      </h2>
+
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+        {description}
+      </p>
+
+      <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+        {emptyText}
+      </div>
+
+      <Link
+        href={href}
+        className="mt-5 inline-flex rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+      >
+        {actionLabel}
+      </Link>
+    </div>
+  );
+}
+
+function ChemicalHistoryTab({
+  treatments,
+}: {
+  treatments: ReturnType<
+    typeof useTreatmentStore
+  >["treatments"];
+}) {
+  if (treatments.length === 0) {
+    return (
+      <EmptyState>
+        No completed chemical applications are recorded for this customer.
+      </EmptyState>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <div className="min-w-[950px]">
+        <div className="grid grid-cols-[120px_1.25fr_1.25fr_130px_120px_110px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <span>Date</span>
+          <span>Treatment</span>
+          <span>Chemical</span>
+          <span>Product</span>
+          <span>Water</span>
+          <span>Cost</span>
+        </div>
+
+        {treatments.map(
+          (treatment) => (
+            <div
+              key={treatment.id}
+              className="grid grid-cols-[120px_1.25fr_1.25fr_130px_120px_110px] items-center gap-3 border-t border-slate-100 px-4 py-4 text-sm"
+            >
+              <span>
+                {formatDate(
+                  getTreatmentDate(
+                    treatment,
+                  ),
+                )}
+              </span>
+
+              <span className="font-semibold">
+                {
+                  treatment.treatmentName
+                }
+              </span>
+
+              <div>
+                <div className="font-semibold">
+                  {
+                    treatment.chemicalName
+                  }
+                </div>
+
+                <div className="mt-1 text-xs text-slate-500">
+                  {
+                    treatment.chemicalType ||
+                    "Product"
+                  }
+                </div>
+              </div>
+
+              <span>
+                {
+                  treatment.productRequired
+                }{" "}
+                {
+                  treatment.productUnit
+                }
+              </span>
+
+              <span>
+                {treatment.waterRequiredLitres.toFixed(
+                  2,
+                )}{" "}
+                L
+              </span>
+
+              <span className="font-semibold">
+                £
+                {treatment.estimatedProductCost.toFixed(
+                  2,
+                )}
+              </span>
+            </div>
+          ),
+        )}
       </div>
     </div>
   );
