@@ -190,31 +190,75 @@ export default function TreatmentDocumentPage() {
       <style jsx global>{`
         @page {
           size: A4 portrait;
-          margin: 0;
+          margin: 6mm;
+        }
+
+        .print-document {
+          display: none;
         }
 
         @media print {
           html,
           body {
-            width: 210mm;
-            min-height: 297mm;
-            margin: 0;
-            padding: 0;
-            background: white;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
           }
 
-          .no-print {
+          .no-print,
+          .screen-document {
             display: none !important;
           }
 
-          .a4-document {
-            width: 210mm !important;
-            min-height: 297mm !important;
-            max-height: 297mm !important;
-            margin: 0 !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-            overflow: hidden !important;
+          .print-document {
+            display: block !important;
+            box-sizing: border-box !important;
+            width: 198mm !important;
+            max-width: 198mm !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            color: #0f172a !important;
+            font-size: 9.5pt !important;
+            line-height: 1.3 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          .print-document * {
+            box-sizing: border-box !important;
+          }
+
+          .print-document section,
+          .print-document header,
+          .print-document footer,
+          .print-document aside {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          .print-contact-grid {
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            gap: 3mm !important;
+          }
+
+          .print-address-grid {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 10mm !important;
+          }
+
+          .print-treatment-grid {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1.65fr) minmax(0, 0.85fr) !important;
+            gap: 7mm !important;
+          }
+
+          .print-next-grid {
+            display: grid !important;
+            grid-template-columns: 14mm minmax(0, 1fr) !important;
+            gap: 5mm !important;
+            align-items: center !important;
           }
         }
       `}</style>
@@ -244,9 +288,7 @@ export default function TreatmentDocumentPage() {
 
           <button
             type="button"
-            onClick={() =>
-              window.print()
-            }
+            onClick={() => window.print()}
             className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
           >
             Print or save PDF
@@ -255,331 +297,477 @@ export default function TreatmentDocumentPage() {
       </div>
 
       <article
-        className="a4-document mx-auto min-h-[1123px] max-w-[794px] overflow-hidden rounded-[24px] bg-white shadow-2xl"
-        style={
-          {
-            "--document-primary":
-              primaryColour,
-          } as CSSProperties
-        }
+        className="screen-document mx-auto min-h-[1123px] max-w-[794px] bg-white px-8 py-6 shadow-2xl"
+        style={{ "--document-primary": primaryColour } as CSSProperties}
       >
-        <header className="border-b border-slate-200 px-8 py-6">
+        <header className="border-b border-slate-300 pb-4">
           <div className="flex items-start justify-between gap-8">
-            <div>
+            <div className="min-w-0">
               <div
-                className="text-4xl font-bold tracking-tight"
-                style={{
-                  color:
-                    primaryColour,
-                }}
+                className="text-3xl font-bold tracking-tight"
+                style={{ color: primaryColour }}
               >
-                {
-                  settings.business
-                    .businessName
-                }
+                {settings.business.businessName}
               </div>
 
-              <div className="mt-1 text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {settings.branding.applicationSubtitle && (
+                <div className="mt-1 text-sm text-slate-600">
+                  {settings.branding.applicationSubtitle}
+                </div>
+              )}
+
+              <div className="mt-2 text-[11px] font-medium text-slate-500">
+                Powered by GreenFlow
+              </div>
+            </div>
+
+            <div className="text-right">
+              <div
+                className="text-xl font-bold uppercase tracking-wide"
+                style={{ color: primaryColour }}
+              >
                 {documentTitle}
               </div>
-            </div>
 
-            <div className="max-w-[320px] whitespace-pre-line text-right text-[11px] leading-[1.45] text-slate-600">
-              <div className="font-bold text-slate-900">
-                {
-                  settings.business
-                    .businessName
-                }
-              </div>
-
-              {businessAddress && (
+              <div className="mt-3 space-y-1 text-sm text-slate-700">
                 <div>
-                  {businessAddress}
-                </div>
-              )}
-
-              {settings.business
-                .telephone && (
-                <div>
-                  Tel:{" "}
-                  {
-                    settings.business
-                      .telephone
-                  }
-                </div>
-              )}
-
-              {settings.business
-                .mobile && (
-                <div>
-                  Mobile:{" "}
-                  {
-                    settings.business
-                      .mobile
-                  }
-                </div>
-              )}
-
-              {settings.business
-                .email && (
-                <div>
-                  Email:{" "}
-                  {
-                    settings.business
-                      .email
-                  }
-                </div>
-              )}
-
-              {settings.business
-                .website && (
-                <div>
-                  Web:{" "}
-                  {
-                    settings.business
-                      .website
-                  }
-                </div>
-              )}
-
-              {vatNumber && (
-                <div>
-                  VAT: {vatNumber}
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-
-        <section className="px-8 py-6">
-          <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <SmallHeading colour={primaryColour}>
-                Customer
-              </SmallHeading>
-
-              <div className="mt-2 text-lg font-bold">
-                {customer.fullName}
-              </div>
-
-              <div className="mt-1 whitespace-pre-line text-sm leading-5 text-slate-600">
-                {customerAddress}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <DocumentMetaRow
-                label="Customer number"
-                value={
-                  customer.customerNumber
-                }
-              />
-
-              <DocumentMetaRow
-                label="Invoice number"
-                value={
-                  completed
-                    ? treatment.invoiceNumber ||
-                      "Pending"
-                    : "Not applicable"
-                }
-              />
-
-              <DocumentMetaRow
-                label="Visit date"
-                value={formatDate(
-                  getRecordDate(
-                    treatment,
-                  ),
-                )}
-              />
-            </div>
-          </div>
-
-          <section className="mt-5 min-h-[255px] rounded-xl border border-slate-200 p-5">
-            <div>
-              <SmallHeading colour={primaryColour}>
-                Today&apos;s visit
-              </SmallHeading>
-
-              <h1 className="mt-2 text-2xl font-bold">
-                {
-                  treatment.treatmentName
-                }
-              </h1>
-            </div>
-
-            <p className="mt-4 whitespace-pre-line text-[14px] leading-7 text-slate-700">
-              {visitInformation}
-            </p>
-
-            {treatment.notes && (
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-sm font-bold">
-                  Lawn observations and advice
-                </div>
-
-                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
-                  {removeInternalProductInformation(
-                    treatment.notes,
-                  )}
-                </p>
-              </div>
-            )}
-          </section>
-
-          {completed &&
-            activeAdvisories.length >
-              0 && (
-              <section className="mt-5">
-                <div className="flex items-center justify-between">
-                  <SmallHeading colour={primaryColour}>
-                    Important aftercare
-                  </SmallHeading>
-
-                  <span className="text-xs text-slate-400">
-                    Please follow the guidance below
+                  Invoice No:{" "}
+                  <span className="font-bold text-slate-900">
+                    {completed
+                      ? treatment.invoiceNumber || "Pending"
+                      : "Not applicable"}
                   </span>
                 </div>
 
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  {activeAdvisories.map(
-                    (advisory) => (
-                      <AdviceCard
-                        key={advisory.id}
-                        title={advisory.title}
-                        detail={advisory.wording}
-                        type={advisory.type}
-                      />
-                    ),
-                  )}
-                </div>
-              </section>
-            )}
-
-          {completed && (
-            <section className="mt-5 grid gap-4 md:grid-cols-[1.3fr_0.7fr]">
-              <div className="rounded-xl border border-slate-200 p-4">
-                <SmallHeading colour={primaryColour}>
-                  Payment information
-                </SmallHeading>
-
-                <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
-                  {
-                    settings.invoices
-                      .paymentInstructions
-                  }
-                </p>
-
-                {settings.invoices
-                  .vatWording && (
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
-                    {
-                      settings.invoices
-                        .vatWording
-                    }
-                  </p>
-                )}
-              </div>
-
-              <div
-                className="rounded-xl p-4 text-white shadow-sm"
-                style={{
-                  backgroundColor:
-                    primaryColour,
-                }}
-              >
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
-                  Treatment charge
-                </div>
-
-                <div className="mt-2 text-4xl font-bold tracking-tight">
-                  £
-                  {customer.treatmentPrice.toFixed(
-                    2,
-                  )}
-                </div>
-
-                <div className="mt-1 text-xs text-white/80">
-                  Including VAT
-                </div>
-              </div>
-            </section>
-          )}
-
-          {nextVisit && (
-            <section
-              className={`mt-5 rounded-xl border p-5 ${
-                nextVisit.isOverride
-                  ? "border-amber-300 bg-amber-50"
-                  : "border-green-200 bg-green-50"
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <div
-                    className={`text-xs font-bold uppercase tracking-[0.16em] ${
-                      nextVisit.isOverride
-                        ? "text-amber-700"
-                        : "text-green-700"
-                    }`}
-                  >
-                    {nextVisit.label}
-                  </div>
-
-                  <div className="mt-2 text-sm text-slate-600">
-                    {nextVisit.isOverride
-                      ? "This is the agreed customer-specific replacement date."
-                      : "This is the next date in your annual programme."}
-                  </div>
+                  Date:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {formatDate(getRecordDate(treatment))}
+                  </span>
                 </div>
-
-                <div
-                  className={`text-3xl font-bold ${
-                    nextVisit.isOverride
-                      ? "text-amber-900"
-                      : "text-green-900"
-                  }`}
-                >
-                  {formatDate(
-                    nextVisit.date,
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-
-          <section className="mt-6 flex items-end justify-between gap-6">
-            <div>
-              <div className="text-sm text-slate-500">
-                Many thanks
-              </div>
-
-              <div
-                className="mt-2 text-lg font-semibold"
-                style={{
-                  color:
-                    primaryColour,
-                }}
-              >
-                {settings.business
-                  .proprietorName ||
-                  settings.business
-                    .businessName}
               </div>
             </div>
+          </div>
 
-            <div className="max-w-[58%] text-right text-[11px] leading-5 text-slate-500">
-              {completed
-                ? settings.invoices
-                    .footerMessage
-                : "This document records the outcome of the scheduled visit. No charge is shown unless the visit was completed."}
+          <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-[11px] text-slate-700 sm:grid-cols-4">
+            {settings.business.mobile && (
+              <ContactItem icon="☎" value={settings.business.mobile} colour={primaryColour} />
+            )}
+            {settings.business.email && (
+              <ContactItem icon="✉" value={settings.business.email} colour={primaryColour} />
+            )}
+            {settings.business.website && (
+              <ContactItem icon="●" value={settings.business.website} colour={primaryColour} />
+            )}
+            {vatNumber && (
+              <ContactItem icon="#" value={`VAT ${vatNumber}`} colour={primaryColour} />
+            )}
+          </div>
+        </header>
+
+        <section className="grid gap-8 border-b border-slate-300 py-5 md:grid-cols-2">
+          <div>
+            <SmallHeading colour={primaryColour}>Customer</SmallHeading>
+            <div className="mt-3 text-lg font-bold text-slate-950">
+              {customer.fullName}
+            </div>
+            <div className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">
+              {customerAddress}
+            </div>
+          </div>
+
+          <div className="md:border-l md:border-slate-200 md:pl-8">
+            <SmallHeading colour={primaryColour}>
+              {settings.business.businessName}
+            </SmallHeading>
+            <div className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
+              {businessAddress}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-7 border-b border-slate-300 py-5 md:grid-cols-[1.7fr_0.8fr]">
+          <div className="min-w-0 md:pr-6">
+            <div className="border-b pb-2" style={{ borderColor: primaryColour }}>
+              <SmallHeading colour={primaryColour}>
+                Today&apos;s treatment
+              </SmallHeading>
+            </div>
+
+            <h1 className="mt-3 text-xl font-bold text-slate-950">
+              {treatment.treatmentName}
+            </h1>
+
+            <div className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
+              {visitInformation}
+            </div>
+
+            <div className="mt-6">
+              <SmallHeading colour={primaryColour}>Technician notes</SmallHeading>
+              <div className="mt-3 space-y-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="h-4 border-b border-dashed border-slate-300"
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {completed && activeAdvisories.length > 0 && (
+            <aside className="md:border-l md:border-slate-200 md:pl-6">
+              <div className="border-b pb-2" style={{ borderColor: primaryColour }}>
+                <SmallHeading colour={primaryColour}>
+                  Aftercare & advice
+                </SmallHeading>
+              </div>
+
+              <div className="mt-3 divide-y divide-dashed divide-slate-200">
+                {activeAdvisories.map((advisory) => (
+                  <AdviceCard
+                    key={advisory.id}
+                    title={normaliseAdviceTitle(advisory.title)}
+                    detail={advisory.wording}
+                    type={advisory.type}
+                  />
+                ))}
+              </div>
+            </aside>
+          )}
+        </section>
+
+        {completed && (
+          <section className="border-b border-slate-300 py-4">
+            <div className="flex items-end justify-between gap-6">
+              <div>
+                <SmallHeading colour={primaryColour}>Invoice</SmallHeading>
+                <div className="mt-2 text-sm text-slate-600">Treatment charge</div>
+              </div>
+              <div className="text-4xl font-bold tracking-tight" style={{ color: primaryColour }}>
+                £{customer.treatmentPrice.toFixed(2)}
+              </div>
             </div>
           </section>
+        )}
+
+        {nextVisit && (
+          <section className={`mt-4 rounded-xl border px-5 py-4 ${
+            nextVisit.isOverride
+              ? "border-amber-200 bg-amber-50/40"
+              : "border-green-200 bg-green-50/40"
+          }`}>
+            <div className="grid gap-5 md:grid-cols-[72px_1fr] md:items-center">
+              <div
+                className="flex h-14 w-14 items-center justify-center rounded-full border text-2xl"
+                style={{ borderColor: primaryColour, color: primaryColour }}
+                aria-hidden="true"
+              >
+                ▣
+              </div>
+
+              <div>
+                <div className={`text-xs font-bold uppercase tracking-[0.16em] ${
+                  nextVisit.isOverride ? "text-amber-700" : "text-green-700"
+                }`}>
+                  {nextVisit.label}
+                </div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">
+                  {getNextVisitTreatmentName({
+                    treatment,
+                    customerNumber: customer.customerNumber,
+                    programmes,
+                  })}
+                </div>
+                <div className={`mt-1 text-[34px] font-bold leading-none tracking-tight ${
+                  nextVisit.isOverride ? "text-amber-900" : "text-green-900"
+                }`}>
+                  {formatDate(nextVisit.date)}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <footer className="mt-4 border-t pt-3" style={{ borderColor: primaryColour }}>
+          <div className="text-center text-sm font-medium" style={{ color: primaryColour }}>
+            Thank you for choosing {settings.business.businessName}.
+          </div>
+        </footer>
+      </article>
+
+      <article
+        className="print-document"
+        style={{ "--document-primary": primaryColour } as CSSProperties}
+      >
+        <header className="border-b border-slate-300 pb-[3mm]">
+          <div className="flex items-start justify-between gap-[8mm]">
+            <div className="min-w-0">
+              <div className="text-[22pt] font-bold leading-none" style={{ color: primaryColour }}>
+                {settings.business.businessName}
+              </div>
+              {settings.branding.applicationSubtitle && (
+                <div className="mt-[1mm] text-[9pt] text-slate-600">
+                  {settings.branding.applicationSubtitle}
+                </div>
+              )}
+              <div className="mt-[1.5mm] text-[7.5pt] text-slate-500">
+                Powered by GreenFlow
+              </div>
+            </div>
+
+            <div className="text-right">
+              <div className="text-[13pt] font-bold uppercase tracking-wide" style={{ color: primaryColour }}>
+                {documentTitle}
+              </div>
+              <div className="mt-[2mm] text-[8.5pt] leading-[1.35] text-slate-700">
+                <div>
+                  Invoice No: <strong>{completed ? treatment.invoiceNumber || "Pending" : "Not applicable"}</strong>
+                </div>
+                <div>
+                  Date: <strong>{formatDate(getRecordDate(treatment))}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="print-contact-grid mt-[3mm] border-t border-slate-100 pt-[2mm] text-[7.5pt] text-slate-700">
+            {settings.business.mobile ? (
+              <PrintContactItem icon="☎" value={settings.business.mobile} colour={primaryColour} />
+            ) : <span />}
+            {settings.business.email ? (
+              <PrintContactItem icon="✉" value={settings.business.email} colour={primaryColour} />
+            ) : <span />}
+            {settings.business.website ? (
+              <PrintContactItem icon="●" value={settings.business.website} colour={primaryColour} />
+            ) : <span />}
+            {vatNumber ? (
+              <PrintContactItem icon="#" value={`VAT ${vatNumber}`} colour={primaryColour} align="right" />
+            ) : <span />}
+          </div>
+        </header>
+
+        <section className="print-address-grid border-b border-slate-300 py-[4mm]">
+          <div>
+            <PrintHeading colour={primaryColour}>Customer</PrintHeading>
+            <div className="mt-[1.5mm] text-[11pt] font-bold">{customer.fullName}</div>
+            <div className="mt-[0.5mm] whitespace-pre-line text-[8.5pt] leading-[1.45] text-slate-700">
+              {customerAddress}
+            </div>
+          </div>
+
+          <div className="border-l border-slate-200 pl-[8mm]">
+            <PrintHeading colour={primaryColour}>{settings.business.businessName}</PrintHeading>
+            <div className="mt-[1.5mm] whitespace-pre-line text-[8.5pt] leading-[1.45] text-slate-700">
+              {businessAddress}
+            </div>
+          </div>
         </section>
+
+        <section className="print-treatment-grid border-b border-slate-300 py-[4mm]">
+          <div className="min-w-0 pr-[4mm]">
+            <div className="border-b pb-[1.5mm]" style={{ borderColor: primaryColour }}>
+              <PrintHeading colour={primaryColour}>Today&apos;s treatment</PrintHeading>
+            </div>
+
+            <div className="mt-[2mm] text-[14pt] font-bold leading-tight">
+              {treatment.treatmentName}
+            </div>
+
+            <div className="mt-[2mm] whitespace-pre-line text-[8.5pt] leading-[1.45] text-slate-700">
+              {visitInformation}
+            </div>
+
+            <div className="mt-[4mm]">
+              <PrintHeading colour={primaryColour}>Technician notes</PrintHeading>
+              <div className="mt-[2mm] space-y-[2.8mm]">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="h-[3mm] border-b border-dashed border-slate-300" />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {completed && activeAdvisories.length > 0 && (
+            <aside className="border-l border-slate-200 pl-[6mm]">
+              <div className="border-b pb-[1.5mm]" style={{ borderColor: primaryColour }}>
+                <PrintHeading colour={primaryColour}>Aftercare & advice</PrintHeading>
+              </div>
+
+              <div className="mt-[1.5mm] divide-y divide-dashed divide-slate-200">
+                {activeAdvisories.map((advisory) => (
+                  <div key={advisory.id} className="py-[2mm] first:pt-0 last:pb-0">
+                    <div className="text-[8pt] font-bold uppercase tracking-wide" style={{ color: primaryColour }}>
+                      {normaliseAdviceTitle(advisory.title)}
+                    </div>
+                    <div className="mt-[0.7mm] text-[7.5pt] leading-[1.4] text-slate-700">
+                      {advisory.wording}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </aside>
+          )}
+        </section>
+
+        {completed && (
+          <section className="border-b border-slate-300 py-[3mm]">
+            <div className="flex items-end justify-between gap-[8mm]">
+              <div>
+                <PrintHeading colour={primaryColour}>Invoice</PrintHeading>
+                <div className="mt-[1mm] text-[8pt] text-slate-600">Treatment charge</div>
+              </div>
+              <div className="text-[23pt] font-bold leading-none" style={{ color: primaryColour }}>
+                £{customer.treatmentPrice.toFixed(2)}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {nextVisit && (
+          <section className={`mt-[4mm] rounded-[4mm] border px-[5mm] py-[4mm] ${
+            nextVisit.isOverride
+              ? "border-amber-200 bg-amber-50/40"
+              : "border-green-200 bg-green-50/40"
+          }`}>
+            <div className="print-next-grid">
+              <div
+                className="flex h-[12mm] w-[12mm] items-center justify-center rounded-full border text-[14pt]"
+                style={{ borderColor: primaryColour, color: primaryColour }}
+                aria-hidden="true"
+              >
+                ▣
+              </div>
+
+              <div>
+                <div className="text-[7.5pt] font-bold uppercase tracking-[0.14em]" style={{ color: primaryColour }}>
+                  {nextVisit.label}
+                </div>
+                <div className="mt-[0.8mm] text-[8.5pt] font-semibold text-slate-900">
+                  {getNextVisitTreatmentName({
+                    treatment,
+                    customerNumber: customer.customerNumber,
+                    programmes,
+                  })}
+                </div>
+                <div className="mt-[1mm] text-[22pt] font-bold leading-none" style={{ color: primaryColour }}>
+                  {formatDate(nextVisit.date)}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <footer className="mt-[3mm] border-t pt-[2mm]" style={{ borderColor: primaryColour }}>
+          <div className="text-center text-[8pt] font-medium" style={{ color: primaryColour }}>
+            Thank you for choosing {settings.business.businessName}.
+          </div>
+        </footer>
       </article>
     </main>
   );
+}
+
+function ContactItem({
+  icon,
+  value,
+  colour,
+}: {
+  icon: string;
+  value: string;
+  colour: string;
+}) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <span className="font-bold" style={{ color: colour }} aria-hidden="true">
+        {icon}
+      </span>
+      <span className="min-w-0 break-words">{value}</span>
+    </span>
+  );
+}
+
+function PrintContactItem({
+  icon,
+  value,
+  colour,
+  align = "left",
+}: {
+  icon: string;
+  value: string;
+  colour: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <span
+      className={`inline-flex min-w-0 items-center gap-[1.5mm] ${
+        align === "right" ? "justify-end" : "justify-start"
+      }`}
+    >
+      <span className="shrink-0 font-bold" style={{ color: colour }} aria-hidden="true">
+        {icon}
+      </span>
+      <span className="min-w-0 break-words">{value}</span>
+    </span>
+  );
+}
+
+function PrintHeading({
+  colour,
+  children,
+}: {
+  colour: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="text-[7.5pt] font-bold uppercase tracking-[0.14em]"
+      style={{ color: colour }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function normaliseAdviceTitle(title: string) {
+  const lower = title.trim().toLowerCase();
+
+  if (lower.includes("access")) {
+    return "Mowing";
+  }
+
+  return title;
+}
+
+function getNextVisitTreatmentName({
+  treatment,
+  customerNumber,
+  programmes,
+}: {
+  treatment: TreatmentRecord;
+  customerNumber: string;
+  programmes: CustomerProgramme[];
+}) {
+  const candidate =
+    programmes
+      .filter(
+        (programme) =>
+          programme.customerNumber === customerNumber,
+      )
+      .flatMap((programme) => programme.visits)
+      .filter(
+        (visit) =>
+          visit.scheduledDate > treatment.scheduledDate &&
+          (visit.status === "Scheduled" ||
+            visit.status === "Planned"),
+      )
+      .sort((first, second) =>
+        first.scheduledDate.localeCompare(
+          second.scheduledDate,
+        ),
+      )[0];
+
+  return candidate?.treatmentName ?? "Next treatment";
 }
 
 function getNextVisitInformation({
@@ -1030,68 +1218,30 @@ function DocumentMetaRow({
 function AdviceCard({
   title,
   detail,
-  type,
+  type: _type,
 }: {
   title: string;
   detail: string;
   type: AdvisoryType;
 }) {
-  const styles =
-    type === "danger"
-      ? {
-          card:
-            "border-red-200 bg-red-50",
-          icon:
-            "bg-red-100 text-red-700",
-          title:
-            "text-red-900",
-        }
-      : type === "warning"
-        ? {
-            card:
-              "border-amber-200 bg-amber-50",
-            icon:
-              "bg-amber-100 text-amber-700",
-            title:
-              "text-amber-900",
-          }
-        : {
-            card:
-              "border-blue-200 bg-blue-50",
-            icon:
-              "bg-blue-100 text-blue-700",
-            title:
-              "text-blue-900",
-          };
-
-  const symbol =
-    type === "danger"
-      ? "!"
-      : type === "warning"
-        ? "↟"
-        : "●";
-
   return (
-    <div
-      className={`rounded-xl border p-3 ${styles.card}`}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${styles.icon}`}
-        >
-          {symbol}
-        </div>
+    <div className="py-3 first:pt-0 last:pb-0">
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#338b45]"
+          aria-hidden="true"
+        />
 
-        <div
-          className={`text-sm font-bold ${styles.title}`}
-        >
-          {title}
+        <div>
+          <div className="text-sm font-bold uppercase tracking-wide text-[#176b37]">
+            {title}
+          </div>
+
+          <p className="mt-1 text-xs leading-5 text-slate-700">
+            {detail}
+          </p>
         </div>
       </div>
-
-      <p className="mt-2 text-xs leading-5 text-slate-700">
-        {detail}
-      </p>
     </div>
   );
 }

@@ -1152,62 +1152,7 @@ export default function DashboardPage() {
               </div>
             </DashboardPanel>
           </section>
-
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold">
-              Quick actions
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Open the GreenFlow
-              workflows used most often.
-            </p>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-              <QuickAction
-                label="New enquiry"
-                detail="Record prospective work"
-                href="/enquiries"
-              />
-
-              <QuickAction
-                label="Customers"
-                detail="Open customer records"
-                href="/customers"
-              />
-
-              <QuickAction
-                label="Today’s Jobs"
-                detail="Complete scheduled work"
-                href="/jobs"
-              />
-
-              <QuickAction
-                label="Reschedule"
-                detail="Resolve failed visits"
-                href="/jobs?view=reschedule"
-              />
-
-              <QuickAction
-                label="Generate programme"
-                detail="Create annual visits"
-                href="/programmes"
-              />
-
-              <QuickAction
-                label="Gate reminders"
-                detail="Prepare communications"
-                href="/communications"
-              />
-
-              <QuickAction
-                label="Review stock"
-                detail="Usage and purchasing"
-                href="/stock"
-              />
-            </div>
-          </section>
-        </div>
+</div>
       </main>
     </AppShell>
   );
@@ -1498,30 +1443,5 @@ function PipelineCard({
         {detail}
       </div>
     </div>
-  );
-}
-
-function QuickAction({
-  label,
-  detail,
-  href,
-}: {
-  label: string;
-  detail: string;
-  href: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-xl border border-slate-200 p-4 transition hover:border-[#338b45] hover:bg-green-50"
-    >
-      <div className="font-bold">
-        {label}
-      </div>
-
-      <div className="mt-1 text-xs text-slate-500">
-        {detail}
-      </div>
-    </Link>
   );
 }

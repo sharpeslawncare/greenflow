@@ -645,16 +645,19 @@ export default function VisitCentrePage() {
       0,
     );
 
-  const lockedGateCount =
+  const smsReminderCount =
     jobs.filter(
       (job) =>
-        job.customer.lockedGate,
+        job.customer.lockedGate &&
+        Boolean(
+          job.customer.mobilePhone.trim(),
+        ),
     ).length;
 
-  const dogOnPropertyCount =
+  const routeExceptionCount =
     jobs.filter(
       (job) =>
-        job.customer.dogOnProperty,
+        job.overridden,
     ).length;
 
   const todaysTreatmentNames =
@@ -1603,17 +1606,29 @@ export default function VisitCentrePage() {
               />
 
               <MorningBriefingStat
-                label="Locked gates"
-                value={String(lockedGateCount)}
-                detail="Access reminders"
-                warning={lockedGateCount > 0}
+                label="SMS reminders"
+                value={String(
+                  smsReminderCount,
+                )}
+                detail="Access reminders due"
+                warning={
+                  smsReminderCount > 0
+                }
               />
 
               <MorningBriefingStat
-                label="Dogs"
-                value={String(dogOnPropertyCount)}
-                detail="Properties flagged"
-                warning={dogOnPropertyCount > 0}
+                label="Route exceptions"
+                value={String(
+                  routeExceptionCount,
+                )}
+                detail={
+                  routeExceptionCount === 1
+                    ? "1 visit moved from its group date"
+                    : `${routeExceptionCount} visits moved from their group date`
+                }
+                warning={
+                  routeExceptionCount > 0
+                }
               />
             </div>
 
