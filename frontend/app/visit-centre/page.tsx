@@ -620,6 +620,53 @@ export default function VisitCentrePage() {
     processedScheduledArea +
     remainingAreaOnDate;
 
+  const expectedRevenueOnDate =
+    jobs.reduce(
+      (total, job) =>
+        total +
+        job.customer.treatmentPrice,
+      0,
+    ) +
+    completedTreatmentsOnDate.reduce(
+      (total, treatment) => {
+        const customer =
+          customers.find(
+            (item) =>
+              item.customerNumber ===
+              treatment.customerNumber,
+          );
+
+        return (
+          total +
+          (customer?.treatmentPrice ??
+            0)
+        );
+      },
+      0,
+    );
+
+  const lockedGateCount =
+    jobs.filter(
+      (job) =>
+        job.customer.lockedGate,
+    ).length;
+
+  const dogOnPropertyCount =
+    jobs.filter(
+      (job) =>
+        job.customer.dogOnProperty,
+    ).length;
+
+  const todaysTreatmentNames =
+    Array.from(
+      new Set(
+        jobs.map(
+          (job) =>
+            job.visit.treatmentName,
+        ),
+      ),
+    );
+
   const invoicesCreatedOnDate =
     completedTreatmentsOnDate.filter(
       (treatment) =>
@@ -1505,6 +1552,120 @@ export default function VisitCentrePage() {
               </div>
             </section>
           )}
+
+          <section className="mb-4 rounded-2xl border border-green-200 bg-gradient-to-br from-green-50 to-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+                  Morning Briefing
+                </div>
+
+                <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                  {formatDateWithDay(
+                    selectedDate,
+                  )}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-600">
+                  {requestedGroup > 0
+                    ? `Group ${requestedGroup}`
+                    : "All scheduled groups"}
+                  {requestedVan > 0
+                    ? ` · Van ${requestedVan}`
+                    : ""}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-green-200 bg-white px-4 py-3 text-right">
+                <div className="text-xs font-semibold uppercase tracking-wide text-green-700">
+                  Expected revenue
+                </div>
+
+                <div className="mt-1 text-2xl font-bold text-green-950">
+                  £{expectedRevenueOnDate.toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MorningBriefingStat
+                label="Scheduled visits"
+                value={String(totalScheduled)}
+                detail={`${remainingOnDate} remaining`}
+              />
+
+              <MorningBriefingStat
+                label="Scheduled area"
+                value={`${totalScheduledArea.toLocaleString(
+                  "en-GB",
+                )} m²`}
+                detail="Total lawn area"
+              />
+
+              <MorningBriefingStat
+                label="Locked gates"
+                value={String(lockedGateCount)}
+                detail="Access reminders"
+                warning={lockedGateCount > 0}
+              />
+
+              <MorningBriefingStat
+                label="Dogs"
+                value={String(dogOnPropertyCount)}
+                detail="Properties flagged"
+                warning={dogOnPropertyCount > 0}
+              />
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Treatment round
+                </div>
+
+                {todaysTreatmentNames.length === 0 ? (
+                  <div className="mt-2 text-sm text-slate-500">
+                    No scheduled treatments.
+                  </div>
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {todaysTreatmentNames.map(
+                      (treatmentName) => (
+                        <span
+                          key={treatmentName}
+                          className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800"
+                        >
+                          {treatmentName}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Today’s Mix
+                </div>
+
+                <div className="mt-2 text-sm font-semibold text-slate-900">
+                  {todayMixAvailable
+                    ? `${standardMixProducts.length} product${
+                        standardMixProducts.length === 1
+                          ? ""
+                          : "s"
+                      } ready`
+                    : "No mix saved yet"}
+                </div>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  {todayMixAvailable
+                    ? "Saved mix is ready to apply to selected visits."
+                    : "Choose and save the products you expect to use today."}
+                </p>
+              </div>
+            </div>
+          </section>
 
           <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -3367,6 +3528,40 @@ function OperationStat({
       </div>
 
       <div className="mt-2 text-2xl font-bold text-slate-900">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-500">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function MorningBriefingStat({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        warning
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+
+      <div className="mt-2 text-2xl font-bold text-slate-950">
         {value}
       </div>
 
