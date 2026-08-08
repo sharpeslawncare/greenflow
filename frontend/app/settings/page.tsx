@@ -3,8 +3,11 @@
 import Link from "next/link";
 import {
   type ChangeEvent,
+  type FormEvent,
   type ReactNode,
   useEffect,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -14,9 +17,15 @@ import {
   type BrandingSettings,
   type BusinessSettings,
   type InvoiceSettings,
-  type TreatmentWordingSettings,
   useSettingsStore,
 } from "@/components/settings-store";
+
+import {
+  defaultTreatmentDocumentWording,
+  type TreatmentDocumentWording,
+  type TreatmentDocumentWordingKey,
+  useTreatmentDocumentWording,
+} from "@/components/treatment-document-wording-store";
 
 import {
   type FleetVehicle,
@@ -86,7 +95,6 @@ export default function SettingsPage() {
     ready,
     updateBusinessSettings,
     updateInvoiceSettings,
-    updateTreatmentWording,
     updateBrandingSettings,
     updateAdvisory,
     addAdvisory,
@@ -95,6 +103,14 @@ export default function SettingsPage() {
     incrementInvoiceNumber,
     restoreDefaultSettings,
   } = useSettingsStore();
+
+  const {
+    wording: documentWording,
+    ready: documentWordingReady,
+    updateTreatment: updateDocumentTreatment,
+    restoreTreatment: restoreDocumentTreatment,
+    restoreAll: restoreAllDocumentWording,
+  } = useTreatmentDocumentWording();
 
   const {
     vehicles,
@@ -438,6 +454,7 @@ export default function SettingsPage() {
 
   if (
     !ready ||
+    !documentWordingReady ||
     !fleetReady ||
     !customersReady ||
     !programmesReady ||
@@ -584,11 +601,15 @@ export default function SettingsPage() {
 
               {activeTab === "wording" && (
                 <TreatmentWordingTab
-                  settings={
-                    settings.treatmentWording
+                  settings={documentWording}
+                  updateTreatment={
+                    updateDocumentTreatment
                   }
-                  updateSettings={
-                    updateTreatmentWording
+                  restoreTreatment={
+                    restoreDocumentTreatment
+                  }
+                  restoreAll={
+                    restoreAllDocumentWording
                   }
                 />
               )}
@@ -1712,142 +1733,488 @@ function InvoicesTab({
 
 function TreatmentWordingTab({
   settings,
-  updateSettings,
+  updateTreatment,
+  restoreTreatment,
+  restoreAll,
 }: {
-  settings: TreatmentWordingSettings;
-  updateSettings: (
-    updates: Partial<TreatmentWordingSettings>,
+  settings: Record<
+    TreatmentDocumentWordingKey,
+    TreatmentDocumentWording
+  >;
+  updateTreatment: (
+    key: TreatmentDocumentWordingKey,
+    updates: Partial<TreatmentDocumentWording>,
   ) => void;
+  restoreTreatment: (
+    key: TreatmentDocumentWordingKey,
+  ) => void;
+  restoreAll: () => void;
 }) {
+  const importInputRef =
+    useRef<HTMLInputElement | null>(
+      null,
+    );
+
+  const [backupMessage, setBackupMessage] =
+    useState("");
+
+  const treatmentCards: Array<{
+    key: TreatmentDocumentWordingKey;
+    label: string;
+    detail: string;
+  }> = [
+    {
+      key: "earlyWinterMossControl",
+      label: "Early Winter Moss Control",
+      detail: "Customer wording for the first moss-control treatment.",
+    },
+    {
+      key: "springWeedAndFeed",
+      label: "Spring Weed & Feed",
+      detail: "Spring treatment description and aftercare.",
+    },
+    {
+      key: "summerWeedAndFeed",
+      label: "Summer Weed & Feed",
+      detail: "Summer treatment description and aftercare.",
+    },
+    {
+      key: "autumnWeedAndFeed",
+      label: "Autumn Weed & Feed",
+      detail: "Autumn treatment description and aftercare.",
+    },
+    {
+      key: "winterMossControl",
+      label: "Winter Moss Control",
+      detail: "Customer wording for the later winter moss treatment.",
+    },
+    {
+      key: "scarification",
+      label: "Scarification",
+      detail: "Description and recovery advice following scarification.",
+    },
+    {
+      key: "aeration",
+      label: "Aeration",
+      detail: "Description and aftercare following aeration.",
+    },
+    {
+      key: "overseeding",
+      label: "Overseeding",
+      detail: "Description and establishment advice after overseeding.",
+    },
+    {
+      key: "fallback",
+      label: "Other / Fallback Treatment",
+      detail: "Used when GreenFlow cannot match a treatment to one of the specific types above.",
+    },
+  ];
+
+  function exportWordingBackup() {
+    const backup = {
+      format:
+        "greenflow-treatment-wording-backup",
+      version: 1,
+      exportedAt:
+        new Date().toISOString(),
+      wording: settings,
+    };
+
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          backup,
+          null,
+          2,
+        ),
+      ],
+      {
+        type: "application/json",
+      },
+    );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const link =
+      document.createElement("a");
+
+    const date =
+      new Date()
+        .toISOString()
+        .slice(0, 10);
+
+    link.href = url;
+    link.download =
+      `greenflow-treatment-wording-${date}.json`;
+
+    document.body.appendChild(
+      link,
+    );
+
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+
+    setBackupMessage(
+      "Treatment wording backup exported successfully.",
+    );
+  }
+
+  function chooseImportFile() {
+    importInputRef.current?.click();
+  }
+
+  async function importWordingBackup(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file =
+      event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const contents =
+        await file.text();
+
+      const parsed =
+        JSON.parse(contents) as {
+          format?: string;
+          version?: number;
+          wording?: unknown;
+        };
+
+      if (
+        parsed.format !==
+          "greenflow-treatment-wording-backup" ||
+        parsed.version !== 1 ||
+        !isValidTreatmentWordingBackup(
+          parsed.wording,
+        )
+      ) {
+        setBackupMessage(
+          "That file is not a valid GreenFlow treatment-wording backup.",
+        );
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          "Import this treatment wording backup? This will replace the current treatment wording in Business Settings.",
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      for (
+        const key of Object.keys(
+          parsed.wording,
+        ) as TreatmentDocumentWordingKey[]
+      ) {
+        updateTreatment(
+          key,
+          parsed.wording[key],
+        );
+      }
+
+      setBackupMessage(
+        "Treatment wording restored from backup successfully.",
+      );
+    } catch {
+      setBackupMessage(
+        "GreenFlow could not read that backup file.",
+      );
+    }
+  }
+
+  function restoreEverything() {
+    const confirmed = window.confirm(
+      "Restore all treatment-document wording to the GreenFlow defaults?",
+    );
+
+    if (confirmed) {
+      restoreAll();
+    }
+  }
+
   return (
     <div>
-      <SectionHeading
-        title="Treatment wording"
-        description="These messages can be used on customer treatment reports without displaying your internal product records."
-      />
-
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <TextSetting
-          label="Seasonal fertiliser visit"
-          value={
-            settings.seasonalFertiliserVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              seasonalFertiliserVisit:
-                value,
-            })
-          }
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <SectionHeading
+          title="Treatment wording"
+          description="Control exactly what the customer sees on the treatment/invoice sheet for each seasonal or specialist treatment."
         />
 
-        <TextSetting
-          label="Selective herbicide visit"
-          value={settings.herbicideVisit}
-          onChange={(value) =>
-            updateSettings({
-              herbicideVisit: value,
-            })
-          }
-        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={exportWordingBackup}
+            className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+          >
+            Export wording
+          </button>
 
-        <TextSetting
-          label="Combined fertiliser and herbicide"
-          value={
-            settings.combinedFertiliserAndHerbicideVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              combinedFertiliserAndHerbicideVisit:
-                value,
-            })
-          }
-        />
+          <button
+            type="button"
+            onClick={chooseImportFile}
+            className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+          >
+            Import wording
+          </button>
 
-        <TextSetting
-          label="Moss-control visit"
-          value={
-            settings.mossControlVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              mossControlVisit: value,
-            })
-          }
-        />
+          <button
+            type="button"
+            onClick={restoreEverything}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Restore all defaults
+          </button>
 
-        <TextSetting
-          label="Aeration"
-          value={settings.aerationVisit}
-          onChange={(value) =>
-            updateSettings({
-              aerationVisit: value,
-            })
-          }
-        />
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={importWordingBackup}
+            className="hidden"
+          />
+        </div>
+      </div>
 
-        <TextSetting
-          label="Scarification"
-          value={
-            settings.scarificationVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              scarificationVisit: value,
-            })
-          }
-        />
+      {backupMessage && (
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+          {backupMessage}
+        </div>
+      )}
 
-        <TextSetting
-          label="Overseeding"
-          value={
-            settings.overseedingVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              overseedingVisit: value,
-            })
-          }
-        />
+      <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+        These are customer-facing descriptions. Product names, application rates and other internal chemical records remain separate in GreenFlow. Changes are saved automatically and are used by the daily customer-sheet printing.
+      </div>
 
-        <TextSetting
-          label="Cancelled visit"
-          value={
-            settings.cancelledVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              cancelledVisit: value,
-            })
-          }
-        />
+      <div className="mt-6 space-y-5">
+        {treatmentCards.map((item) => {
+          const wording =
+            settings[item.key];
 
-        <TextSetting
-          label="Rescheduled visit"
-          value={
-            settings.rescheduledVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              rescheduledVisit: value,
-            })
-          }
-        />
+          return (
+            <TreatmentWordingCard
+              key={item.key}
+              label={item.label}
+              detail={item.detail}
+              wording={wording}
+              onChange={(updates) =>
+                updateTreatment(
+                  item.key,
+                  updates,
+                )
+              }
+              onRestore={() => {
+                const confirmed =
+                  window.confirm(
+                    `Restore the default wording for ${item.label}?`,
+                  );
 
-        <TextSetting
-          label="Preparing for the next visit"
-          value={
-            settings.nextVisitPreparation
-          }
-          onChange={(value) =>
-            updateSettings({
-              nextVisitPreparation:
-                value,
-            })
-          }
-          large
-        />
+                if (confirmed) {
+                  restoreTreatment(
+                    item.key,
+                  );
+                }
+              }}
+            />
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+function isValidTreatmentWordingBackup(
+  value: unknown,
+): value is Record<
+  TreatmentDocumentWordingKey,
+  TreatmentDocumentWording
+> {
+  if (
+    !value ||
+    typeof value !== "object"
+  ) {
+    return false;
+  }
+
+  const requiredKeys:
+    TreatmentDocumentWordingKey[] = [
+      "earlyWinterMossControl",
+      "springWeedAndFeed",
+      "summerWeedAndFeed",
+      "autumnWeedAndFeed",
+      "winterMossControl",
+      "scarification",
+      "aeration",
+      "overseeding",
+      "fallback",
+    ];
+
+  return requiredKeys.every(
+    (key) => {
+      const item =
+        (
+          value as Record<
+            string,
+            unknown
+          >
+        )[key];
+
+      if (
+        !item ||
+        typeof item !== "object"
+      ) {
+        return false;
+      }
+
+      const wording =
+        item as Record<
+          string,
+          unknown
+        >;
+
+      return [
+        "title",
+        "description",
+        "mowingAdvice",
+        "wateringAdvice",
+        "safetyAdvice",
+      ].every(
+        (field) =>
+          typeof wording[field] ===
+          "string",
+      );
+    },
+  );
+}
+
+function TreatmentWordingCard({
+  label,
+  detail,
+  wording,
+  onChange,
+  onRestore,
+}: {
+  label: string;
+  detail: string;
+  wording: TreatmentDocumentWording;
+  onChange: (
+    updates: Partial<TreatmentDocumentWording>,
+  ) => void;
+  onRestore: () => void;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-bold">
+            {label}
+          </h3>
+
+          <p className="mt-1 text-sm text-slate-500">
+            {detail}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onRestore}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+        >
+          Restore default
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-4">
+        <Field label="Printed treatment title">
+          <input
+            value={wording.title}
+            onChange={(event) =>
+              onChange({
+                title:
+                  event.target.value,
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Today's treatment description">
+          <textarea
+            rows={5}
+            value={
+              wording.description
+            }
+            onChange={(event) =>
+              onChange({
+                description:
+                  event.target.value,
+              })
+            }
+            className={inputClass}
+          />
+        </Field>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Field label="Mowing advice">
+            <textarea
+              rows={5}
+              value={
+                wording.mowingAdvice
+              }
+              onChange={(event) =>
+                onChange({
+                  mowingAdvice:
+                    event.target.value,
+                })
+              }
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Watering advice">
+            <textarea
+              rows={5}
+              value={
+                wording.wateringAdvice
+              }
+              onChange={(event) =>
+                onChange({
+                  wateringAdvice:
+                    event.target.value,
+                })
+              }
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Safety advice">
+            <textarea
+              rows={5}
+              value={
+                wording.safetyAdvice
+              }
+              onChange={(event) =>
+                onChange({
+                  safetyAdvice:
+                    event.target.value,
+                })
+              }
+              className={inputClass}
+            />
+          </Field>
+        </div>
+      </div>
+    </article>
   );
 }
 

@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  type CSSProperties,
-  type ReactNode,
   useMemo,
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import {
+  CustomerTreatmentDocument,
+  CustomerTreatmentDocumentPrintStyles,
+} from "@/components/customer-treatment-document";
 import { useCustomerStore } from "@/components/customer-store";
 import {
   type CustomerProgramme,
@@ -16,10 +18,12 @@ import {
   useProgrammeStore,
 } from "@/components/programme-store";
 import {
-  type AdvisoryType,
-  type TreatmentWordingSettings,
   useSettingsStore,
 } from "@/components/settings-store";
+import {
+  getTreatmentDocumentWordingKey,
+  useTreatmentDocumentWording,
+} from "@/components/treatment-document-wording-store";
 import {
   formatDateWithDay,
   getTodayDateValue,
@@ -33,6 +37,11 @@ type PrintJob = {
     typeof useCustomerStore
   >["customers"][number];
 };
+
+type BusinessWithVat = {
+  vatNumber?: string;
+};
+
 
 export default function DailyCustomerSheetsPage() {
   const searchParams =
@@ -52,6 +61,11 @@ export default function DailyCustomerSheetsPage() {
     settings,
     ready: settingsReady,
   } = useSettingsStore();
+
+  const {
+    wording: documentWording,
+    ready: documentWordingReady,
+  } = useTreatmentDocumentWording();
 
   const requestedDate =
     searchParams.get("date");
@@ -161,28 +175,19 @@ export default function DailyCustomerSheetsPage() {
       requestedVan,
     ]);
 
-  const activeAdvisories =
-    settings.advisories
-      .filter(
-        (advisory) =>
-          advisory.active,
-      )
-      .slice(0, 3);
-
   const ready =
     customersReady &&
     programmesReady &&
-    settingsReady;
+    settingsReady &&
+    documentWordingReady;
 
   if (!ready) {
     return (
-      <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Preparing customer sheets...
-          </div>
-        </main>
-      </AppShell>
+      <main className="min-h-screen bg-slate-100 p-6">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+          Preparing customer sheets...
+        </div>
+      </main>
     );
   }
 
@@ -199,68 +204,35 @@ export default function DailyCustomerSheetsPage() {
       settings.business.postcode,
     ]);
 
+  const vatNumber =
+    (
+      settings.business as
+        typeof settings.business &
+          BusinessWithVat
+    ).vatNumber?.trim() ?? "";
+
   return (
-    <AppShell>
-      <style jsx global>{`
-        @page {
-          size: A4 portrait;
-          margin: 8mm;
-        }
-
-        .customer-sheet-print {
-          display: none;
-        }
-
-        @media print {
-          html,
-          body {
-            height: auto !important;
-            overflow: visible !important;
-            background: white !important;
-          }
-
-          aside {
-            display: none !important;
-          }
-
-          .customer-sheet-screen {
-            display: none !important;
-          }
-
+    <>
+      <AppShell>
+        <style jsx global>{`
           .customer-sheet-print {
-            display: block !important;
+            display: none;
           }
 
-          .customer-sheet-page {
-            box-sizing: border-box !important;
-            width: 194mm !important;
-            min-height: 279mm !important;
-            margin: 0 auto !important;
-            padding: 0 !important;
-            break-after: page !important;
-            page-break-after: always !important;
-            color: #0f172a !important;
-            font-family:
-              Arial,
-              Helvetica,
-              sans-serif !important;
-          }
+          @media print {
+            .customer-sheet-screen {
+              display: none !important;
+            }
 
-          .customer-sheet-page:last-child {
-            break-after: auto !important;
-            page-break-after: auto !important;
+            .customer-sheet-print {
+              display: block !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
           }
+        `}</style>
 
-          .customer-sheet-page * {
-            box-sizing: border-box !important;
-          }
-
-          .customer-sheet-avoid {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-        }
-      `}</style>
+        <CustomerTreatmentDocumentPrintStyles />
 
       <main className="customer-sheet-screen p-5 md:p-7">
         <div className="mx-auto max-w-5xl">
@@ -318,9 +290,9 @@ export default function DailyCustomerSheetsPage() {
 
               <PreviewStat
                 label="Sheets"
-                value={String(
-                  jobs.length,
-                )}
+                value={`${jobs.length} customer sheet${
+                  jobs.length === 1 ? "" : "s"
+                }`}
               />
 
               <PreviewStat
@@ -408,8 +380,10 @@ export default function DailyCustomerSheetsPage() {
         </div>
       </main>
 
+      </AppShell>
+
       <div className="customer-sheet-print">
-        {jobs.map((job) => {
+        {jobs.map((job, index) => {
           const nextVisit =
             getNextProgrammeVisit(
               job.programme,
@@ -422,377 +396,111 @@ export default function DailyCustomerSheetsPage() {
               job.customer.postcode,
             ]);
 
-          const visitInformation =
-            createScheduledVisitInformation(
-              job.visit.treatmentName,
-              settings.treatmentWording,
-            );
+          const treatmentWording =
+            documentWording[
+              getTreatmentDocumentWordingKey(
+                job.visit.treatmentName,
+              )
+            ];
 
           return (
-            <article
+            <CustomerTreatmentDocument
               key={job.id}
-              className="customer-sheet-page"
-              style={
-                {
-                  "--document-primary":
-                    primaryColour,
-                } as CSSProperties
+              businessName={
+                settings.business
+                  .businessName
               }
-            >
-              <header className="customer-sheet-avoid border-b border-slate-300 pb-[4mm]">
-                <div className="flex items-start justify-between gap-[10mm]">
-                  <div>
-                    <div
-                      className="text-[22pt] font-bold leading-none"
-                      style={{
-                        color:
-                          primaryColour,
-                      }}
-                    >
-                      {
-                        settings
-                          .business
-                          .businessName
-                      }
-                    </div>
-
-                    {settings.branding
-                      .applicationSubtitle && (
-                      <div className="mt-[1mm] text-[9pt] text-slate-600">
-                        {
-                          settings
-                            .branding
-                            .applicationSubtitle
-                        }
-                      </div>
-                    )}
-
-                    <div className="mt-[1.5mm] text-[7.5pt] text-slate-500">
-                      Powered by GreenFlow
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div
-                      className="text-[13pt] font-bold uppercase tracking-wide"
-                      style={{
-                        color:
-                          primaryColour,
-                      }}
-                    >
-                      Treatment & Invoice
-                    </div>
-
-                    <div className="mt-[2mm] text-[8.5pt] text-slate-700">
-                      {formatDateWithDay(
-                        selectedDate,
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-[3mm] grid grid-cols-4 gap-[3mm] border-t border-slate-100 pt-[2mm] text-[7.2pt] text-slate-700">
-                  <ContactStripItem
-                    label="Phone"
-                    value={
-                      settings.business
-                        .mobile
-                    }
-                    colour={
-                      primaryColour
-                    }
-                  />
-
-                  <ContactStripItem
-                    label="Email"
-                    value={
-                      settings.business
-                        .email
-                    }
-                    colour={
-                      primaryColour
-                    }
-                  />
-
-                  <ContactStripItem
-                    label="Web"
-                    value={
-                      settings.business
-                        .website
-                    }
-                    colour={
-                      primaryColour
-                    }
-                  />
-
-                  <ContactStripItem
-                    label="Customer"
-                    value={`#${job.customer.customerNumber}`}
-                    colour={
-                      primaryColour
-                    }
-                  />
-                </div>
-              </header>
-
-              <section className="customer-sheet-avoid grid grid-cols-2 gap-[10mm] border-b border-slate-300 py-[5mm]">
-                <div>
-                  <PrintHeading
-                    colour={
-                      primaryColour
-                    }
-                  >
-                    Customer
-                  </PrintHeading>
-
-                  <div className="mt-[1.5mm] text-[12pt] font-bold">
-                    {
-                      job.customer
-                        .fullName
-                    }
-                  </div>
-
-                  <div className="mt-[1mm] whitespace-pre-line text-[9pt] leading-[1.45] text-slate-700">
-                    {customerAddress}
-                  </div>
-                </div>
-
-                <div className="border-l border-slate-200 pl-[8mm]">
-                  <PrintHeading
-                    colour={
-                      primaryColour
-                    }
-                  >
-                    {
-                      settings.business
-                        .businessName
-                    }
-                  </PrintHeading>
-
-                  <div className="mt-[1.5mm] whitespace-pre-line text-[9pt] leading-[1.45] text-slate-700">
-                    {businessAddress}
-                  </div>
-                </div>
-              </section>
-
-              <section className="grid grid-cols-[1.65fr_0.85fr] gap-[7mm] border-b border-slate-300 py-[5mm]">
-                <div className="pr-[4mm]">
-                  <div
-                    className="border-b pb-[1.5mm]"
-                    style={{
-                      borderColor:
-                        primaryColour,
-                    }}
-                  >
-                    <PrintHeading
-                      colour={
-                        primaryColour
-                      }
-                    >
-                      Today&apos;s treatment
-                    </PrintHeading>
-                  </div>
-
-                  <div className="mt-[2mm] text-[15pt] font-bold">
-                    {
-                      job.visit
-                        .treatmentName
-                    }
-                  </div>
-
-                  <div className="mt-[2mm] whitespace-pre-line text-[9pt] leading-[1.5] text-slate-700">
-                    {visitInformation}
-                  </div>
-
-                  <div className="mt-[5mm]">
-                    <PrintHeading
-                      colour={
-                        primaryColour
-                      }
-                    >
-                      Technician notes
-                    </PrintHeading>
-
-                    <div className="mt-[2mm] space-y-[3.2mm]">
-                      {Array.from({
-                        length: 4,
-                      }).map(
-                        (
-                          _,
-                          index,
-                        ) => (
-                          <div
-                            key={
-                              index
-                            }
-                            className="h-[3mm] border-b border-dashed border-slate-300"
-                          />
-                        ),
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <aside className="border-l border-slate-200 pl-[6mm]">
-                  <div
-                    className="border-b pb-[1.5mm]"
-                    style={{
-                      borderColor:
-                        primaryColour,
-                    }}
-                  >
-                    <PrintHeading
-                      colour={
-                        primaryColour
-                      }
-                    >
-                      Aftercare & advice
-                    </PrintHeading>
-                  </div>
-
-                  <div className="mt-[1.5mm] divide-y divide-dashed divide-slate-200">
-                    {activeAdvisories.map(
-                      (
-                        advisory,
-                      ) => (
-                        <div
-                          key={
-                            advisory.id
-                          }
-                          className="py-[2.3mm] first:pt-0 last:pb-0"
-                        >
-                          <div
-                            className="text-[8pt] font-bold uppercase tracking-wide"
-                            style={{
-                              color:
-                                primaryColour,
-                            }}
-                          >
-                            {normaliseAdviceTitle(
-                              advisory.title,
-                            )}
-                          </div>
-
-                          <div className="mt-[0.8mm] text-[7.7pt] leading-[1.4] text-slate-700">
-                            {
-                              advisory.wording
-                            }
-                          </div>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                </aside>
-              </section>
-
-              <section className="customer-sheet-avoid border-b border-slate-300 py-[4mm]">
-                <div className="flex items-end justify-between gap-[8mm]">
-                  <div>
-                    <PrintHeading
-                      colour={
-                        primaryColour
-                      }
-                    >
-                      Invoice
-                    </PrintHeading>
-
-                    <div className="mt-[1mm] text-[8pt] text-slate-600">
-                      Treatment charge
-                    </div>
-                  </div>
-
-                  <div
-                    className="text-[25pt] font-bold leading-none"
-                    style={{
-                      color:
-                        primaryColour,
-                    }}
-                  >
-                    £
-                    {job.customer.treatmentPrice.toFixed(
-                      2,
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              {nextVisit && (
-                <section className="customer-sheet-avoid mt-[5mm] rounded-[4mm] border border-green-200 bg-green-50/40 px-[5mm] py-[4mm]">
-                  <div className="grid grid-cols-[14mm_1fr] items-center gap-[5mm]">
-                    <div
-                      className="flex h-[12mm] w-[12mm] items-center justify-center rounded-full border text-[14pt]"
-                      style={{
-                        borderColor:
-                          primaryColour,
-                        color:
-                          primaryColour,
-                      }}
-                      aria-hidden="true"
-                    >
-                      ▣
-                    </div>
-
-                    <div>
-                      <div
-                        className="text-[7.5pt] font-bold uppercase tracking-[0.14em]"
-                        style={{
-                          color:
-                            primaryColour,
-                        }}
-                      >
-                        Next planned treatment
-                      </div>
-
-                      <div className="mt-[0.8mm] text-[8.5pt] font-semibold">
-                        {
+              businessAddress={
+                businessAddress
+              }
+              mobile={
+                settings.business
+                  .mobile || ""
+              }
+              email={
+                settings.business
+                  .email || ""
+              }
+              website={
+                settings.business
+                  .website || ""
+              }
+              vatNumber={
+                vatNumber
+              }
+              primaryColour={
+                primaryColour
+              }
+              customerName={
+                job.customer.fullName
+              }
+              customerAddress={
+                customerAddress
+              }
+              customerNumber={
+                job.customer
+                  .customerNumber
+              }
+              visitDate={
+                formatDate(
+                  selectedDate,
+                )
+              }
+              treatmentTitle={
+                treatmentWording.title
+              }
+              invoiceLabel="Invoice / Reference"
+              invoiceReference={
+                job.customer
+                  .customerNumber
+              }
+              treatmentDescription={
+                treatmentWording
+                  .description
+              }
+              mowingAdvice={
+                treatmentWording
+                  .mowingAdvice
+              }
+              wateringAdvice={
+                treatmentWording
+                  .wateringAdvice
+              }
+              safetyAdvice={
+                treatmentWording
+                  .safetyAdvice
+              }
+              treatmentPrice={
+                job.customer
+                  .treatmentPrice
+              }
+              nextVisit={
+                nextVisit
+                  ? {
+                      label:
+                        "Next planned treatment",
+                      treatmentName:
+                        nextVisit
+                          .treatmentName,
+                      date:
+                        formatDate(
                           nextVisit
-                            .treatmentName
-                        }
-                      </div>
-
-                      <div
-                        className="mt-[1mm] text-[23pt] font-bold leading-none"
-                        style={{
-                          color:
-                            primaryColour,
-                        }}
-                      >
-                        {formatDate(
-                          nextVisit.scheduledDate,
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <footer
-                className="customer-sheet-avoid mt-[4mm] border-t pt-[2mm]"
-                style={{
-                  borderColor:
-                    primaryColour,
-                }}
-              >
-                <div
-                  className="text-center text-[8pt] font-medium"
-                  style={{
-                    color:
-                      primaryColour,
-                  }}
-                >
-                  Thank you for choosing{" "}
-                  {
-                    settings.business
-                      .businessName
-                  }
-                  .
-                </div>
-              </footer>
-            </article>
+                            .scheduledDate,
+                        ),
+                      isOverride:
+                        false,
+                    }
+                  : null
+              }
+              pageBreakAfter={
+                index <
+                jobs.length - 1
+              }
+            />
           );
         })}
       </div>
-    </AppShell>
+    </>
   );
 }
 
@@ -814,93 +522,6 @@ function PreviewStat({
       </div>
     </div>
   );
-}
-
-function ContactStripItem({
-  label,
-  value,
-  colour,
-}: {
-  label: string;
-  value: string;
-  colour: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <div
-        className="font-bold uppercase tracking-wide"
-        style={{
-          color: colour,
-        }}
-      >
-        {label}
-      </div>
-
-      <div className="mt-[0.5mm] break-words">
-        {value || "—"}
-      </div>
-    </div>
-  );
-}
-
-function PrintHeading({
-  colour,
-  children,
-}: {
-  colour: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className="text-[7.5pt] font-bold uppercase tracking-[0.14em]"
-      style={{
-        color: colour,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function normaliseAdviceTitle(
-  title: string,
-) {
-  const lower =
-    title.trim().toLowerCase();
-
-  if (
-    lower.includes("access")
-  ) {
-    return "Mowing";
-  }
-
-  return title;
-}
-
-function createScheduledVisitInformation(
-  treatmentName: string,
-  wording: TreatmentWordingSettings,
-) {
-  const name =
-    treatmentName.toLowerCase();
-
-  if (name.includes("moss")) {
-    return wording.mossControlVisit;
-  }
-
-  if (name.includes("aerat")) {
-    return wording.aerationVisit;
-  }
-
-  if (name.includes("scarif")) {
-    return wording.scarificationVisit;
-  }
-
-  if (name.includes("seed")) {
-    return wording.overseedingVisit;
-  }
-
-  return wording.seasonalFertiliserVisit;
 }
 
 function getNextProgrammeVisit(

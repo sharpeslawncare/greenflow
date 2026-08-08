@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type {
-  CSSProperties,
-  ReactNode,
-} from "react";
 
+import {
+  CustomerTreatmentDocument,
+  CustomerTreatmentDocumentPrintStyles,
+} from "@/components/customer-treatment-document";
 import { useCustomerStore } from "@/components/customer-store";
 import {
   type CustomerProgramme,
@@ -14,10 +14,13 @@ import {
   useProgrammeStore,
 } from "@/components/programme-store";
 import {
-  type AdvisoryType,
   type TreatmentWordingSettings,
   useSettingsStore,
 } from "@/components/settings-store";
+import {
+  getTreatmentDocumentWordingKey,
+  useTreatmentDocumentWording,
+} from "@/components/treatment-document-wording-store";
 import { useSeasonStore } from "@/components/season-store";
 import {
   type TreatmentRecord,
@@ -67,6 +70,11 @@ export default function TreatmentDocumentPage() {
     ready: settingsReady,
   } = useSettingsStore();
 
+  const {
+    wording: documentWording,
+    ready: documentWordingReady,
+  } = useTreatmentDocumentWording();
+
   const treatment =
     treatments.find(
       (item) =>
@@ -88,7 +96,8 @@ export default function TreatmentDocumentPage() {
     treatmentsReady &&
     programmesReady &&
     seasonsReady &&
-    settingsReady;
+    settingsReady &&
+    documentWordingReady;
 
   if (!ready) {
     return (
@@ -132,15 +141,23 @@ export default function TreatmentDocumentPage() {
       ? "Treatment report & invoice"
       : "Visit outcome record";
 
+  const treatmentWording =
+    documentWording[
+      getTreatmentDocumentWordingKey(
+        treatment.treatmentName,
+      )
+    ];
+
   const visitInformation =
-    createCustomerSafeVisitInformation(
-      treatment,
-      settings.treatmentWording,
-    );
+    completed
+      ? treatmentWording.description
+      : createCustomerSafeVisitInformation(
+          treatment,
+          settings.treatmentWording,
+        );
 
   const primaryColour =
-    settings.branding
-      .primaryColour ||
+    settings.branding.primaryColour ||
     "#176b37";
 
   const businessAddress =
@@ -154,8 +171,9 @@ export default function TreatmentDocumentPage() {
 
   const vatNumber =
     (
-      settings.business as typeof settings.business &
-        BusinessWithVat
+      settings.business as
+        typeof settings.business &
+          BusinessWithVat
     ).vatNumber?.trim() ?? "";
 
   const customerAddress =
@@ -163,16 +181,6 @@ export default function TreatmentDocumentPage() {
       customer.address,
       customer.postcode,
     ]);
-
-  const activeAdvisories =
-    completed
-      ? settings.advisories
-          .filter(
-            (advisory) =>
-              advisory.active,
-          )
-          .slice(0, 3)
-      : [];
 
   const nextVisit =
     getNextVisitInformation({
@@ -185,91 +193,90 @@ export default function TreatmentDocumentPage() {
       seasons,
     });
 
+  const nextVisitDocument =
+    nextVisit
+      ? {
+          label:
+            nextVisit.label,
+          treatmentName:
+            getNextVisitTreatmentName({
+              treatment,
+              customerNumber:
+                customer.customerNumber,
+              programmes,
+            }),
+          date:
+            formatDate(
+              nextVisit.date,
+            ),
+          isOverride:
+            nextVisit.isOverride,
+        }
+      : null;
+
   return (
-    <main className="min-h-screen bg-slate-200 px-4 py-6 print:bg-white print:p-0">
+    <main data-treatment-document-page className="min-h-screen bg-slate-200 px-4 py-6 print:min-h-0 print:bg-white print:p-0">
+      <CustomerTreatmentDocumentPrintStyles />
+
       <style jsx global>{`
-        @page {
-          size: A4 portrait;
-          margin: 6mm;
-        }
-
-        .print-document {
-          display: none;
-        }
-
         @media print {
           html,
           body {
+            width: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
             margin: 0 !important;
             padding: 0 !important;
+            overflow: visible !important;
             background: white !important;
           }
 
-          .no-print,
-          .screen-document {
-            display: none !important;
+          body > div {
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
 
-          .print-document {
+          main[data-treatment-document-page] {
             display: block !important;
-            box-sizing: border-box !important;
-            width: 198mm !important;
-            max-width: 198mm !important;
-            margin: 0 auto !important;
+            position: static !important;
+            width: auto !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            max-height: 0 !important;
+            margin: 0 !important;
             padding: 0 !important;
-            color: #0f172a !important;
-            font-size: 9.5pt !important;
-            line-height: 1.3 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+            overflow: visible !important;
+            background: white !important;
           }
 
-          .print-document * {
-            box-sizing: border-box !important;
-          }
-
-          .print-document section,
-          .print-document header,
-          .print-document footer,
-          .print-document aside {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-
-          .print-contact-grid {
-            display: grid !important;
-            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-            gap: 3mm !important;
-          }
-
-          .print-address-grid {
-            display: grid !important;
-            grid-template-columns: 1fr 1fr !important;
-            gap: 10mm !important;
-          }
-
-          .print-treatment-grid {
-            display: grid !important;
-            grid-template-columns: minmax(0, 1.65fr) minmax(0, 0.85fr) !important;
-            gap: 7mm !important;
-          }
-
-          .print-next-grid {
-            display: grid !important;
-            grid-template-columns: 14mm minmax(0, 1fr) !important;
-            gap: 5mm !important;
-            align-items: center !important;
+          .individual-print-document {
+            position: absolute !important;
+            top: 0 !important;
+            left: 50% !important;
+            width: 190mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            transform: translateX(-50%) !important;
           }
         }
       `}</style>
 
-      <div className="no-print mx-auto mb-4 flex max-w-[794px] flex-wrap items-center justify-between gap-3">
-        <Link
-          href="/documents"
-          className="font-semibold text-[#176b37] hover:underline"
-        >
-          ← Back to documents
-        </Link>
+      <div className="print-hide mx-auto mb-4 flex max-w-[190mm] flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link
+            href="/documents"
+            className="font-semibold text-[#176b37] hover:underline"
+          >
+            ← Back to documents
+          </Link>
+
+          <h1 className="mt-1 text-xl font-bold">
+            {documentTitle}
+          </h1>
+        </div>
 
         <div className="flex flex-wrap gap-2">
           <Link
@@ -279,16 +286,11 @@ export default function TreatmentDocumentPage() {
             Open customer
           </Link>
 
-          <Link
-            href="/treatments"
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-          >
-            Internal treatment record
-          </Link>
-
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() =>
+              window.print()
+            }
             className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
           >
             Print or save PDF
@@ -296,447 +298,95 @@ export default function TreatmentDocumentPage() {
         </div>
       </div>
 
-      <article
-        className="screen-document mx-auto min-h-[1123px] max-w-[794px] bg-white px-8 py-6 shadow-2xl"
-        style={{ "--document-primary": primaryColour } as CSSProperties}
-      >
-        <header className="border-b border-slate-300 pb-4">
-          <div className="flex items-start justify-between gap-8">
-            <div className="min-w-0">
-              <div
-                className="text-3xl font-bold tracking-tight"
-                style={{ color: primaryColour }}
-              >
-                {settings.business.businessName}
-              </div>
-
-              {settings.branding.applicationSubtitle && (
-                <div className="mt-1 text-sm text-slate-600">
-                  {settings.branding.applicationSubtitle}
-                </div>
-              )}
-
-              <div className="mt-2 text-[11px] font-medium text-slate-500">
-                Powered by GreenFlow
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div
-                className="text-xl font-bold uppercase tracking-wide"
-                style={{ color: primaryColour }}
-              >
-                {documentTitle}
-              </div>
-
-              <div className="mt-3 space-y-1 text-sm text-slate-700">
-                <div>
-                  Invoice No:{" "}
-                  <span className="font-bold text-slate-900">
-                    {completed
-                      ? treatment.invoiceNumber || "Pending"
-                      : "Not applicable"}
-                  </span>
-                </div>
-
-                <div>
-                  Date:{" "}
-                  <span className="font-semibold text-slate-900">
-                    {formatDate(getRecordDate(treatment))}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-[11px] text-slate-700 sm:grid-cols-4">
-            {settings.business.mobile && (
-              <ContactItem icon="☎" value={settings.business.mobile} colour={primaryColour} />
-            )}
-            {settings.business.email && (
-              <ContactItem icon="✉" value={settings.business.email} colour={primaryColour} />
-            )}
-            {settings.business.website && (
-              <ContactItem icon="●" value={settings.business.website} colour={primaryColour} />
-            )}
-            {vatNumber && (
-              <ContactItem icon="#" value={`VAT ${vatNumber}`} colour={primaryColour} />
-            )}
-          </div>
-        </header>
-
-        <section className="grid gap-8 border-b border-slate-300 py-5 md:grid-cols-2">
-          <div>
-            <SmallHeading colour={primaryColour}>Customer</SmallHeading>
-            <div className="mt-3 text-lg font-bold text-slate-950">
-              {customer.fullName}
-            </div>
-            <div className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">
-              {customerAddress}
-            </div>
-          </div>
-
-          <div className="md:border-l md:border-slate-200 md:pl-8">
-            <SmallHeading colour={primaryColour}>
-              {settings.business.businessName}
-            </SmallHeading>
-            <div className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
-              {businessAddress}
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-7 border-b border-slate-300 py-5 md:grid-cols-[1.7fr_0.8fr]">
-          <div className="min-w-0 md:pr-6">
-            <div className="border-b pb-2" style={{ borderColor: primaryColour }}>
-              <SmallHeading colour={primaryColour}>
-                Today&apos;s treatment
-              </SmallHeading>
-            </div>
-
-            <h1 className="mt-3 text-xl font-bold text-slate-950">
-              {treatment.treatmentName}
-            </h1>
-
-            <div className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
-              {visitInformation}
-            </div>
-
-            <div className="mt-6">
-              <SmallHeading colour={primaryColour}>Technician notes</SmallHeading>
-              <div className="mt-3 space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="h-4 border-b border-dashed border-slate-300"
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {completed && activeAdvisories.length > 0 && (
-            <aside className="md:border-l md:border-slate-200 md:pl-6">
-              <div className="border-b pb-2" style={{ borderColor: primaryColour }}>
-                <SmallHeading colour={primaryColour}>
-                  Aftercare & advice
-                </SmallHeading>
-              </div>
-
-              <div className="mt-3 divide-y divide-dashed divide-slate-200">
-                {activeAdvisories.map((advisory) => (
-                  <AdviceCard
-                    key={advisory.id}
-                    title={normaliseAdviceTitle(advisory.title)}
-                    detail={advisory.wording}
-                    type={advisory.type}
-                  />
-                ))}
-              </div>
-            </aside>
+      <div className="individual-print-document mx-auto w-[190mm]">
+        <CustomerTreatmentDocument
+          businessName={
+            settings.business
+              .businessName
+          }
+          businessAddress={
+            businessAddress
+          }
+          mobile={
+            settings.business.mobile ||
+            ""
+          }
+          email={
+            settings.business.email ||
+            ""
+          }
+          website={
+            settings.business.website ||
+            ""
+          }
+          vatNumber={vatNumber}
+          primaryColour={
+            primaryColour
+          }
+          customerName={
+            customer.fullName
+          }
+          customerAddress={
+            customerAddress
+          }
+          customerNumber={
+            customer.customerNumber
+          }
+          visitDate={formatDate(
+            getRecordDate(
+              treatment,
+            ),
           )}
-        </section>
-
-        {completed && (
-          <section className="border-b border-slate-300 py-4">
-            <div className="flex items-end justify-between gap-6">
-              <div>
-                <SmallHeading colour={primaryColour}>Invoice</SmallHeading>
-                <div className="mt-2 text-sm text-slate-600">Treatment charge</div>
-              </div>
-              <div className="text-4xl font-bold tracking-tight" style={{ color: primaryColour }}>
-                £{customer.treatmentPrice.toFixed(2)}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {nextVisit && (
-          <section className={`mt-4 rounded-xl border px-5 py-4 ${
-            nextVisit.isOverride
-              ? "border-amber-200 bg-amber-50/40"
-              : "border-green-200 bg-green-50/40"
-          }`}>
-            <div className="grid gap-5 md:grid-cols-[72px_1fr] md:items-center">
-              <div
-                className="flex h-14 w-14 items-center justify-center rounded-full border text-2xl"
-                style={{ borderColor: primaryColour, color: primaryColour }}
-                aria-hidden="true"
-              >
-                ▣
-              </div>
-
-              <div>
-                <div className={`text-xs font-bold uppercase tracking-[0.16em] ${
-                  nextVisit.isOverride ? "text-amber-700" : "text-green-700"
-                }`}>
-                  {nextVisit.label}
-                </div>
-                <div className="mt-1 text-sm font-semibold text-slate-900">
-                  {getNextVisitTreatmentName({
-                    treatment,
-                    customerNumber: customer.customerNumber,
-                    programmes,
-                  })}
-                </div>
-                <div className={`mt-1 text-[34px] font-bold leading-none tracking-tight ${
-                  nextVisit.isOverride ? "text-amber-900" : "text-green-900"
-                }`}>
-                  {formatDate(nextVisit.date)}
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        <footer className="mt-4 border-t pt-3" style={{ borderColor: primaryColour }}>
-          <div className="text-center text-sm font-medium" style={{ color: primaryColour }}>
-            Thank you for choosing {settings.business.businessName}.
-          </div>
-        </footer>
-      </article>
-
-      <article
-        className="print-document"
-        style={{ "--document-primary": primaryColour } as CSSProperties}
-      >
-        <header className="border-b border-slate-300 pb-[3mm]">
-          <div className="flex items-start justify-between gap-[8mm]">
-            <div className="min-w-0">
-              <div className="text-[22pt] font-bold leading-none" style={{ color: primaryColour }}>
-                {settings.business.businessName}
-              </div>
-              {settings.branding.applicationSubtitle && (
-                <div className="mt-[1mm] text-[9pt] text-slate-600">
-                  {settings.branding.applicationSubtitle}
-                </div>
-              )}
-              <div className="mt-[1.5mm] text-[7.5pt] text-slate-500">
-                Powered by GreenFlow
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div className="text-[13pt] font-bold uppercase tracking-wide" style={{ color: primaryColour }}>
-                {documentTitle}
-              </div>
-              <div className="mt-[2mm] text-[8.5pt] leading-[1.35] text-slate-700">
-                <div>
-                  Invoice No: <strong>{completed ? treatment.invoiceNumber || "Pending" : "Not applicable"}</strong>
-                </div>
-                <div>
-                  Date: <strong>{formatDate(getRecordDate(treatment))}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="print-contact-grid mt-[3mm] border-t border-slate-100 pt-[2mm] text-[7.5pt] text-slate-700">
-            {settings.business.mobile ? (
-              <PrintContactItem icon="☎" value={settings.business.mobile} colour={primaryColour} />
-            ) : <span />}
-            {settings.business.email ? (
-              <PrintContactItem icon="✉" value={settings.business.email} colour={primaryColour} />
-            ) : <span />}
-            {settings.business.website ? (
-              <PrintContactItem icon="●" value={settings.business.website} colour={primaryColour} />
-            ) : <span />}
-            {vatNumber ? (
-              <PrintContactItem icon="#" value={`VAT ${vatNumber}`} colour={primaryColour} align="right" />
-            ) : <span />}
-          </div>
-        </header>
-
-        <section className="print-address-grid border-b border-slate-300 py-[4mm]">
-          <div>
-            <PrintHeading colour={primaryColour}>Customer</PrintHeading>
-            <div className="mt-[1.5mm] text-[11pt] font-bold">{customer.fullName}</div>
-            <div className="mt-[0.5mm] whitespace-pre-line text-[8.5pt] leading-[1.45] text-slate-700">
-              {customerAddress}
-            </div>
-          </div>
-
-          <div className="border-l border-slate-200 pl-[8mm]">
-            <PrintHeading colour={primaryColour}>{settings.business.businessName}</PrintHeading>
-            <div className="mt-[1.5mm] whitespace-pre-line text-[8.5pt] leading-[1.45] text-slate-700">
-              {businessAddress}
-            </div>
-          </div>
-        </section>
-
-        <section className="print-treatment-grid border-b border-slate-300 py-[4mm]">
-          <div className="min-w-0 pr-[4mm]">
-            <div className="border-b pb-[1.5mm]" style={{ borderColor: primaryColour }}>
-              <PrintHeading colour={primaryColour}>Today&apos;s treatment</PrintHeading>
-            </div>
-
-            <div className="mt-[2mm] text-[14pt] font-bold leading-tight">
-              {treatment.treatmentName}
-            </div>
-
-            <div className="mt-[2mm] whitespace-pre-line text-[8.5pt] leading-[1.45] text-slate-700">
-              {visitInformation}
-            </div>
-
-            <div className="mt-[4mm]">
-              <PrintHeading colour={primaryColour}>Technician notes</PrintHeading>
-              <div className="mt-[2mm] space-y-[2.8mm]">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="h-[3mm] border-b border-dashed border-slate-300" />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {completed && activeAdvisories.length > 0 && (
-            <aside className="border-l border-slate-200 pl-[6mm]">
-              <div className="border-b pb-[1.5mm]" style={{ borderColor: primaryColour }}>
-                <PrintHeading colour={primaryColour}>Aftercare & advice</PrintHeading>
-              </div>
-
-              <div className="mt-[1.5mm] divide-y divide-dashed divide-slate-200">
-                {activeAdvisories.map((advisory) => (
-                  <div key={advisory.id} className="py-[2mm] first:pt-0 last:pb-0">
-                    <div className="text-[8pt] font-bold uppercase tracking-wide" style={{ color: primaryColour }}>
-                      {normaliseAdviceTitle(advisory.title)}
-                    </div>
-                    <div className="mt-[0.7mm] text-[7.5pt] leading-[1.4] text-slate-700">
-                      {advisory.wording}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </aside>
-          )}
-        </section>
-
-        {completed && (
-          <section className="border-b border-slate-300 py-[3mm]">
-            <div className="flex items-end justify-between gap-[8mm]">
-              <div>
-                <PrintHeading colour={primaryColour}>Invoice</PrintHeading>
-                <div className="mt-[1mm] text-[8pt] text-slate-600">Treatment charge</div>
-              </div>
-              <div className="text-[23pt] font-bold leading-none" style={{ color: primaryColour }}>
-                £{customer.treatmentPrice.toFixed(2)}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {nextVisit && (
-          <section className={`mt-[4mm] rounded-[4mm] border px-[5mm] py-[4mm] ${
-            nextVisit.isOverride
-              ? "border-amber-200 bg-amber-50/40"
-              : "border-green-200 bg-green-50/40"
-          }`}>
-            <div className="print-next-grid">
-              <div
-                className="flex h-[12mm] w-[12mm] items-center justify-center rounded-full border text-[14pt]"
-                style={{ borderColor: primaryColour, color: primaryColour }}
-                aria-hidden="true"
-              >
-                ▣
-              </div>
-
-              <div>
-                <div className="text-[7.5pt] font-bold uppercase tracking-[0.14em]" style={{ color: primaryColour }}>
-                  {nextVisit.label}
-                </div>
-                <div className="mt-[0.8mm] text-[8.5pt] font-semibold text-slate-900">
-                  {getNextVisitTreatmentName({
-                    treatment,
-                    customerNumber: customer.customerNumber,
-                    programmes,
-                  })}
-                </div>
-                <div className="mt-[1mm] text-[22pt] font-bold leading-none" style={{ color: primaryColour }}>
-                  {formatDate(nextVisit.date)}
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        <footer className="mt-[3mm] border-t pt-[2mm]" style={{ borderColor: primaryColour }}>
-          <div className="text-center text-[8pt] font-medium" style={{ color: primaryColour }}>
-            Thank you for choosing {settings.business.businessName}.
-          </div>
-        </footer>
-      </article>
+          treatmentTitle={
+            completed
+              ? treatmentWording.title
+              : treatment.treatmentName
+          }
+          invoiceLabel="Invoice"
+          invoiceReference={
+            treatment.invoiceNumber ||
+            customer.customerNumber
+          }
+          treatmentDescription={
+            visitInformation
+          }
+          mowingAdvice={
+            completed
+              ? treatmentWording
+                  .mowingAdvice
+              : ""
+          }
+          wateringAdvice={
+            completed
+              ? treatmentWording
+                  .wateringAdvice
+              : ""
+          }
+          safetyAdvice={
+            completed
+              ? treatmentWording
+                  .safetyAdvice
+              : ""
+          }
+          treatmentPrice={
+            completed
+              ? customer.treatmentPrice
+              : undefined
+          }
+          nextVisit={
+            nextVisitDocument
+          }
+          showAftercare={
+            completed
+          }
+          showPayment={
+            completed
+          }
+          previewShadow
+        />
+      </div>
     </main>
   );
-}
-
-function ContactItem({
-  icon,
-  value,
-  colour,
-}: {
-  icon: string;
-  value: string;
-  colour: string;
-}) {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-2">
-      <span className="font-bold" style={{ color: colour }} aria-hidden="true">
-        {icon}
-      </span>
-      <span className="min-w-0 break-words">{value}</span>
-    </span>
-  );
-}
-
-function PrintContactItem({
-  icon,
-  value,
-  colour,
-  align = "left",
-}: {
-  icon: string;
-  value: string;
-  colour: string;
-  align?: "left" | "right";
-}) {
-  return (
-    <span
-      className={`inline-flex min-w-0 items-center gap-[1.5mm] ${
-        align === "right" ? "justify-end" : "justify-start"
-      }`}
-    >
-      <span className="shrink-0 font-bold" style={{ color: colour }} aria-hidden="true">
-        {icon}
-      </span>
-      <span className="min-w-0 break-words">{value}</span>
-    </span>
-  );
-}
-
-function PrintHeading({
-  colour,
-  children,
-}: {
-  colour: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className="text-[7.5pt] font-bold uppercase tracking-[0.14em]"
-      style={{ color: colour }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function normaliseAdviceTitle(title: string) {
-  const lower = title.trim().toLowerCase();
-
-  if (lower.includes("access")) {
-    return "Mowing";
-  }
-
-  return title;
 }
 
 function getNextVisitTreatmentName({
@@ -1174,74 +824,4 @@ function formatDate(
       year: "numeric",
     },
   ).format(parseDate(value));
-}
-
-function SmallHeading({
-  colour,
-  children,
-}: {
-  colour: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className="text-xs font-bold uppercase tracking-[0.16em]"
-      style={{
-        color: colour,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function DocumentMetaRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex justify-between gap-5 border-b border-slate-100 py-2 text-sm last:border-0">
-      <span className="text-slate-500">
-        {label}
-      </span>
-
-      <span className="text-right font-semibold">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function AdviceCard({
-  title,
-  detail,
-  type: _type,
-}: {
-  title: string;
-  detail: string;
-  type: AdvisoryType;
-}) {
-  return (
-    <div className="py-3 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-3">
-        <span
-          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#338b45]"
-          aria-hidden="true"
-        />
-
-        <div>
-          <div className="text-sm font-bold uppercase tracking-wide text-[#176b37]">
-            {title}
-          </div>
-
-          <p className="mt-1 text-xs leading-5 text-slate-700">
-            {detail}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
 }

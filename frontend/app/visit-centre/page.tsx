@@ -91,20 +91,6 @@ type ProductRequirement = {
   requiredUnit: ChemicalUnit;
 };
 
-type DailyProductUsage = {
-  key: string;
-  productName: string;
-  productType: string;
-  amount: number;
-  unit: string;
-  applications: number;
-};
-
-type DailyObservationSummary = {
-  label: string;
-  count: number;
-};
-
 type CompletionResult = {
   outcome: VisitOutcome;
   completedAt: string;
@@ -245,6 +231,7 @@ export default function VisitCentrePage() {
   const [message, setMessage] = useState("");
 
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewError, setReviewError] = useState("");
 
   const [
     completionResult,
@@ -520,314 +507,18 @@ export default function VisitCentrePage() {
     };
   });
 
-  const recordedOutcomesOnDate =
-    treatments.filter(
-      (treatment) =>
-        treatment.scheduledDate ===
-        selectedDate,
-    );
+  const completedOnDate = treatments.filter(
+    (treatment) =>
+      treatment.scheduledDate === selectedDate &&
+      treatment.status === "Completed",
+  ).length;
 
-  const completedOnDate =
-    recordedOutcomesOnDate.filter(
-      (treatment) =>
-        treatment.status ===
-        "Completed",
-    ).length;
-
-  const cancelledOnDate =
-    recordedOutcomesOnDate.filter(
-      (treatment) =>
-        treatment.status ===
-        "Cancelled",
-    ).length;
-
-  const needsReschedulingOnDate =
-    recordedOutcomesOnDate.filter(
-      (treatment) =>
-        treatment.status ===
-        "Needs Rescheduling",
-    ).length;
-
-  const rescheduledOnDate =
-    recordedOutcomesOnDate.filter(
-      (treatment) =>
-        treatment.status ===
-        "Rescheduled",
-    ).length;
-
-  const remainingOnDate =
-    jobs.length;
-
-  const processedOnDate =
-    recordedOutcomesOnDate.length;
-
-  const totalScheduled =
-    remainingOnDate +
-    processedOnDate;
+  const totalScheduled = jobs.length + completedOnDate;
 
   const progress =
     totalScheduled > 0
-      ? Math.round(
-          (processedOnDate /
-            totalScheduled) *
-            100,
-        )
+      ? Math.round((completedOnDate / totalScheduled) * 100)
       : 0;
-
-  const completedTreatmentsOnDate =
-    recordedOutcomesOnDate.filter(
-      (treatment) =>
-        treatment.status ===
-        "Completed",
-    );
-
-  const treatedAreaOnDate =
-    completedTreatmentsOnDate.reduce(
-      (total, treatment) =>
-        total +
-        treatment.treatmentAreaSquareMetres,
-      0,
-    );
-
-  const remainingAreaOnDate =
-    jobs.reduce(
-      (total, job) =>
-        total +
-        job.customer.lawnSize,
-      0,
-    );
-
-  const processedScheduledArea =
-    recordedOutcomesOnDate.reduce(
-      (total, treatment) => {
-        const customer =
-          customers.find(
-            (item) =>
-              item.customerNumber ===
-              treatment.customerNumber,
-          );
-
-        return (
-          total +
-          (customer?.lawnSize ??
-            treatment.treatmentAreaSquareMetres)
-        );
-      },
-      0,
-    );
-
-  const totalScheduledArea =
-    processedScheduledArea +
-    remainingAreaOnDate;
-
-  const expectedRevenueOnDate =
-    jobs.reduce(
-      (total, job) =>
-        total +
-        job.customer.treatmentPrice,
-      0,
-    ) +
-    completedTreatmentsOnDate.reduce(
-      (total, treatment) => {
-        const customer =
-          customers.find(
-            (item) =>
-              item.customerNumber ===
-              treatment.customerNumber,
-          );
-
-        return (
-          total +
-          (customer?.treatmentPrice ??
-            0)
-        );
-      },
-      0,
-    );
-
-  const smsReminderCount =
-    jobs.filter(
-      (job) =>
-        job.customer.lockedGate &&
-        Boolean(
-          job.customer.mobilePhone.trim(),
-        ),
-    ).length;
-
-  const routeExceptionCount =
-    jobs.filter(
-      (job) =>
-        job.overridden,
-    ).length;
-
-  const todaysTreatmentNames =
-    Array.from(
-      new Set(
-        jobs.map(
-          (job) =>
-            job.visit.treatmentName,
-        ),
-      ),
-    );
-
-  const invoicesCreatedOnDate =
-    completedTreatmentsOnDate.filter(
-      (treatment) =>
-        Boolean(
-          treatment.invoiceNumber,
-        ),
-    ).length;
-
-  const productUsageOnDate =
-    Array.from(
-      completedTreatmentsOnDate
-        .flatMap(
-          (treatment) =>
-            treatment.applications,
-        )
-        .reduce(
-          (
-            usageMap,
-            application,
-          ) => {
-            const key = [
-              application.productId ||
-                application.productName,
-              application.productUnit,
-            ].join("::");
-
-            const existing =
-              usageMap.get(key);
-
-            const amount =
-              application.actualProductRequired ||
-              application.productRequired;
-
-            usageMap.set(key, {
-              key,
-              productName:
-                application.productName ||
-                "Unnamed product",
-              productType:
-                application.productType ||
-                "Other",
-              amount:
-                (existing?.amount ?? 0) +
-                amount,
-              unit:
-                application.productUnit,
-              applications:
-                (existing?.applications ??
-                  0) + 1,
-            });
-
-            return usageMap;
-          },
-          new Map<
-            string,
-            DailyProductUsage
-          >(),
-        )
-        .values(),
-    ).sort(
-      (first, second) =>
-        first.productType.localeCompare(
-          second.productType,
-        ) ||
-        first.productName.localeCompare(
-          second.productName,
-        ),
-    );
-
-  const spotSprayVisitsOnDate =
-    completedTreatmentsOnDate.filter(
-      (treatment) =>
-        treatment.applications.some(
-          (application) =>
-            application.applicationMethod ===
-            "Spot Spray",
-        ),
-    ).length;
-
-  const fullLawnSprayVisitsOnDate =
-    completedTreatmentsOnDate.filter(
-      (treatment) =>
-        treatment.applications.some(
-          (application) =>
-            application.applicationMethod ===
-            "Full Lawn Spray",
-        ),
-    ).length;
-
-  const estimatedRevenueOnDate =
-    completedTreatmentsOnDate.reduce(
-      (total, treatment) => {
-        const customer =
-          customers.find(
-            (item) =>
-              item.customerNumber ===
-              treatment.customerNumber,
-          );
-
-        return (
-          total +
-          (customer?.treatmentPrice ??
-            0)
-        );
-      },
-      0,
-    );
-
-  const averageCompletedVisitValue =
-    completedTreatmentsOnDate.length > 0
-      ? estimatedRevenueOnDate /
-        completedTreatmentsOnDate.length
-      : 0;
-
-  const observationCounts =
-    completedTreatmentsOnDate.reduce(
-      (counts, treatment) => {
-        extractRecordedObservations(
-          treatment.notes,
-        ).forEach(
-          (observation) => {
-            counts.set(
-              observation,
-              (counts.get(
-                observation,
-              ) ?? 0) + 1,
-            );
-          },
-        );
-
-        return counts;
-      },
-      new Map<string, number>(),
-    );
-
-  const observationSummary =
-    observationOptions
-      .map<DailyObservationSummary>(
-        (observation) => ({
-          label: observation,
-          count:
-            observationCounts.get(
-              observation,
-            ) ?? 0,
-        }),
-      )
-      .filter(
-        (observation) =>
-          observation.count > 0,
-      );
-
-  const customersProcessedOnDate =
-    new Set(
-      recordedOutcomesOnDate.map(
-        (treatment) =>
-          treatment.customerNumber,
-      ),
-    ).size;
 
   const allSelected =
     jobs.length > 0 &&
@@ -1053,11 +744,15 @@ export default function VisitCentrePage() {
     );
   }
 
-  function saveVisits(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function saveVisits(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    setReviewError("");
 
     if (selectedJobs.length === 0) {
-      showMessage("Select at least one scheduled customer.");
+      const error =
+        "Select at least one scheduled customer.";
+      setReviewError(error);
+      showMessage(error);
       return;
     }
 
@@ -1067,19 +762,26 @@ export default function VisitCentrePage() {
       outcome === "Customer Request";
 
     if (outcome !== "Completed" && selectedJobs.length > 1) {
-      showMessage(
-        "Failed or cancelled visits must be recorded one customer at a time.",
-      );
+      const error =
+        "Failed or cancelled visits must be recorded one customer at a time.";
+      setReviewError(error);
+      showMessage(error);
       return;
     }
 
     if (needsReplacement && !isDateValue(replacementDate)) {
-      showMessage("Choose a valid replacement date.");
+      const error =
+        "Choose a valid replacement date.";
+      setReviewError(error);
+      showMessage(error);
       return;
     }
 
     if (needsReplacement && replacementDate < getTodayDateValue()) {
-      showMessage("The replacement date cannot be in the past.");
+      const error =
+        "The replacement date cannot be in the past.";
+      setReviewError(error);
+      showMessage(error);
       return;
     }
 
@@ -1103,6 +805,7 @@ export default function VisitCentrePage() {
     const stockProblem = findStockProblem(requirements);
 
     if (outcome === "Completed" && stockProblem) {
+      setReviewError(stockProblem);
       showMessage(stockProblem);
       return;
     }
@@ -1185,7 +888,12 @@ export default function VisitCentrePage() {
         );
 
         if (!stockResult.success) {
-          showMessage(stockResult.message);
+          setReviewError(
+            stockResult.message,
+          );
+          showMessage(
+            stockResult.message,
+          );
           return;
         }
       }
@@ -1255,6 +963,7 @@ export default function VisitCentrePage() {
     });
 
     setSelectedJobIds([]);
+    setReviewError("");
     setReviewOpen(false);
     resetSharedForm();
 
@@ -1556,515 +1265,33 @@ export default function VisitCentrePage() {
             </section>
           )}
 
-          <section className="mb-4 rounded-2xl border border-green-200 bg-gradient-to-br from-green-50 to-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-                  Morning Briefing
-                </div>
-
-                <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  {formatDateWithDay(
-                    selectedDate,
-                  )}
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-600">
-                  {requestedGroup > 0
-                    ? `Group ${requestedGroup}`
-                    : "All scheduled groups"}
-                  {requestedVan > 0
-                    ? ` · Van ${requestedVan}`
-                    : ""}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-green-200 bg-white px-4 py-3 text-right">
-                <div className="text-xs font-semibold uppercase tracking-wide text-green-700">
-                  Expected revenue
-                </div>
-
-                <div className="mt-1 text-2xl font-bold text-green-950">
-                  £{expectedRevenueOnDate.toFixed(2)}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <MorningBriefingStat
-                label="Scheduled visits"
-                value={String(totalScheduled)}
-                detail={`${remainingOnDate} remaining`}
-              />
-
-              <MorningBriefingStat
-                label="Scheduled area"
-                value={`${totalScheduledArea.toLocaleString(
-                  "en-GB",
-                )} m²`}
-                detail="Total lawn area"
-              />
-
-              <MorningBriefingStat
-                label="SMS reminders"
-                value={String(
-                  smsReminderCount,
-                )}
-                detail="Access reminders due"
-                warning={
-                  smsReminderCount > 0
-                }
-              />
-
-              <MorningBriefingStat
-                label="Route exceptions"
-                value={String(
-                  routeExceptionCount,
-                )}
-                detail={
-                  routeExceptionCount === 1
-                    ? "1 visit moved from its group date"
-                    : `${routeExceptionCount} visits moved from their group date`
-                }
-                warning={
-                  routeExceptionCount > 0
-                }
-              />
-            </div>
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Treatment round
-                </div>
-
-                {todaysTreatmentNames.length === 0 ? (
-                  <div className="mt-2 text-sm text-slate-500">
-                    No scheduled treatments.
-                  </div>
-                ) : (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {todaysTreatmentNames.map(
-                      (treatmentName) => (
-                        <span
-                          key={treatmentName}
-                          className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800"
-                        >
-                          {treatmentName}
-                        </span>
-                      ),
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Today’s Mix
-                </div>
-
-                <div className="mt-2 text-sm font-semibold text-slate-900">
-                  {todayMixAvailable
-                    ? `${standardMixProducts.length} product${
-                        standardMixProducts.length === 1
-                          ? ""
-                          : "s"
-                      } ready`
-                    : "No mix saved yet"}
-                </div>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  {todayMixAvailable
-                    ? "Saved mix is ready to apply to selected visits."
-                    : "Choose and save the products you expect to use today."}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold text-slate-500">
-                  Today’s Progress
-                </div>
-
-                <div className="mt-1 text-2xl font-bold">
-                  {processedOnDate} / {totalScheduled} processed
-                </div>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  {formatDateWithDay(
-                    selectedDate,
-                  )}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-green-50 px-4 py-3 text-right">
-                <div className="text-3xl font-bold text-[#176b37]">
-                  {progress}%
-                </div>
-
-                <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-green-700">
-                  complete
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5">
-              <div className="h-4 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-[#176b37] transition-all duration-500"
-                  style={{
-                    width: `${progress}%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <ProgressStat
-                label="Completed"
-                value={completedOnDate}
-                detail="Treatment completed"
-                tone="green"
-              />
-
-              <ProgressStat
-                label="Remaining"
-                value={remainingOnDate}
-                detail="Still on today’s route"
-                tone="slate"
-              />
-
-              <ProgressStat
-                label="Cancelled"
-                value={cancelledOnDate}
-                detail="Visit cancelled"
-                tone="red"
-              />
-
-              <ProgressStat
-                label="Needs rescheduling"
-                value={
-                  needsReschedulingOnDate
-                }
-                detail="New date required"
-                tone="amber"
-              />
-
-              <ProgressStat
-                label="Rescheduled"
-                value={rescheduledOnDate}
-                detail="Replacement arranged"
-                tone="blue"
-              />
-            </div>
-
-            {totalScheduled > 0 &&
-              remainingOnDate === 0 && (
-                <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">
-                  All visits for this working date have been processed.
-                </div>
-              )}
-          </section>
-
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-slate-500">
-                  Today’s Operations
-                </div>
-
-                <h2 className="mt-1 text-xl font-bold">
-                  Daily workload overview
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Live figures for{" "}
-                  {formatDateWithDay(
-                    selectedDate,
-                  )}
-                  .
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Scheduled area
+                  Route progress
                 </div>
 
                 <div className="mt-1 text-xl font-bold">
-                  {totalScheduledArea.toLocaleString(
-                    "en-GB",
-                  )}{" "}
-                  m²
+                  {completedOnDate} / {totalScheduled} completed
                 </div>
               </div>
-            </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <OperationStat
-                label="Area treated"
-                value={`${treatedAreaOnDate.toLocaleString(
-                  "en-GB",
-                )} m²`}
-                detail="Completed treatment area"
-              />
-
-              <OperationStat
-                label="Area remaining"
-                value={`${remainingAreaOnDate.toLocaleString(
-                  "en-GB",
-                )} m²`}
-                detail="Still scheduled today"
-              />
-
-              <OperationStat
-                label="Customers processed"
-                value={String(
-                  customersProcessedOnDate,
-                )}
-                detail="All recorded outcomes"
-              />
-
-              <OperationStat
-                label="Invoices created"
-                value={String(
-                  invoicesCreatedOnDate,
-                )}
-                detail="Completed visits with invoices"
-              />
-            </div>
-
-            {totalScheduledArea > 0 && (
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
-                  <span>
-                    Treated area progress
-                  </span>
-
-                  <span>
-                    {Math.round(
-                      (treatedAreaOnDate /
-                        totalScheduledArea) *
-                        100,
-                    )}
-                    %
-                  </span>
-                </div>
-
+              <div className="min-w-[260px] flex-1">
                 <div className="h-3 overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full rounded-full bg-[#176b37] transition-all duration-500"
+                    className="h-full rounded-full bg-[#176b37] transition-all"
                     style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round(
-                          (treatedAreaOnDate /
-                            totalScheduledArea) *
-                            100,
-                        ),
-                      )}%`,
+                      width: `${progress}%`,
                     }}
                   />
                 </div>
-              </div>
-            )}
-          </section>
 
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-slate-500">
-                  Products Used Today
+                <div className="mt-1 text-right text-xs font-semibold text-slate-500">
+                  {progress}%
                 </div>
-
-                <h2 className="mt-1 text-xl font-bold">
-                  Recorded product usage
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Actual quantities saved against completed visits on{" "}
-                  {formatDateWithDay(
-                    selectedDate,
-                  )}
-                  .
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <MiniOperationStat
-                  label="Spot spray"
-                  value={
-                    spotSprayVisitsOnDate
-                  }
-                />
-
-                <MiniOperationStat
-                  label="Full spray"
-                  value={
-                    fullLawnSprayVisitsOnDate
-                  }
-                />
               </div>
             </div>
-
-            {productUsageOnDate.length ===
-            0 ? (
-              <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                No product usage has been recorded for this working date yet.
-              </div>
-            ) : (
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {productUsageOnDate.map(
-                  (product) => (
-                    <div
-                      key={product.key}
-                      className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-slate-900">
-                            {
-                              product.productName
-                            }
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            {
-                              product.productType
-                            }
-                          </div>
-                        </div>
-
-                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600">
-                          {
-                            product.applications
-                          }{" "}
-                          application
-                          {product.applications ===
-                          1
-                            ? ""
-                            : "s"}
-                        </span>
-                      </div>
-
-                      <div className="mt-4 text-2xl font-bold text-[#176b37]">
-                        {formatApplicationAmount(
-                          product.amount,
-                          product.unit as ChemicalUnit,
-                        )}
-                      </div>
-
-                      <div className="mt-1 text-xs text-slate-500">
-                        Actual quantity recorded
-                      </div>
-                    </div>
-                  ),
-                )}
-              </div>
-            )}
-
-            {(spotSprayVisitsOnDate > 0 ||
-              fullLawnSprayVisitsOnDate >
-                0) && (
-              <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-                Spot-spray quantities are already included in the product totals above at their recorded 20% usage. Full-lawn equivalent figures remain stored in each treatment record.
-              </div>
-            )}
-          </section>
-
-          <section className="mb-4 grid gap-4 xl:grid-cols-2">
-            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="text-sm font-semibold text-slate-500">
-                Today’s Revenue
-              </div>
-
-              <h2 className="mt-1 text-xl font-bold">
-                Completed visit value
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Estimated from each completed customer’s current treatment price.
-              </p>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <FinancialStat
-                  label="Estimated revenue"
-                  value={`£${estimatedRevenueOnDate.toFixed(
-                    2,
-                  )}`}
-                  detail="Completed visits"
-                />
-
-                <FinancialStat
-                  label="Average visit"
-                  value={`£${averageCompletedVisitValue.toFixed(
-                    2,
-                  )}`}
-                  detail="Per completed visit"
-                />
-
-                <FinancialStat
-                  label="Invoices"
-                  value={String(
-                    invoicesCreatedOnDate,
-                  )}
-                  detail="Created today"
-                />
-              </div>
-
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                Revenue is an operational estimate until QuickBooks becomes the accounting source of truth.
-              </div>
-            </article>
-
-            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="text-sm font-semibold text-slate-500">
-                Today’s Observations
-              </div>
-
-              <h2 className="mt-1 text-xl font-bold">
-                Lawn conditions recorded
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Counts taken from the observations saved with completed visits.
-              </p>
-
-              {observationSummary.length ===
-              0 ? (
-                <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                  No observations have been recorded for completed visits on this date.
-                </div>
-              ) : (
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {observationSummary.map(
-                    (observation) => (
-                      <div
-                        key={
-                          observation.label
-                        }
-                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
-                      >
-                        <span className="font-semibold text-slate-700">
-                          {
-                            observation.label
-                          }
-                        </span>
-
-                        <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-white px-3 text-sm font-bold text-[#176b37]">
-                          {
-                            observation.count
-                          }
-                        </span>
-                      </div>
-                    ),
-                  )}
-                </div>
-              )}
-            </article>
           </section>
 
           <form onSubmit={saveVisits}>
@@ -2708,7 +1935,10 @@ export default function VisitCentrePage() {
 
                   <button
                     type="button"
-                    onClick={() => setReviewOpen(true)}
+                    onClick={() => {
+                      setReviewError("");
+                      setReviewOpen(true);
+                    }}
                     disabled={
                       selectedJobs.length === 0 ||
                       (outcome !== "Completed" && selectedJobs.length > 1)
@@ -2743,7 +1973,10 @@ export default function VisitCentrePage() {
 
                     <button
                       type="button"
-                      onClick={() => setReviewOpen(false)}
+                      onClick={() => {
+                        setReviewError("");
+                        setReviewOpen(false);
+                      }}
                       className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
                     >
                       Close
@@ -2757,6 +1990,12 @@ export default function VisitCentrePage() {
                       <ReviewStat label="Combined area" value={`${totalSelectedArea.toLocaleString("en-GB")} m²`} />
                       <ReviewStat label="Outcome" value={outcome} />
                     </div>
+
+                    {reviewError && (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+                        {reviewError}
+                      </div>
+                    )}
 
                     <section className="rounded-xl border border-slate-200">
                       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-bold">
@@ -2881,14 +2120,18 @@ export default function VisitCentrePage() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => setReviewOpen(false)}
+                        onClick={() => {
+                        setReviewError("");
+                        setReviewOpen(false);
+                      }}
                         className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold hover:bg-slate-50"
                       >
                         Go back
                       </button>
 
                       <button
-                        type="submit"
+                        type="button"
+                        onClick={() => saveVisits()}
                         className="rounded-xl bg-[#176b37] px-6 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
                       >
                         {outcome === "Completed"
@@ -3228,26 +2471,6 @@ function createOutcomeNote(
     : reason;
 }
 
-function extractRecordedObservations(
-  notes: string,
-) {
-  const match =
-    notes.match(
-      /Observations:\s*([^\n.]+)/i,
-    );
-
-  if (!match?.[1]) {
-    return [];
-  }
-
-  return match[1]
-    .split(",")
-    .map((item) =>
-      item.trim(),
-    )
-    .filter(Boolean);
-}
-
 function appendNote(existing: string, next: string) {
   return [existing.trim(), next.trim()]
     .filter(Boolean)
@@ -3479,160 +2702,6 @@ function formatDateWithDay(value: string) {
     month: "long",
     year: "numeric",
   }).format(parseDate(value));
-}
-
-function FinancialStat({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-green-700">
-        {label}
-      </div>
-
-      <div className="mt-2 text-2xl font-bold text-green-950">
-        {value}
-      </div>
-
-      <div className="mt-1 text-xs text-green-700">
-        {detail}
-      </div>
-    </div>
-  );
-}
-
-function MiniOperationStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="min-w-28 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
-      <div className="text-xl font-bold text-slate-900">
-        {value}
-      </div>
-
-      <div className="mt-1 text-xs font-semibold text-slate-500">
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function OperationStat({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-2 text-2xl font-bold text-slate-900">
-        {value}
-      </div>
-
-      <div className="mt-1 text-xs text-slate-500">
-        {detail}
-      </div>
-    </div>
-  );
-}
-
-function MorningBriefingStat({
-  label,
-  value,
-  detail,
-  warning = false,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  warning?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 ${
-        warning
-          ? "border-amber-200 bg-amber-50"
-          : "border-slate-200 bg-white"
-      }`}
-    >
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-2 text-2xl font-bold text-slate-950">
-        {value}
-      </div>
-
-      <div className="mt-1 text-xs text-slate-500">
-        {detail}
-      </div>
-    </div>
-  );
-}
-
-function ProgressStat({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: number;
-  detail: string;
-  tone:
-    | "green"
-    | "slate"
-    | "red"
-    | "amber"
-    | "blue";
-}) {
-  const toneClasses = {
-    green:
-      "border-green-200 bg-green-50 text-green-900",
-    slate:
-      "border-slate-200 bg-slate-50 text-slate-900",
-    red:
-      "border-red-200 bg-red-50 text-red-900",
-    amber:
-      "border-amber-200 bg-amber-50 text-amber-900",
-    blue:
-      "border-blue-200 bg-blue-50 text-blue-900",
-  };
-
-  return (
-    <div
-      className={`rounded-xl border p-4 ${toneClasses[tone]}`}
-    >
-      <div className="text-2xl font-bold">
-        {value}
-      </div>
-
-      <div className="mt-1 text-sm font-bold">
-        {label}
-      </div>
-
-      <div className="mt-1 text-xs opacity-70">
-        {detail}
-      </div>
-    </div>
-  );
 }
 
 function ProductModeOption({
