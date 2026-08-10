@@ -134,6 +134,14 @@ type TreatmentStoreValue = {
   getTreatmentById: (
     treatmentId: string,
   ) => TreatmentRecord | undefined;
+  hasTreatmentForProgrammeVisit: (
+    programmeId: string,
+    programmeVisitId: string,
+  ) => boolean;
+  hasFinalOutcomeForProgrammeVisit: (
+    programmeId: string,
+    programmeVisitId: string,
+  ) => boolean;
   getTreatmentsForCustomer: (
     customerNumber: string,
   ) => TreatmentRecord[];
@@ -289,8 +297,11 @@ export function TreatmentStoreProvider({
       normaliseTreatmentRecord(treatment);
 
     setTreatments((current) =>
-      current.some(
-        (item) => item.id === normalised.id,
+      current.some((item) =>
+        isSameTreatmentIdentity(
+          item,
+          normalised,
+        ),
       )
         ? current
         : [normalised, ...current],
@@ -303,17 +314,46 @@ export function TreatmentStoreProvider({
     const normalised = incoming.map(
       normaliseTreatmentRecord,
     );
-    const existingIds = new Set(
-      treatments.map((item) => item.id),
-    );
-    const unique = normalised.filter(
-      (item) => !existingIds.has(item.id),
-    );
 
-    setTreatments((current) => [
-      ...unique,
-      ...current,
-    ]);
+    const unique: TreatmentRecord[] = [];
+
+    for (const candidate of normalised) {
+      const alreadyExists =
+        treatments.some((item) =>
+          isSameTreatmentIdentity(
+            item,
+            candidate,
+          ),
+        ) ||
+        unique.some((item) =>
+          isSameTreatmentIdentity(
+            item,
+            candidate,
+          ),
+        );
+
+      if (!alreadyExists) {
+        unique.push(candidate);
+      }
+    }
+
+    setTreatments((current) => {
+      const actuallyUnique =
+        unique.filter(
+          (candidate) =>
+            !current.some((item) =>
+              isSameTreatmentIdentity(
+                item,
+                candidate,
+              ),
+            ),
+        );
+
+      return [
+        ...actuallyUnique,
+        ...current,
+      ];
+    });
 
     return {
       added: unique.length,
@@ -328,13 +368,27 @@ export function TreatmentStoreProvider({
     const normalised =
       normaliseTreatmentRecord(treatment);
 
-    setTreatments((current) =>
-      current.map((item) =>
+    setTreatments((current) => {
+      const collision =
+        current.some(
+          (item) =>
+            item.id !== normalised.id &&
+            isSameTreatmentIdentity(
+              item,
+              normalised,
+            ),
+        );
+
+      if (collision) {
+        return current;
+      }
+
+      return current.map((item) =>
         item.id === normalised.id
           ? normalised
           : item,
-      ),
-    );
+      );
+    });
   }
 
   function deleteTreatment(
@@ -352,6 +406,47 @@ export function TreatmentStoreProvider({
   ) {
     return treatments.find(
       (item) => item.id === treatmentId,
+    );
+  }
+
+  function hasTreatmentForProgrammeVisit(
+    programmeId: string,
+    programmeVisitId: string,
+  ) {
+    if (
+      !programmeId ||
+      !programmeVisitId
+    ) {
+      return false;
+    }
+
+    return treatments.some(
+      (item) =>
+        item.programmeId === programmeId &&
+        item.programmeVisitId ===
+          programmeVisitId,
+    );
+  }
+
+  function hasFinalOutcomeForProgrammeVisit(
+    programmeId: string,
+    programmeVisitId: string,
+  ) {
+    if (
+      !programmeId ||
+      !programmeVisitId
+    ) {
+      return false;
+    }
+
+    return treatments.some(
+      (item) =>
+        item.programmeId === programmeId &&
+        item.programmeVisitId ===
+          programmeVisitId &&
+        isFinalTreatmentStatus(
+          item.status,
+        ),
     );
   }
 
@@ -383,6 +478,8 @@ export function TreatmentStoreProvider({
       updateTreatment,
       deleteTreatment,
       getTreatmentById,
+      hasTreatmentForProgrammeVisit,
+      hasFinalOutcomeForProgrammeVisit,
       getTreatmentsForCustomer,
       restoreDemoTreatments,
     }),
@@ -930,6 +1027,15 @@ function normaliseStatus(
   return "Completed";
 }
 
+function isFinalTreatmentStatus(
+  status: TreatmentStatus,
+) {
+  return (
+    status === "Completed" ||
+    status === "Cancelled"
+  );
+}
+
 function getSavedData() {
   const current =
     window.localStorage.getItem(STORAGE_KEY);
@@ -974,6 +1080,37 @@ function getRecordDate(
     treatment.scheduledDate ||
     treatment.recordedDate.slice(0, 10)
   );
+}
+
+function isSameTreatmentIdentity(
+  first: TreatmentRecord,
+  second: TreatmentRecord,
+) {
+  const firstHasProgrammeVisit =
+    Boolean(
+      first.programmeId &&
+      first.programmeVisitId,
+    );
+
+  const secondHasProgrammeVisit =
+    Boolean(
+      second.programmeId &&
+      second.programmeVisitId,
+    );
+
+  if (
+    firstHasProgrammeVisit &&
+    secondHasProgrammeVisit
+  ) {
+    return (
+      first.programmeId ===
+        second.programmeId &&
+      first.programmeVisitId ===
+        second.programmeVisitId
+    );
+  }
+
+  return first.id === second.id;
 }
 
 function createTreatmentId() {

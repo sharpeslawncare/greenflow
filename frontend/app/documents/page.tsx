@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  Suspense,
   type ReactNode,
   useMemo,
   useState,
@@ -24,8 +25,21 @@ const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export default function DocumentsPage() {
-  const searchParams =
-    useSearchParams();
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 text-slate-500">
+          Loading documents...
+        </div>
+      }
+    >
+      <DocumentsPageContent />
+    </Suspense>
+  );
+}
+
+function DocumentsPageContent() {
+  const searchParams = useSearchParams();
 
   const customerNumber =
     searchParams.get("customer")?.trim() ?? "";

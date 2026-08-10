@@ -473,11 +473,14 @@ export function SettingsStoreProvider({
   }
 
   function restoreDefaultSettings() {
-    setSettings(defaultSettings);
-
-    window.localStorage.removeItem(
-      STORAGE_KEY,
-    );
+    setSettings((current) => ({
+      ...defaultSettings,
+      invoices: {
+        ...defaultSettings.invoices,
+        nextInvoiceNumber:
+          current.invoices.nextInvoiceNumber,
+      },
+    }));
   }
 
   const value =

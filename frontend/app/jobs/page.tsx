@@ -3,20 +3,46 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  Suspense,
   useMemo,
   useState,
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
-import { useProgrammeStore } from "@/components/programme-store";
-import { useTreatmentStore } from "@/components/treatment-store";
+import {
+  type CustomerProgramme,
+  type ProgrammeVisit,
+  useProgrammeStore,
+} from "@/components/programme-store";
+import {
+  type TreatmentRecord,
+  useTreatmentStore,
+} from "@/components/treatment-store";
 import {
   formatDateWithDay,
   getTodayDateValue,
 } from "@/lib/date-utils";
 
 export default function JobsPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <main className="p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading scheduled jobs...
+            </div>
+          </main>
+        </AppShell>
+      }
+    >
+      <JobsPageContent />
+    </Suspense>
+  );
+}
+
+function JobsPageContent() {
   const searchParams =
     useSearchParams();
 
@@ -86,6 +112,15 @@ export default function JobsPage() {
                   "Scheduled" ||
                   visit.status ===
                     "Planned"),
+            )
+            .filter(
+              (visit) =>
+                !hasRecordedOutcome(
+                  treatments,
+                  programme,
+                  visit,
+                  customer.customerNumber,
+                ),
             )
             .map((visit) => ({
               id: `${programme.id}-${visit.id}`,
@@ -806,6 +841,33 @@ function PrintStat({
         {value}
       </div>
     </div>
+  );
+}
+
+function hasRecordedOutcome(
+  treatments: TreatmentRecord[],
+  programme: CustomerProgramme,
+  visit: ProgrammeVisit,
+  customerNumber: string,
+) {
+  return treatments.some(
+    (treatment) =>
+      (
+        treatment.status === "Completed" ||
+        treatment.status === "Cancelled"
+      ) &&
+      (
+        (
+          treatment.programmeId === programme.id &&
+          treatment.programmeVisitId === visit.id
+        ) ||
+        (
+          !treatment.programmeVisitId &&
+          treatment.customerNumber === customerNumber &&
+          treatment.scheduledDate === visit.scheduledDate &&
+          treatment.treatmentName === visit.treatmentName
+        )
+      ),
   );
 }
 

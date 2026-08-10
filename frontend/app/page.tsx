@@ -16,30 +16,23 @@ import {
 } from "@/lib/date-utils";
 
 import { AppShell } from "@/components/app-shell";
+import { useChemicalStore } from "@/components/chemical-store";
 
 import { useCustomerStore } from "@/components/customer-store";
 
 import { useEnquiryStore } from "@/components/enquiry-store";
 
-import { useProgrammeStore } from "@/components/programme-store";
+import {
+  type CustomerProgramme,
+  type ProgrammeVisit,
+  useProgrammeStore,
+} from "@/components/programme-store";
 
 import {
+  type TreatmentRecord,
   type TreatmentStatus,
   useTreatmentStore,
 } from "@/components/treatment-store";
-
-type StockProduct = {
-  id: string;
-  name: string;
-  currentQuantity: number;
-  reorderLevel: number;
-  unit: string;
-  active: boolean;
-};
-
-type StockData = {
-  products: StockProduct[];
-};
 
 type CommunicationRecord = {
   id: string;
@@ -54,9 +47,6 @@ type CommunicationRecord = {
 type CommunicationsData = {
   records: CommunicationRecord[];
 };
-
-const STOCK_STORAGE_KEY =
-  "greenflow-stock-v1";
 
 const COMMUNICATIONS_STORAGE_KEY =
   "greenflow-communications-v1";
@@ -82,12 +72,10 @@ export default function DashboardPage() {
     ready: treatmentsReady,
   } = useTreatmentStore();
 
-  const [
-    stockData,
-    setStockData,
-  ] = useState<StockData>({
-    products: [],
-  });
+  const {
+    chemicals,
+    ready: chemicalsReady,
+  } = useChemicalStore();
 
   const [
     communicationsData,
@@ -134,38 +122,6 @@ export default function DashboardPage() {
   }, []);
 
   function loadLocalModules() {
-    const savedStock =
-      window.localStorage.getItem(
-        STOCK_STORAGE_KEY,
-      );
-
-    if (savedStock) {
-      try {
-        const parsedStock =
-          JSON.parse(
-            savedStock,
-          ) as StockData;
-
-        if (
-          Array.isArray(
-            parsedStock.products,
-          )
-        ) {
-          setStockData(
-            parsedStock,
-          );
-        }
-      } catch {
-        setStockData({
-          products: [],
-        });
-      }
-    } else {
-      setStockData({
-        products: [],
-      });
-    }
-
     const savedCommunications =
       window.localStorage.getItem(
         COMMUNICATIONS_STORAGE_KEY,
@@ -238,7 +194,17 @@ export default function DashboardPage() {
                     customer.customerNumber ===
                     programme.customerNumber,
                 ),
-            })),
+            }))
+            .filter(
+              (item) =>
+                !item.customer ||
+                !hasFinalRecordedOutcome(
+                  treatments,
+                  item.programme,
+                  item.visit,
+                  item.customer.customerNumber,
+                ),
+            ),
         )
         .filter(
           (item) =>
@@ -248,6 +214,7 @@ export default function DashboardPage() {
     }, [
       programmes,
       customers,
+      treatments,
       selectedDate,
     ]);
 
@@ -308,11 +275,11 @@ export default function DashboardPage() {
     ).length;
 
   const lowStockProducts =
-    stockData.products.filter(
-      (product) =>
-        product.active !== false &&
-        product.currentQuantity <=
-          product.reorderLevel,
+    chemicals.filter(
+      (chemical) =>
+        chemical.active &&
+        chemical.currentStock <=
+          chemical.reorderLevel,
     );
 
   const queuedMessages =
@@ -321,22 +288,34 @@ export default function DashboardPage() {
         record.status === "Queued",
     );
 
-  const customerNumbersWithProgramme =
+  const currentYear =
+    new Date().getFullYear();
+
+  const customerNumbersWithCurrentProgramme =
     useMemo(
       () =>
         new Set(
-          programmes.map(
-            (programme) =>
-              programme.customerNumber,
-          ),
+          programmes
+            .filter(
+              (programme) =>
+                programme.year ===
+                currentYear,
+            )
+            .map(
+              (programme) =>
+                programme.customerNumber,
+            ),
         ),
-      [programmes],
+      [
+        programmes,
+        currentYear,
+      ],
     );
 
   const customersWithoutProgramme =
     activeCustomers.filter(
       (customer) =>
-        !customerNumbersWithProgramme.has(
+        !customerNumbersWithCurrentProgramme.has(
           customer.customerNumber,
         ),
     );
@@ -412,8 +391,22 @@ export default function DashboardPage() {
         getTodayDateValue();
 
       return programmes
-        .flatMap((programme) =>
-          programme.visits
+        .flatMap((programme) => {
+          const customer =
+            customers.find(
+              (record) =>
+                record.customerNumber ===
+                programme.customerNumber,
+            );
+
+          if (
+            !customer ||
+            customer.status !== "Active"
+          ) {
+            return [];
+          }
+
+          return programme.visits
             .filter(
               (visit) =>
                 visit.scheduledDate >=
@@ -422,6 +415,15 @@ export default function DashboardPage() {
                   "Scheduled" ||
                   visit.status ===
                     "Planned"),
+            )
+            .filter(
+              (visit) =>
+                !hasFinalRecordedOutcome(
+                  treatments,
+                  programme,
+                  visit,
+                  customer.customerNumber,
+                ),
             )
             .map((visit) => ({
               customerNumber:
@@ -432,15 +434,19 @@ export default function DashboardPage() {
 
               scheduledDate:
                 visit.scheduledDate,
-            })),
-        )
+            }));
+        })
         .sort((first, second) =>
           first.scheduledDate.localeCompare(
             second.scheduledDate,
           ),
         )
         .slice(0, 6);
-    }, [programmes]);
+    }, [
+      programmes,
+      customers,
+      treatments,
+    ]);
 
   const enquiryAttentionCount =
     newEnquiries.length +
@@ -458,7 +464,8 @@ export default function DashboardPage() {
     customersReady &&
     enquiriesReady &&
     programmesReady &&
-    treatmentsReady;
+    treatmentsReady &&
+    chemicalsReady;
 
   if (!ready) {
     return (
@@ -1054,50 +1061,54 @@ export default function DashboardPage() {
               actionHref="/stock"
             >
               <div className="space-y-2">
-                {stockData.products.length ===
-                0 ? (
+                {chemicals.length === 0 ? (
                   <EmptyState>
-                    Open Stock &
-                    Purchasing to create or
-                    restore stock records.
+                    Open Stock & Purchasing to
+                    create or restore Chemical
+                    Store products.
                   </EmptyState>
                 ) : lowStockProducts.length ===
                   0 ? (
                   <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
-                    All active products are
-                    currently above their
-                    reorder levels.
+                    All active Chemical Store
+                    products are currently above
+                    their reorder levels.
                   </div>
                 ) : (
                   lowStockProducts.map(
-                    (product) => (
+                    (chemical) => (
                       <div
-                        key={product.id}
+                        key={chemical.id}
                         className="flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 p-3"
                       >
                         <div>
                           <div className="font-semibold text-red-900">
-                            {product.name}
+                            {chemical.name}
                           </div>
 
                           <div className="mt-1 text-xs text-red-700">
                             Reorder at{" "}
-                            {
-                              product.reorderLevel
-                            }{" "}
-                            {product.unit}
+                            {chemical.reorderLevel.toFixed(
+                              3,
+                            )}{" "}
+                            pack equivalents
                           </div>
                         </div>
 
                         <div className="text-right">
                           <div className="font-bold text-red-900">
-                            {
-                              product.currentQuantity
-                            }
+                            {chemical.currentStock.toFixed(
+                              3,
+                            )}
                           </div>
 
                           <div className="text-xs text-red-700">
-                            {product.unit}
+                            packs ·{" "}
+                            {(
+                              chemical.currentStock *
+                              chemical.packSize
+                            ).toFixed(3)}{" "}
+                            {chemical.packUnit}
                           </div>
                         </div>
                       </div>
@@ -1155,6 +1166,40 @@ export default function DashboardPage() {
 </div>
       </main>
     </AppShell>
+  );
+}
+
+function hasFinalRecordedOutcome(
+  treatments: TreatmentRecord[],
+  programme: CustomerProgramme,
+  visit: ProgrammeVisit,
+  customerNumber: string,
+) {
+  return treatments.some(
+    (treatment) =>
+      (
+        treatment.status ===
+          "Completed" ||
+        treatment.status ===
+          "Cancelled"
+      ) &&
+      (
+        (
+          treatment.programmeId ===
+            programme.id &&
+          treatment.programmeVisitId ===
+            visit.id
+        ) ||
+        (
+          !treatment.programmeVisitId &&
+          treatment.customerNumber ===
+            customerNumber &&
+          treatment.scheduledDate ===
+            visit.scheduledDate &&
+          treatment.treatmentName ===
+            visit.treatmentName
+        )
+      ),
   );
 }
 

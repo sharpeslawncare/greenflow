@@ -3,11 +3,8 @@
 import Link from "next/link";
 import {
   type ChangeEvent,
-  type FormEvent,
   type ReactNode,
   useEffect,
-  useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -17,15 +14,9 @@ import {
   type BrandingSettings,
   type BusinessSettings,
   type InvoiceSettings,
+  type TreatmentWordingSettings,
   useSettingsStore,
 } from "@/components/settings-store";
-
-import {
-  defaultTreatmentDocumentWording,
-  type TreatmentDocumentWording,
-  type TreatmentDocumentWordingKey,
-  useTreatmentDocumentWording,
-} from "@/components/treatment-document-wording-store";
 
 import {
   type FleetVehicle,
@@ -95,6 +86,7 @@ export default function SettingsPage() {
     ready,
     updateBusinessSettings,
     updateInvoiceSettings,
+    updateTreatmentWording,
     updateBrandingSettings,
     updateAdvisory,
     addAdvisory,
@@ -103,14 +95,6 @@ export default function SettingsPage() {
     incrementInvoiceNumber,
     restoreDefaultSettings,
   } = useSettingsStore();
-
-  const {
-    wording: documentWording,
-    ready: documentWordingReady,
-    updateTreatment: updateDocumentTreatment,
-    restoreTreatment: restoreDocumentTreatment,
-    restoreAll: restoreAllDocumentWording,
-  } = useTreatmentDocumentWording();
 
   const {
     vehicles,
@@ -138,7 +122,9 @@ export default function SettingsPage() {
 
   const {
     chemicals,
+    stockMovements,
     ready: chemicalsReady,
+    restoreDemoChemicals,
   } = useChemicalStore();
 
   const [activeTab, setActiveTab] =
@@ -293,6 +279,11 @@ export default function SettingsPage() {
 
     if (!confirmed) return;
 
+    const currentSettingsJson =
+      window.localStorage.getItem(
+        "greenflow-business-settings-v1",
+      );
+
     const currentGreenFlowKeys: string[] =
       [];
 
@@ -339,6 +330,13 @@ export default function SettingsPage() {
       },
     );
 
+    preserveHighestInvoiceSequence(
+      currentSettingsJson,
+      window.localStorage.getItem(
+        "greenflow-business-settings-v1",
+      ),
+    );
+
     window.alert(
       "Backup restored successfully. GreenFlow will now reload.",
     );
@@ -361,7 +359,7 @@ export default function SettingsPage() {
 
   function startNewTestDay() {
     const confirmed = window.confirm(
-      "Start a new test day? This clears treatment outcomes, chemical-usage history, treatment documents and Visit Centre dashboard totals. Customers, programmes, routes, chemicals, stock, fleet and settings are preserved.",
+      "Start a new test day? Completed treatment records, visit outcomes, documents, route order and the saved daily working mix will be cleared. Customers, programme schedules, chemicals, LIVE STOCK QUANTITIES and STOCK MOVEMENT HISTORY will be preserved.",
     );
 
     if (!confirmed) return;
@@ -376,63 +374,173 @@ export default function SettingsPage() {
       window.localStorage.removeItem(key),
     );
 
-    const programmeKeys = [
+    const programmeStorageKey =
+      "greenflow-customer-programmes-v1";
+
+    const savedProgrammes =
+      window.localStorage.getItem(
+        programmeStorageKey,
+      );
+
+    if (savedProgrammes) {
+      try {
+        const savedProgrammeRecords =
+          JSON.parse(
+            savedProgrammes,
+          ) as Array<{
+            visits?: Array<{
+              status?: string;
+              notes?: string;
+              [key: string]: unknown;
+            }>;
+            [key: string]: unknown;
+          }>;
+
+        const resetProgrammes =
+          Array.isArray(
+            savedProgrammeRecords,
+          )
+            ? savedProgrammeRecords.map(
+                (programme) => ({
+                  ...programme,
+                  visits: Array.isArray(
+                    programme.visits,
+                  )
+                    ? programme.visits.map(
+                        (visit) => ({
+                          ...visit,
+                          status:
+                            visit.status ===
+                            "Planned"
+                              ? "Planned"
+                              : "Scheduled",
+                          notes:
+                            removeOutcomeNotes(
+                              typeof visit.notes ===
+                                "string"
+                                ? visit.notes
+                                : "",
+                            ),
+                        }),
+                      )
+                    : programme.visits,
+                }),
+              )
+            : savedProgrammeRecords;
+
+        window.localStorage.setItem(
+          programmeStorageKey,
+          JSON.stringify(
+            resetProgrammes,
+          ),
+        );
+      } catch {
+        // Leave unreadable programme data untouched rather than risking data loss.
+      }
+    }
+
+    /*
+     * Clean up old incorrect programme-reset keys.
+     * The live Programme Store uses greenflow-customer-programmes-v1.
+     */
+    [
       "greenflow-programmes-v3",
       "greenflow-programmes-v2",
       "greenflow-programmes-v1",
-    ];
+    ].forEach((key) =>
+      window.localStorage.removeItem(key),
+    );
 
-    programmeKeys.forEach((key) => {
-      const saved =
-        window.localStorage.getItem(key);
-
-      if (!saved) return;
-
-      try {
-        const programmes = JSON.parse(saved) as Array<{
-          visits?: Array<{
-            status?: string;
-            notes?: string;
-            [key: string]: unknown;
-          }>;
-          [key: string]: unknown;
-        }>;
-
-        const resetProgrammes = Array.isArray(programmes)
-          ? programmes.map((programme) => ({
-              ...programme,
-              visits: Array.isArray(programme.visits)
-                ? programme.visits.map((visit) => ({
-                    ...visit,
-                    status:
-                      visit.status === "Planned"
-                        ? "Planned"
-                        : "Scheduled",
-                    notes: removeOutcomeNotes(
-                      typeof visit.notes === "string"
-                        ? visit.notes
-                        : "",
-                    ),
-                  }))
-                : programme.visits,
-            }))
-          : programmes;
-
-        window.localStorage.setItem(
-          key,
-          JSON.stringify(resetProgrammes),
-        );
-      } catch {
-        // Leave unreadable programme data untouched.
-      }
-    });
+    window.localStorage.removeItem(
+      "greenflow-route-orders-v1",
+    );
 
     window.localStorage.removeItem(
       "greenflow-visit-centre-standard-mixes-v1",
     );
 
+    window.dispatchEvent(
+      new CustomEvent(
+        "greenflow:route-orders-updated",
+      ),
+    );
+
     window.alert(
-      "Operational data cleared. GreenFlow will now reload.",
+      "New test day prepared. Treatment outcomes were cleared, but live stock and stock movement history were preserved. GreenFlow will now reload.",
+    );
+
+    window.location.reload();
+  }
+
+  function resetDemoInventory() {
+    const confirmed = window.confirm(
+      "Reset demo inventory? Chemical products will return to the current demo seed values and the shared stock movement history will be cleared. Customers, programmes, treatments, fleet and business settings will not be changed.",
+    );
+
+    if (!confirmed) return;
+
+    restoreDemoChemicals();
+
+    /*
+     * Remove obsolete Stock-page stores and optional purchasing
+     * metadata so the inventory demo restarts cleanly.
+     */
+    [
+      "greenflow-stock-v1",
+      "greenflow-stock-movements-v2",
+      "greenflow-stock-metadata-v2",
+    ].forEach((key) =>
+      window.localStorage.removeItem(key),
+    );
+
+    showMessage(
+      "Demo inventory restored and stock movement history cleared.",
+    );
+  }
+
+  function fullDemoReset() {
+    const phrase =
+      window.prompt(
+        'This resets ALL GreenFlow browser data to the demonstration defaults. Create a backup first if needed. Type RESET DEMO to continue.',
+      );
+
+    if (phrase !== "RESET DEMO") {
+      if (phrase !== null) {
+        showMessage(
+          'Full demo reset cancelled. The phrase must be exactly "RESET DEMO".',
+        );
+      }
+      return;
+    }
+
+    const greenFlowKeys: string[] = [];
+
+    for (
+      let index = 0;
+      index < window.localStorage.length;
+      index += 1
+    ) {
+      const key =
+        window.localStorage.key(index);
+
+      if (
+        key?.startsWith(
+          "greenflow-",
+        )
+      ) {
+        greenFlowKeys.push(key);
+      }
+    }
+
+    greenFlowKeys.forEach(
+      (key) =>
+        window.localStorage.removeItem(
+          key,
+        ),
+    );
+
+    window.alert(
+      "Full GreenFlow demo reset complete. Customers, programmes, treatments, chemicals, inventory, movement history, fleet and settings will reload from their current demo defaults.",
     );
 
     window.location.reload();
@@ -454,7 +562,6 @@ export default function SettingsPage() {
 
   if (
     !ready ||
-    !documentWordingReady ||
     !fleetReady ||
     !customersReady ||
     !programmesReady ||
@@ -482,7 +589,7 @@ export default function SettingsPage() {
                 href="/"
                 className="text-sm font-semibold text-[#176b37] hover:underline"
               >
-                ← Dashboard
+                ← Back to dashboard
               </Link>
 
               <h1 className="text-3xl font-bold">
@@ -540,6 +647,18 @@ export default function SettingsPage() {
                 <OperationalMaintenanceTab
                   onStartNewTestDay={
                     startNewTestDay
+                  }
+                  onResetDemoInventory={
+                    resetDemoInventory
+                  }
+                  onFullDemoReset={
+                    fullDemoReset
+                  }
+                  chemicalCount={
+                    chemicals.length
+                  }
+                  stockMovementCount={
+                    stockMovements.length
                   }
                 />
               )}
@@ -601,15 +720,11 @@ export default function SettingsPage() {
 
               {activeTab === "wording" && (
                 <TreatmentWordingTab
-                  settings={documentWording}
-                  updateTreatment={
-                    updateDocumentTreatment
+                  settings={
+                    settings.treatmentWording
                   }
-                  restoreTreatment={
-                    restoreDocumentTreatment
-                  }
-                  restoreAll={
-                    restoreAllDocumentWording
+                  updateSettings={
+                    updateTreatmentWording
                   }
                 />
               )}
@@ -715,7 +830,7 @@ function BackupRestoreTab({
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-green-800">
-            Downloads customers, programmes, treatments, chemicals, stock, routes, fleet, settings and saved working-day data as one JSON file.
+            Downloads customers, programmes, treatments, chemicals, live stock, stock movement history, routes, fleet, settings and saved working-day data as one JSON file.
           </p>
 
           <button
@@ -763,7 +878,7 @@ function BackupRestoreTab({
           </label>
 
           <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm leading-6 text-amber-900">
-            Create a fresh backup before restoring another file. Restore does not merge data; it replaces GreenFlow’s current browser records.
+            Create a fresh backup before restoring another file. Restore does not merge data; it replaces GreenFlow's current browser records.
           </div>
         </article>
       </div>
@@ -823,6 +938,73 @@ function isGreenFlowBackup(
         typeof item === "string",
     )
   );
+}
+
+function preserveHighestInvoiceSequence(
+  currentSettingsJson: string | null,
+  restoredSettingsJson: string | null,
+) {
+  if (
+    !currentSettingsJson ||
+    !restoredSettingsJson
+  ) {
+    return;
+  }
+
+  try {
+    const currentSettings =
+      JSON.parse(
+        currentSettingsJson,
+      ) as {
+        invoices?: {
+          nextInvoiceNumber?: number;
+        };
+      };
+
+    const restoredSettings =
+      JSON.parse(
+        restoredSettingsJson,
+      ) as {
+        invoices?: {
+          nextInvoiceNumber?: number;
+        };
+      };
+
+    const currentNext =
+      Number(
+        currentSettings.invoices
+          ?.nextInvoiceNumber,
+      );
+
+    const restoredNext =
+      Number(
+        restoredSettings.invoices
+          ?.nextInvoiceNumber,
+      );
+
+    if (
+      !Number.isFinite(currentNext) ||
+      !Number.isFinite(restoredNext) ||
+      currentNext <= restoredNext
+    ) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      "greenflow-business-settings-v1",
+      JSON.stringify({
+        ...restoredSettings,
+        invoices: {
+          ...restoredSettings.invoices,
+          nextInvoiceNumber:
+            currentNext,
+        },
+      }),
+    );
+  } catch {
+    // If either settings record cannot be read,
+    // leave the restored backup untouched.
+  }
 }
 
 function formatBackupDate(
@@ -1179,50 +1361,63 @@ function SystemHealthTab({
 
 function OperationalMaintenanceTab({
   onStartNewTestDay,
+  onResetDemoInventory,
+  onFullDemoReset,
+  chemicalCount,
+  stockMovementCount,
 }: {
   onStartNewTestDay: () => void;
+  onResetDemoInventory: () => void;
+  onFullDemoReset: () => void;
+  chemicalCount: number;
+  stockMovementCount: number;
 }) {
   return (
     <div>
       <SectionHeading
-        title="Operational reset"
-        description="Clear day-to-day testing results without deleting the business setup you have already built."
+        title="Operational resets"
+        description="Choose the smallest reset that matches what you are trying to test. Inventory is now protected separately from treatment results."
       />
 
-      <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_360px]">
+      <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+        <strong>Stock protection is active.</strong>{" "}
+        A normal New Test Day does not restore or reverse stock. Current chemical stock and the shared stock movement history remain untouched.
+      </div>
+
+      <div className="mt-6 grid gap-5 xl:grid-cols-2">
         <section className="rounded-2xl border border-green-200 bg-green-50 p-5">
           <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-            Testing tool
+            Level 1 · Operational
           </div>
 
           <h3 className="mt-2 text-2xl font-bold text-green-950">
             Start New Test Day
           </h3>
 
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-green-800">
-            Return operational workflows to a clean state so you can test Visit Centre, dashboard totals, documents and chemical usage again.
+          <p className="mt-2 text-sm leading-6 text-green-800">
+            Clear operational treatment results so Visit Centre can be tested again without changing the inventory position you have built up.
           </p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <ResetDetail
               label="Cleared"
               items={[
-                "Treatment outcomes and history",
-                "Chemical usage derived from treatment records",
-                "Treatment documents and invoices",
+                "Treatment records and recorded outcomes",
+                "Treatment documents and invoice references derived from those records",
                 "Visit Centre progress, revenue and observation totals",
-                "Saved Today’s Mix selections",
+                "Saved route order",
+                "Saved daily working mix",
               ]}
             />
 
             <ResetDetail
               label="Preserved"
               items={[
-                "Customers",
-                "Annual programmes and visit dates",
-                "Groups, routes and fleet",
-                "Chemical products and stock levels",
-                "Business, invoice and branding settings",
+                "Customers and programme structure / scheduled dates",
+                "Chemical products",
+                "Live stock quantities",
+                "Shared stock movement history",
+                "Fleet and business settings",
               ]}
             />
           </div>
@@ -1236,19 +1431,88 @@ function OperationalMaintenanceTab({
           </button>
         </section>
 
-        <aside className="h-fit rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <div className="text-sm font-bold text-amber-950">
-            Before you reset
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
+            Level 2 · Inventory only
           </div>
+
+          <h3 className="mt-2 text-2xl font-bold text-amber-950">
+            Reset Demo Inventory
+          </h3>
 
           <p className="mt-2 text-sm leading-6 text-amber-900">
-            This action cannot be undone from GreenFlow. Use it only for testing, and create a backup first when the current results matter.
+            Restore only the chemical inventory to the current demo seed values. This is useful when you want to repeat stock testing from a known starting point.
           </p>
 
-          <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm text-amber-900">
-            Chemical stock quantities are preserved. The reset removes usage history but does not restore previously deducted stock.
+          <div className="mt-5 rounded-xl border border-amber-200 bg-white p-4 text-sm leading-6 text-amber-950">
+            <div>
+              <strong>{chemicalCount}</strong>{" "}
+              chemical products currently loaded.
+            </div>
+
+            <div className="mt-1">
+              <strong>{stockMovementCount}</strong>{" "}
+              stock movement records currently in the shared audit trail.
+            </div>
           </div>
-        </aside>
+
+          <div className="mt-4 text-sm leading-6 text-amber-900">
+            This reset restores demo chemical quantities and clears the stock movement history. It does not touch customers, programmes or completed treatment records.
+          </div>
+
+          <button
+            type="button"
+            onClick={onResetDemoInventory}
+            className="mt-6 rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800"
+          >
+            Reset Demo Inventory
+          </button>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">
+            Level 3 · Season
+          </div>
+
+          <h3 className="mt-2 text-2xl font-bold text-slate-950">
+            Start New Season
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            Keep this as a separate season-management operation. Programme visits and treatment history can be reset for a new season while real stock quantities and the inventory audit trail remain preserved.
+          </p>
+
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">
+            GreenFlow already has separate Season Management logic. Do not use the inventory reset for a normal season change.
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">
+            Level 4 · Everything
+          </div>
+
+          <h3 className="mt-2 text-2xl font-bold text-red-950">
+            Full Demo Reset
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-red-900">
+            Remove all GreenFlow browser data and reload every store from its current demonstration defaults. This is the only reset intended to wipe the whole demo environment.
+          </p>
+
+          <div className="mt-4 rounded-xl border border-red-200 bg-white p-4 text-sm leading-6 text-red-900">
+            <strong>Create a backup first if anything matters.</strong>{" "}
+            You will be required to type <strong>RESET DEMO</strong> exactly before this runs.
+          </div>
+
+          <button
+            type="button"
+            onClick={onFullDemoReset}
+            className="mt-6 rounded-xl bg-red-700 px-5 py-3 text-sm font-bold text-white hover:bg-red-800"
+          >
+            Full Demo Reset
+          </button>
+        </section>
       </div>
     </div>
   );
@@ -1578,19 +1842,19 @@ function InvoicesTab({
               className={inputClass}
             >
               <option value={3}>
-                3 digits — 001
+                3 digits - 001
               </option>
 
               <option value={4}>
-                4 digits — 0001
+                4 digits - 0001
               </option>
 
               <option value={5}>
-                5 digits — 00001
+                5 digits - 00001
               </option>
 
               <option value={6}>
-                6 digits — 000001
+                6 digits - 000001
               </option>
             </select>
           </Field>
@@ -1733,488 +1997,142 @@ function InvoicesTab({
 
 function TreatmentWordingTab({
   settings,
-  updateTreatment,
-  restoreTreatment,
-  restoreAll,
+  updateSettings,
 }: {
-  settings: Record<
-    TreatmentDocumentWordingKey,
-    TreatmentDocumentWording
-  >;
-  updateTreatment: (
-    key: TreatmentDocumentWordingKey,
-    updates: Partial<TreatmentDocumentWording>,
+  settings: TreatmentWordingSettings;
+  updateSettings: (
+    updates: Partial<TreatmentWordingSettings>,
   ) => void;
-  restoreTreatment: (
-    key: TreatmentDocumentWordingKey,
-  ) => void;
-  restoreAll: () => void;
 }) {
-  const importInputRef =
-    useRef<HTMLInputElement | null>(
-      null,
-    );
-
-  const [backupMessage, setBackupMessage] =
-    useState("");
-
-  const treatmentCards: Array<{
-    key: TreatmentDocumentWordingKey;
-    label: string;
-    detail: string;
-  }> = [
-    {
-      key: "earlyWinterMossControl",
-      label: "Early Winter Moss Control",
-      detail: "Customer wording for the first moss-control treatment.",
-    },
-    {
-      key: "springWeedAndFeed",
-      label: "Spring Weed & Feed",
-      detail: "Spring treatment description and aftercare.",
-    },
-    {
-      key: "summerWeedAndFeed",
-      label: "Summer Weed & Feed",
-      detail: "Summer treatment description and aftercare.",
-    },
-    {
-      key: "autumnWeedAndFeed",
-      label: "Autumn Weed & Feed",
-      detail: "Autumn treatment description and aftercare.",
-    },
-    {
-      key: "winterMossControl",
-      label: "Winter Moss Control",
-      detail: "Customer wording for the later winter moss treatment.",
-    },
-    {
-      key: "scarification",
-      label: "Scarification",
-      detail: "Description and recovery advice following scarification.",
-    },
-    {
-      key: "aeration",
-      label: "Aeration",
-      detail: "Description and aftercare following aeration.",
-    },
-    {
-      key: "overseeding",
-      label: "Overseeding",
-      detail: "Description and establishment advice after overseeding.",
-    },
-    {
-      key: "fallback",
-      label: "Other / Fallback Treatment",
-      detail: "Used when GreenFlow cannot match a treatment to one of the specific types above.",
-    },
-  ];
-
-  function exportWordingBackup() {
-    const backup = {
-      format:
-        "greenflow-treatment-wording-backup",
-      version: 1,
-      exportedAt:
-        new Date().toISOString(),
-      wording: settings,
-    };
-
-    const blob = new Blob(
-      [
-        JSON.stringify(
-          backup,
-          null,
-          2,
-        ),
-      ],
-      {
-        type: "application/json",
-      },
-    );
-
-    const url =
-      URL.createObjectURL(blob);
-
-    const link =
-      document.createElement("a");
-
-    const date =
-      new Date()
-        .toISOString()
-        .slice(0, 10);
-
-    link.href = url;
-    link.download =
-      `greenflow-treatment-wording-${date}.json`;
-
-    document.body.appendChild(
-      link,
-    );
-
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-
-    setBackupMessage(
-      "Treatment wording backup exported successfully.",
-    );
-  }
-
-  function chooseImportFile() {
-    importInputRef.current?.click();
-  }
-
-  async function importWordingBackup(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    const file =
-      event.target.files?.[0];
-
-    event.target.value = "";
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      const contents =
-        await file.text();
-
-      const parsed =
-        JSON.parse(contents) as {
-          format?: string;
-          version?: number;
-          wording?: unknown;
-        };
-
-      if (
-        parsed.format !==
-          "greenflow-treatment-wording-backup" ||
-        parsed.version !== 1 ||
-        !isValidTreatmentWordingBackup(
-          parsed.wording,
-        )
-      ) {
-        setBackupMessage(
-          "That file is not a valid GreenFlow treatment-wording backup.",
-        );
-        return;
-      }
-
-      const confirmed =
-        window.confirm(
-          "Import this treatment wording backup? This will replace the current treatment wording in Business Settings.",
-        );
-
-      if (!confirmed) {
-        return;
-      }
-
-      for (
-        const key of Object.keys(
-          parsed.wording,
-        ) as TreatmentDocumentWordingKey[]
-      ) {
-        updateTreatment(
-          key,
-          parsed.wording[key],
-        );
-      }
-
-      setBackupMessage(
-        "Treatment wording restored from backup successfully.",
-      );
-    } catch {
-      setBackupMessage(
-        "GreenFlow could not read that backup file.",
-      );
-    }
-  }
-
-  function restoreEverything() {
-    const confirmed = window.confirm(
-      "Restore all treatment-document wording to the GreenFlow defaults?",
-    );
-
-    if (confirmed) {
-      restoreAll();
-    }
-  }
-
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <SectionHeading
-          title="Treatment wording"
-          description="Control exactly what the customer sees on the treatment/invoice sheet for each seasonal or specialist treatment."
+      <SectionHeading
+        title="Treatment wording"
+        description="These messages can be used on customer treatment reports without displaying your internal product records."
+      />
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <TextSetting
+          label="Seasonal fertiliser visit"
+          value={
+            settings.seasonalFertiliserVisit
+          }
+          onChange={(value) =>
+            updateSettings({
+              seasonalFertiliserVisit:
+                value,
+            })
+          }
         />
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={exportWordingBackup}
-            className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
-          >
-            Export wording
-          </button>
+        <TextSetting
+          label="Selective herbicide visit"
+          value={settings.herbicideVisit}
+          onChange={(value) =>
+            updateSettings({
+              herbicideVisit: value,
+            })
+          }
+        />
 
-          <button
-            type="button"
-            onClick={chooseImportFile}
-            className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
-          >
-            Import wording
-          </button>
+        <TextSetting
+          label="Combined fertiliser and herbicide"
+          value={
+            settings.combinedFertiliserAndHerbicideVisit
+          }
+          onChange={(value) =>
+            updateSettings({
+              combinedFertiliserAndHerbicideVisit:
+                value,
+            })
+          }
+        />
 
-          <button
-            type="button"
-            onClick={restoreEverything}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Restore all defaults
-          </button>
+        <TextSetting
+          label="Moss-control visit"
+          value={
+            settings.mossControlVisit
+          }
+          onChange={(value) =>
+            updateSettings({
+              mossControlVisit: value,
+            })
+          }
+        />
 
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json,.json"
-            onChange={importWordingBackup}
-            className="hidden"
-          />
-        </div>
-      </div>
+        <TextSetting
+          label="Aeration"
+          value={settings.aerationVisit}
+          onChange={(value) =>
+            updateSettings({
+              aerationVisit: value,
+            })
+          }
+        />
 
-      {backupMessage && (
-        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
-          {backupMessage}
-        </div>
-      )}
+        <TextSetting
+          label="Scarification"
+          value={
+            settings.scarificationVisit
+          }
+          onChange={(value) =>
+            updateSettings({
+              scarificationVisit: value,
+            })
+          }
+        />
 
-      <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-        These are customer-facing descriptions. Product names, application rates and other internal chemical records remain separate in GreenFlow. Changes are saved automatically and are used by the daily customer-sheet printing.
-      </div>
+        <TextSetting
+          label="Overseeding"
+          value={
+            settings.overseedingVisit
+          }
+          onChange={(value) =>
+            updateSettings({
+              overseedingVisit: value,
+            })
+          }
+        />
 
-      <div className="mt-6 space-y-5">
-        {treatmentCards.map((item) => {
-          const wording =
-            settings[item.key];
+        <TextSetting
+          label="Cancelled visit"
+          value={
+            settings.cancelledVisit
+          }
+          onChange={(value) =>
+            updateSettings({
+              cancelledVisit: value,
+            })
+          }
+        />
 
-          return (
-            <TreatmentWordingCard
-              key={item.key}
-              label={item.label}
-              detail={item.detail}
-              wording={wording}
-              onChange={(updates) =>
-                updateTreatment(
-                  item.key,
-                  updates,
-                )
-              }
-              onRestore={() => {
-                const confirmed =
-                  window.confirm(
-                    `Restore the default wording for ${item.label}?`,
-                  );
+        <TextSetting
+          label="Rescheduled visit"
+          value={
+            settings.rescheduledVisit
+          }
+          onChange={(value) =>
+            updateSettings({
+              rescheduledVisit: value,
+            })
+          }
+        />
 
-                if (confirmed) {
-                  restoreTreatment(
-                    item.key,
-                  );
-                }
-              }}
-            />
-          );
-        })}
+        <TextSetting
+          label="Preparing for the next visit"
+          value={
+            settings.nextVisitPreparation
+          }
+          onChange={(value) =>
+            updateSettings({
+              nextVisitPreparation:
+                value,
+            })
+          }
+          large
+        />
       </div>
     </div>
-  );
-}
-
-function isValidTreatmentWordingBackup(
-  value: unknown,
-): value is Record<
-  TreatmentDocumentWordingKey,
-  TreatmentDocumentWording
-> {
-  if (
-    !value ||
-    typeof value !== "object"
-  ) {
-    return false;
-  }
-
-  const requiredKeys:
-    TreatmentDocumentWordingKey[] = [
-      "earlyWinterMossControl",
-      "springWeedAndFeed",
-      "summerWeedAndFeed",
-      "autumnWeedAndFeed",
-      "winterMossControl",
-      "scarification",
-      "aeration",
-      "overseeding",
-      "fallback",
-    ];
-
-  return requiredKeys.every(
-    (key) => {
-      const item =
-        (
-          value as Record<
-            string,
-            unknown
-          >
-        )[key];
-
-      if (
-        !item ||
-        typeof item !== "object"
-      ) {
-        return false;
-      }
-
-      const wording =
-        item as Record<
-          string,
-          unknown
-        >;
-
-      return [
-        "title",
-        "description",
-        "mowingAdvice",
-        "wateringAdvice",
-        "safetyAdvice",
-      ].every(
-        (field) =>
-          typeof wording[field] ===
-          "string",
-      );
-    },
-  );
-}
-
-function TreatmentWordingCard({
-  label,
-  detail,
-  wording,
-  onChange,
-  onRestore,
-}: {
-  label: string;
-  detail: string;
-  wording: TreatmentDocumentWording;
-  onChange: (
-    updates: Partial<TreatmentDocumentWording>,
-  ) => void;
-  onRestore: () => void;
-}) {
-  return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-bold">
-            {label}
-          </h3>
-
-          <p className="mt-1 text-sm text-slate-500">
-            {detail}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onRestore}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-        >
-          Restore default
-        </button>
-      </div>
-
-      <div className="mt-5 grid gap-4">
-        <Field label="Printed treatment title">
-          <input
-            value={wording.title}
-            onChange={(event) =>
-              onChange({
-                title:
-                  event.target.value,
-              })
-            }
-            className={inputClass}
-          />
-        </Field>
-
-        <Field label="Today's treatment description">
-          <textarea
-            rows={5}
-            value={
-              wording.description
-            }
-            onChange={(event) =>
-              onChange({
-                description:
-                  event.target.value,
-              })
-            }
-            className={inputClass}
-          />
-        </Field>
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Field label="Mowing advice">
-            <textarea
-              rows={5}
-              value={
-                wording.mowingAdvice
-              }
-              onChange={(event) =>
-                onChange({
-                  mowingAdvice:
-                    event.target.value,
-                })
-              }
-              className={inputClass}
-            />
-          </Field>
-
-          <Field label="Watering advice">
-            <textarea
-              rows={5}
-              value={
-                wording.wateringAdvice
-              }
-              onChange={(event) =>
-                onChange({
-                  wateringAdvice:
-                    event.target.value,
-                })
-              }
-              className={inputClass}
-            />
-          </Field>
-
-          <Field label="Safety advice">
-            <textarea
-              rows={5}
-              value={
-                wording.safetyAdvice
-              }
-              onChange={(event) =>
-                onChange({
-                  safetyAdvice:
-                    event.target.value,
-                })
-              }
-              className={inputClass}
-            />
-          </Field>
-        </div>
-      </div>
-    </article>
   );
 }
 
@@ -2417,7 +2335,7 @@ function BrandingTab({
     <div>
       <SectionHeading
         title="Branding and appearance"
-        description="Store GreenFlow’s identity in one place so the application can later be rebranded for other companies."
+        description="Store GreenFlow's identity in one place so the application can later be rebranded for other companies."
       />
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_480px]">

@@ -10,6 +10,19 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
+import {
+  type CustomerProgramme,
+  type ProgrammeVisit,
+  useProgrammeStore,
+} from "@/components/programme-store";
+import {
+  type TreatmentRecord,
+  useTreatmentStore,
+} from "@/components/treatment-store";
+import {
+  formatDateWithDay,
+  getTodayDateValue,
+} from "@/lib/date-utils";
 import type { Customer } from "@/lib/demo-customers";
 
 type CommunicationStatus =
@@ -33,6 +46,16 @@ type CommunicationRecord = {
   createdAt: string;
   sentAt: string;
   status: CommunicationStatus;
+  programmeId?: string;
+  programmeVisitId?: string;
+  scheduledDate?: string;
+  cancellationReason?: string;
+};
+
+type ReminderCandidate = {
+  customer: Customer;
+  programme: CustomerProgramme;
+  visit: ProgrammeVisit;
 };
 
 type CommunicationsData = {
@@ -51,7 +74,25 @@ const defaultData: CommunicationsData = {
 };
 
 export default function CommunicationsPage() {
-  const { customers, ready } = useCustomerStore();
+  const {
+    customers,
+    ready: customersReady,
+  } = useCustomerStore();
+
+  const {
+    programmes,
+    ready: programmesReady,
+  } = useProgrammeStore();
+
+  const {
+    treatments,
+    ready: treatmentsReady,
+  } = useTreatmentStore();
+
+  const ready =
+    customersReady &&
+    programmesReady &&
+    treatmentsReady;
 
   const [data, setData] =
     useState<CommunicationsData>(defaultData);
@@ -103,20 +144,83 @@ export default function CommunicationsPage() {
     );
   }, [data]);
 
-  const eligibleCustomers = useMemo(() => {
+  const reminderCandidates =
+    useMemo<ReminderCandidate[]>(() => {
+      const today = getTodayDateValue();
+
+      return customers
+        .filter(
+          (customer) =>
+            customer.status === "Active",
+        )
+        .flatMap((customer) => {
+          const nextVisit =
+            programmes
+              .filter(
+                (programme) =>
+                  programme.customerNumber ===
+                  customer.customerNumber,
+              )
+              .flatMap((programme) =>
+                programme.visits.map(
+                  (visit) => ({
+                    programme,
+                    visit,
+                  }),
+                ),
+              )
+              .filter(
+                ({ visit }) =>
+                  visit.scheduledDate >= today &&
+                  (
+                    visit.status === "Scheduled" ||
+                    visit.status === "Planned"
+                  ),
+              )
+              .filter(
+                ({ programme, visit }) =>
+                  !hasFinalRecordedOutcome(
+                    treatments,
+                    programme,
+                    visit,
+                    customer.customerNumber,
+                  ),
+              )
+              .sort((first, second) =>
+                first.visit.scheduledDate.localeCompare(
+                  second.visit.scheduledDate,
+                ),
+              )[0];
+
+          if (!nextVisit) {
+            return [];
+          }
+
+          return [
+            {
+              customer,
+              programme:
+                nextVisit.programme,
+              visit: nextVisit.visit,
+            },
+          ];
+        });
+    }, [
+      customers,
+      programmes,
+      treatments,
+    ]);
+
+  const eligibleCandidates = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return customers
-      .filter(
-        (customer) =>
-          customer.status === "Active",
-      )
-      .filter((customer) =>
+    return reminderCandidates
+      .filter(({ customer }) =>
         showOnlyLockedGates
           ? customer.lockedGate
           : true,
       )
-      .filter((customer) => {
+      .filter(({ customer }) => {
         if (!query) return true;
 
         return [
@@ -130,32 +234,37 @@ export default function CommunicationsPage() {
         );
       });
   }, [
-    customers,
+    reminderCandidates,
     search,
     showOnlyLockedGates,
   ]);
 
-  const previewCustomer =
-    customers.find(
-      (customer) =>
+  const previewCandidate =
+    reminderCandidates.find(
+      ({ customer }) =>
         customer.customerNumber ===
         previewCustomerNumber,
     ) ??
-    eligibleCustomers[0] ??
-    customers[0];
+    eligibleCandidates[0] ??
+    reminderCandidates[0];
+
+  const previewCustomer =
+    previewCandidate?.customer;
 
   const selectedCustomerRecords =
     selectedCustomers
       .map((customerNumber) =>
-        customers.find(
-          (customer) =>
+        reminderCandidates.find(
+          ({ customer }) =>
             customer.customerNumber ===
             customerNumber,
         ),
       )
       .filter(
-        (customer): customer is Customer =>
-          Boolean(customer),
+        (
+          candidate,
+        ): candidate is ReminderCandidate =>
+          Boolean(candidate),
       );
 
   const queuedRecords = data.records.filter(
@@ -167,20 +276,22 @@ export default function CommunicationsPage() {
   );
 
   const customersWithoutMobile =
-    eligibleCustomers.filter(
-      (customer) =>
-        !customer.mobilePhone.trim(),
-    );
+    eligibleCandidates
+      .map(({ customer }) => customer)
+      .filter(
+        (customer) =>
+          !customer.mobilePhone.trim(),
+      );
 
   const selectableCustomers =
-    eligibleCustomers.filter(
-      (customer) =>
+    eligibleCandidates.filter(
+      ({ customer }) =>
         hasDestination(customer, channel),
     );
 
   const allSelectableSelected =
     selectableCustomers.length > 0 &&
-    selectableCustomers.every((customer) =>
+    selectableCustomers.every(({ customer }) =>
       selectedCustomers.includes(
         customer.customerNumber,
       ),
@@ -202,7 +313,7 @@ export default function CommunicationsPage() {
   function toggleAllSelectable() {
     const selectableNumbers =
       selectableCustomers.map(
-        (customer) =>
+        ({ customer }) =>
           customer.customerNumber,
       );
 
@@ -235,38 +346,95 @@ export default function CommunicationsPage() {
       return;
     }
 
-    const validCustomers =
+    const validCandidates =
       selectedCustomerRecords.filter(
-        (customer) =>
-          hasDestination(customer, channel),
+        ({ customer }) =>
+          hasDestination(
+            customer,
+            channel,
+          ),
       );
 
-    if (validCustomers.length === 0) {
+    if (validCandidates.length === 0) {
       showMessage(
         `The selected customers do not have a valid ${channel} destination.`,
       );
       return;
     }
 
-    const newRecords: CommunicationRecord[] =
-      validCustomers.map((customer) => ({
-        id: `communication-${Date.now()}-${customer.customerNumber}`,
-        customerNumber:
-          customer.customerNumber,
-        customerName: customer.fullName,
-        destination: getDestination(
-          customer,
+    const alreadyQueuedVisitIds =
+      new Set(
+        data.records
+          .filter(
+            (record) =>
+              record.status === "Queued" &&
+              record.channel === channel &&
+              Boolean(
+                record.programmeVisitId,
+              ),
+          )
+          .map(
+            (record) =>
+              record.programmeVisitId!,
+          ),
+      );
+
+    const candidatesToQueue =
+      validCandidates.filter(
+        ({ visit }) =>
+          !alreadyQueuedVisitIds.has(
+            visit.id,
+          ),
+      );
+
+    if (candidatesToQueue.length === 0) {
+      showMessage(
+        "The selected visits already have queued reminders for this channel.",
+      );
+      return;
+    }
+
+    const now = Date.now();
+
+    const newRecords:
+      CommunicationRecord[] =
+      candidatesToQueue.map(
+        (
+          {
+            customer,
+            programme,
+            visit,
+          },
+          index,
+        ) => ({
+          id:
+            `communication-${now}-${index}-${customer.customerNumber}`,
+          customerNumber:
+            customer.customerNumber,
+          customerName:
+            customer.fullName,
+          destination:
+            getDestination(
+              customer,
+              channel,
+            ),
           channel,
-        ),
-        channel,
-        message: personaliseMessage(
-          data.template,
-          customer,
-        ),
-        createdAt: new Date().toISOString(),
-        sentAt: "",
-        status: "Queued",
-      }));
+          message:
+            personaliseMessage(
+              data.template,
+              customer,
+              visit.scheduledDate,
+            ),
+          createdAt:
+            new Date().toISOString(),
+          sentAt: "",
+          status: "Queued",
+          programmeId: programme.id,
+          programmeVisitId: visit.id,
+          scheduledDate:
+            visit.scheduledDate,
+        }),
+      );
 
     setData((current) => ({
       ...current,
@@ -278,10 +446,20 @@ export default function CommunicationsPage() {
 
     setSelectedCustomers([]);
 
+    const skippedCount =
+      validCandidates.length -
+      candidatesToQueue.length;
+
     showMessage(
       `${newRecords.length} reminder${
         newRecords.length === 1 ? "" : "s"
-      } added to the queue.`,
+      } added to the queue.${
+        skippedCount > 0
+          ? ` ${skippedCount} duplicate queued reminder${
+              skippedCount === 1 ? " was" : "s were"
+            } skipped.`
+          : ""
+      }`,
     );
   }
 
@@ -388,6 +566,60 @@ export default function CommunicationsPage() {
       "Default gate-reminder wording restored.",
     );
   }
+
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+
+    setData((current) => {
+      let changed = false;
+
+      const records =
+        current.records.map((record) => {
+          if (
+            record.status !== "Queued" ||
+            !record.programmeId ||
+            !record.programmeVisitId ||
+            !record.scheduledDate
+          ) {
+            return record;
+          }
+
+          const staleReason =
+            getQueuedReminderStaleReason(
+              record,
+              customers,
+              programmes,
+            );
+
+          if (!staleReason) {
+            return record;
+          }
+
+          changed = true;
+
+          return {
+            ...record,
+            status:
+              "Cancelled" as CommunicationStatus,
+            cancellationReason:
+              staleReason,
+          };
+        });
+
+      return changed
+        ? {
+            ...current,
+            records,
+          }
+        : current;
+    });
+  }, [
+    ready,
+    customers,
+    programmes,
+  ]);
 
   function showMessage(text: string) {
     setMessage(text);
@@ -602,13 +834,8 @@ export default function CommunicationsPage() {
                     }
                     className={inputClass}
                   >
-                    {customers
-                      .filter(
-                        (customer) =>
-                          customer.status ===
-                          "Active",
-                      )
-                      .map((customer) => (
+                    {reminderCandidates
+                      .map(({ customer }) => (
                         <option
                           key={
                             customer.customerNumber
@@ -636,6 +863,7 @@ export default function CommunicationsPage() {
                     {personaliseMessage(
                       data.template,
                       previewCustomer,
+                      previewCandidate.visit.scheduledDate,
                     )}
                   </div>
 
@@ -676,6 +904,7 @@ export default function CommunicationsPage() {
                         personaliseMessage(
                           data.template,
                           previewCustomer,
+                          previewCandidate.visit.scheduledDate,
                         ).length,
                       )}
                     />
@@ -757,14 +986,14 @@ export default function CommunicationsPage() {
             </div>
 
             <div className="max-h-[38vh] overflow-y-auto">
-              {eligibleCustomers.length === 0 ? (
+              {eligibleCandidates.length === 0 ? (
                 <div className="p-10 text-center text-slate-500">
                   No customers match the current
                   communication filter.
                 </div>
               ) : (
-                eligibleCustomers.map(
-                  (customer) => {
+                eligibleCandidates.map(
+                  ({ customer, visit }) => {
                     const destination =
                       getDestination(
                         customer,
@@ -834,7 +1063,7 @@ export default function CommunicationsPage() {
                         </span>
 
                         <span className="font-semibold">
-                          {customer.nextVisit}
+                          {formatDateWithDay(visit.scheduledDate)}
                         </span>
 
                         <span className="w-fit rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-700">
@@ -905,6 +1134,7 @@ export default function CommunicationsPage() {
 function personaliseMessage(
   template: string,
   customer: Customer,
+  scheduledDate: string,
 ) {
   return template
     .replaceAll(
@@ -918,12 +1148,101 @@ function personaliseMessage(
     )
     .replaceAll(
       "{nextVisit}",
-      customer.nextVisit,
+      formatDateWithDay(
+        scheduledDate,
+      ),
     )
     .replaceAll(
       "{customerNumber}",
       customer.customerNumber,
     );
+}
+
+function hasFinalRecordedOutcome(
+  treatments: TreatmentRecord[],
+  programme: CustomerProgramme,
+  visit: ProgrammeVisit,
+  customerNumber: string,
+) {
+  return treatments.some(
+    (treatment) =>
+      (
+        treatment.status === "Completed" ||
+        treatment.status === "Cancelled"
+      ) &&
+      (
+        (
+          treatment.programmeId ===
+            programme.id &&
+          treatment.programmeVisitId ===
+            visit.id
+        ) ||
+        (
+          !treatment.programmeVisitId &&
+          treatment.customerNumber ===
+            customerNumber &&
+          treatment.scheduledDate ===
+            visit.scheduledDate &&
+          treatment.treatmentName ===
+            visit.treatmentName
+        )
+      ),
+  );
+}
+
+function getQueuedReminderStaleReason(
+  record: CommunicationRecord,
+  customers: Customer[],
+  programmes: CustomerProgramme[],
+) {
+  const customer =
+    customers.find(
+      (item) =>
+        item.customerNumber ===
+        record.customerNumber,
+    );
+
+  if (
+    !customer ||
+    customer.status !== "Active"
+  ) {
+    return "Customer is no longer active.";
+  }
+
+  const programme =
+    programmes.find(
+      (item) =>
+        item.id === record.programmeId,
+    );
+
+  const visit =
+    programme?.visits.find(
+      (item) =>
+        item.id ===
+        record.programmeVisitId,
+    );
+
+  if (!programme || !visit) {
+    return "Linked programme visit no longer exists.";
+  }
+
+  if (
+    visit.status !== "Scheduled" &&
+    visit.status !== "Planned"
+  ) {
+    return "Linked visit is no longer outstanding.";
+  }
+
+  if (
+    visit.scheduledDate !==
+    record.scheduledDate
+  ) {
+    return `Visit date changed to ${formatDateWithDay(
+      visit.scheduledDate,
+    )}.`;
+  }
+
+  return "";
 }
 
 function hasDestination(
@@ -1103,6 +1422,21 @@ function CommunicationList({
               <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">
                 {record.message}
               </p>
+
+              {record.scheduledDate && (
+                <div className="mt-2 text-xs font-semibold text-slate-500">
+                  Linked visit:{" "}
+                  {formatDateWithDay(
+                    record.scheduledDate,
+                  )}
+                </div>
+              )}
+
+              {record.cancellationReason && (
+                <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  {record.cancellationReason}
+                </div>
+              )}
 
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-slate-500">

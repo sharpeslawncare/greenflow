@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  Suspense,
   type FormEvent,
   type ReactNode,
   useEffect,
@@ -27,6 +28,7 @@ import {
   useProgrammeStore,
 } from "@/components/programme-store";
 import { useSeasonStore } from "@/components/season-store";
+import { useSettingsStore } from "@/components/settings-store";
 import { getTodayDateValue } from "@/lib/date-utils";
 import { useRouteOrderStore } from "@/components/route-order-store";
 import {
@@ -134,6 +136,24 @@ const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
 export default function VisitCentrePage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <main className="p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading Visit Centre...
+            </div>
+          </main>
+        </AppShell>
+      }
+    >
+      <VisitCentrePageContent />
+    </Suspense>
+  );
+}
+
+function VisitCentrePageContent() {
   const searchParams = useSearchParams();
   const requestedDate = searchParams.get("date");
   const requestedCustomer = searchParams.get("customer");
@@ -185,18 +205,24 @@ export default function VisitCentrePage() {
     treatments,
     ready: treatmentsReady,
     addTreatments,
+    hasTreatmentForProgrammeVisit,
   } = useTreatmentStore();
 
   const {
     chemicals,
     ready: chemicalsReady,
-    deductChemicalStock,
+    deductChemicalStockBatch,
   } = useChemicalStore();
 
   const {
     ready: routeOrderReady,
     sortBySavedRoute,
   } = useRouteOrderStore();
+
+  const {
+    ready: settingsReady,
+    reserveInvoiceNumbers,
+  } = useSettingsStore();
 
   const [selectedDate, setSelectedDate] = useState(
     isDateValue(requestedDate ?? "")
@@ -444,6 +470,19 @@ export default function VisitCentrePage() {
     )
     .filter((chemical): chemical is ChemicalRecord => Boolean(chemical));
 
+  const reviewRequirements =
+    aggregateProductRequirements(
+      selectedJobs,
+      selectedProducts,
+      herbicideApplicationMethod,
+      spotSprayAvailable,
+    );
+
+  const reviewReorderWarnings =
+    getReorderWarnings(
+      reviewRequirements,
+    );
+
   const standardMixProductIds = Array.from(
     new Set(
       [
@@ -530,7 +569,8 @@ export default function VisitCentrePage() {
     seasonsReady &&
     treatmentsReady &&
     chemicalsReady &&
-    routeOrderReady;
+    routeOrderReady &&
+    settingsReady;
 
   if (!ready) {
     return (
@@ -810,6 +850,33 @@ export default function VisitCentrePage() {
       return;
     }
 
+    const alreadyRecordedJobs =
+      selectedJobs.filter((job) =>
+        hasTreatmentForProgrammeVisit(
+          job.programme.id,
+          job.visit.id,
+        ),
+      );
+
+    if (alreadyRecordedJobs.length > 0) {
+      const names =
+        alreadyRecordedJobs
+          .map(
+            (job) =>
+              job.customer.fullName,
+          )
+          .join(", ");
+
+      const error =
+        alreadyRecordedJobs.length === 1
+          ? `A treatment record already exists for ${names}. No stock has been deducted. Refresh the Visit Centre before trying again.`
+          : `Treatment records already exist for ${names}. No stock has been deducted. Refresh the Visit Centre before trying again.`;
+
+      setReviewError(error);
+      showMessage(error);
+      return;
+    }
+
     const notesWithObservations = [
       observations.length > 0
         ? `Observations: ${observations.join(", ")}.`
@@ -826,7 +893,69 @@ export default function VisitCentrePage() {
           ? "Cancelled"
           : "Needs Rescheduling";
 
-    const createdTreatments: TreatmentRecord[] = [];
+    let reservedInvoiceNumbers: string[] = [];
+
+    if (outcome === "Completed") {
+      const stockResult =
+        deductChemicalStockBatch(
+          requirements.map(
+            (requirement) => ({
+              chemicalId:
+                requirement.chemical.id,
+              productAmount:
+                requirement.requiredAmount,
+              productUnit:
+                requirement.requiredUnit,
+            }),
+          ),
+          {
+            date:
+              selectedDate,
+            reference:
+              selectedJobs.length === 1
+                ? `Visit completion · ${selectedJobs[0].customer.customerNumber}`
+                : `Bulk visit completion · ${selectedJobs.length} customers`,
+            notes:
+              selectedJobs.length === 1
+                ? `${selectedJobs[0].customer.fullName} · ${selectedJobs[0].visit.treatmentName}`
+                : `${selectedJobs.length} completed visits · ${totalSelectedArea.toLocaleString(
+                    "en-GB",
+                  )} m² combined area`,
+          },
+        );
+
+      if (!stockResult.success) {
+        setReviewError(
+          stockResult.message,
+        );
+        showMessage(
+          stockResult.message,
+        );
+        return;
+      }
+    }
+
+    if (outcome === "Completed") {
+      reservedInvoiceNumbers =
+        reserveInvoiceNumbers(
+          selectedJobs.length,
+        );
+
+      if (
+        reservedInvoiceNumbers.length !==
+        selectedJobs.length
+      ) {
+        const error =
+          "GreenFlow could not reserve the required invoice numbers. The visit has not been recorded.";
+
+        setReviewError(error);
+        showMessage(error);
+        return;
+      }
+    }
+
+    const createdTreatments:
+      TreatmentRecord[] = [];
 
     for (const [index, job] of selectedJobs.entries()) {
       const applications =
@@ -848,7 +977,7 @@ export default function VisitCentrePage() {
           programmeVisitId: job.visit.id,
           invoiceNumber:
             outcome === "Completed"
-              ? createInvoiceNumber(index)
+              ? reservedInvoiceNumbers[index] ?? ""
               : "",
           customerNumber: job.customer.customerNumber,
           scheduledDate: job.visit.scheduledDate,
@@ -866,7 +995,10 @@ export default function VisitCentrePage() {
           applications,
           notes: appendNote(
             notesWithObservations,
-            createOutcomeNote(outcome, replacementDate),
+            createOutcomeNote(
+              outcome,
+              replacementDate,
+            ),
           ),
           nextVisitDate: needsReplacement
             ? replacementDate
@@ -879,44 +1011,57 @@ export default function VisitCentrePage() {
       );
     }
 
-    if (outcome === "Completed") {
-      for (const requirement of requirements) {
-        const stockResult = deductChemicalStock(
-          requirement.chemical.id,
-          requirement.requiredAmount,
-          requirement.requiredUnit,
-        );
-
-        if (!stockResult.success) {
-          setReviewError(
-            stockResult.message,
-          );
-          showMessage(
-            stockResult.message,
-          );
-          return;
-        }
-      }
-    }
-
     for (const job of selectedJobs) {
       saveProgramme({
         ...job.programme,
-        visits: job.programme.visits.map((visit) =>
-          visit.id === job.visit.id
-            ? {
-                ...visit,
-                status:
-                  outcome === "Completed"
-                    ? "Completed"
-                    : "Skipped",
-                notes: appendNote(
-                  visit.notes,
-                  createOutcomeNote(outcome, replacementDate),
+        visits: job.programme.visits.map((visit) => {
+          if (visit.id !== job.visit.id) {
+            return visit;
+          }
+
+          if (outcome === "Completed") {
+            return {
+              ...visit,
+              status: "Completed",
+              notes: appendNote(
+                visit.notes,
+                createOutcomeNote(
+                  outcome,
+                  replacementDate,
                 ),
-              }
-            : visit,
-        ),
+              ),
+            };
+          }
+
+          if (needsReplacement) {
+            return {
+              ...visit,
+              scheduledDate:
+                replacementDate,
+              status: "Scheduled",
+              notes: appendNote(
+                visit.notes,
+                createProgrammeRescheduleNote(
+                  job.visit.scheduledDate,
+                  replacementDate,
+                  outcome,
+                ),
+              ),
+            };
+          }
+
+          return {
+            ...visit,
+            status: "Skipped",
+            notes: appendNote(
+              visit.notes,
+              createOutcomeNote(
+                outcome,
+                replacementDate,
+              ),
+            ),
+          };
+        }),
       });
     }
 
@@ -976,7 +1121,7 @@ export default function VisitCentrePage() {
           } recorded for each customer.`
         : outcome === "Cancelled"
           ? "Visit cancellation saved."
-          : "Visit added to the rescheduling queue.",
+          : "Visit rescheduled successfully.",
     );
 
     if (result.skipped > 0) {
@@ -1997,6 +2142,30 @@ export default function VisitCentrePage() {
                       </div>
                     )}
 
+                    {!reviewError &&
+                      reviewReorderWarnings.length >
+                        0 && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <div className="font-bold">
+                            Reorder warning
+                          </div>
+
+                          <div className="mt-1 space-y-1">
+                            {reviewReorderWarnings.map(
+                              (warning) => (
+                                <div key={warning}>
+                                  {warning}
+                                </div>
+                              ),
+                            )}
+                          </div>
+
+                          <div className="mt-2 font-semibold">
+                            These visits can still be completed.
+                          </div>
+                        </div>
+                      )}
+
                     <section className="rounded-xl border border-slate-200">
                       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-bold">
                         Selected customers
@@ -2274,17 +2443,70 @@ function getAvailableStockAmount(
   chemical: ChemicalRecord,
   requiredUnit: ChemicalUnit,
 ) {
-  const packAmount = convertAmount(
-    chemical.packSize,
-    chemical.packUnit,
-    requiredUnit,
-  );
-
-  if (packAmount === null) {
+  if (chemical.packSize <= 0) {
     return null;
   }
 
-  return chemical.currentStock * packAmount;
+  const availableInPackUnit =
+    chemical.currentStock *
+    chemical.packSize;
+
+  return convertAmount(
+    availableInPackUnit,
+    chemical.packUnit,
+    requiredUnit,
+  );
+}
+
+function getReorderWarnings(
+  requirements: ProductRequirement[],
+) {
+  return requirements
+    .map((requirement) => {
+      const requiredInPackUnit =
+        convertAmount(
+          requirement.requiredAmount,
+          requirement.requiredUnit,
+          requirement.chemical.packUnit,
+        );
+
+      if (
+        requiredInPackUnit === null ||
+        requirement.chemical.packSize <= 0
+      ) {
+        return "";
+      }
+
+      const packsRequired =
+        requiredInPackUnit /
+        requirement.chemical.packSize;
+
+      const remainingPacks =
+        requirement.chemical.currentStock -
+        packsRequired;
+
+      if (
+        remainingPacks >= 0 &&
+        remainingPacks <
+          requirement.chemical.reorderLevel
+      ) {
+        const remainingPhysicalAmount =
+          remainingPacks *
+          requirement.chemical.packSize;
+
+        return `${requirement.chemical.name} will fall below its reorder level after these visits. Remaining: ${remainingPacks.toFixed(
+          3,
+        )} pack equivalents (${formatApplicationAmount(
+          remainingPhysicalAmount,
+          requirement.chemical.packUnit,
+        )}). Reorder level: ${requirement.chemical.reorderLevel.toFixed(
+          3,
+        )} pack equivalents.`;
+      }
+
+      return "";
+    })
+    .filter(Boolean);
 }
 
 function convertAmount(
@@ -2416,13 +2638,22 @@ function hasRecordedOutcome(
 ) {
   return treatments.some(
     (treatment) =>
-      treatment.status !== "Rescheduled" &&
-      ((treatment.programmeId === programme.id &&
-        treatment.programmeVisitId === visit.id) ||
-        (!treatment.programmeVisitId &&
+      (
+        treatment.status === "Completed" ||
+        treatment.status === "Cancelled"
+      ) &&
+      (
+        (
+          treatment.programmeId === programme.id &&
+          treatment.programmeVisitId === visit.id
+        ) ||
+        (
+          !treatment.programmeVisitId &&
           treatment.customerNumber === customerNumber &&
           treatment.scheduledDate === visit.scheduledDate &&
-          treatment.treatmentName === visit.treatmentName)),
+          treatment.treatmentName === visit.treatmentName
+        )
+      ),
   );
 }
 
@@ -2443,6 +2674,25 @@ function findNextProgrammeVisitDate(
       .map((visit) => visit.scheduledDate)
       .sort()[0] ?? ""
   );
+}
+
+function createProgrammeRescheduleNote(
+  originalDate: string,
+  replacementDate: string,
+  outcome: VisitOutcome,
+) {
+  const reason =
+    outcome === "No Access"
+      ? "No access"
+      : outcome === "Too Wet"
+        ? "Too wet"
+        : "Customer request";
+
+  return `Rescheduled from ${formatDate(
+    originalDate,
+  )} to ${formatDate(
+    replacementDate,
+  )}. Reason: ${reason}.`;
 }
 
 function createOutcomeNote(
@@ -2635,22 +2885,6 @@ function createSelectionId() {
   return `selection-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
-}
-
-function createInvoiceNumber(index: number) {
-  const now = new Date();
-
-  return `INV-${now.getFullYear()}-${String(
-    now.getMonth() + 1,
-  ).padStart(2, "0")}${String(now.getDate()).padStart(
-    2,
-    "0",
-  )}-${String(now.getHours()).padStart(2, "0")}${String(
-    now.getMinutes(),
-  ).padStart(2, "0")}${String(now.getSeconds()).padStart(
-    2,
-    "0",
-  )}-${String(index + 1).padStart(2, "0")}`;
 }
 
 function parseDate(value: string) {

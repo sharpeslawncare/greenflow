@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   type ReactNode,
+  Suspense,
   useMemo,
   useState,
 } from "react";
@@ -28,13 +29,30 @@ const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export default function TreatmentsPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <main className="p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading treatment records...
+            </div>
+          </main>
+        </AppShell>
+      }
+    >
+      <TreatmentsPageContent />
+    </Suspense>
+  );
+}
+
+function TreatmentsPageContent() {
   const searchParams =
     useSearchParams();
 
   const customerNumber =
     searchParams.get("customer")?.trim() ??
     "";
-
   const {
     customers,
     ready: customersReady,

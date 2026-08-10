@@ -118,8 +118,13 @@ export default function DemoGeneratorPage() {
 
       clearEnquiries();
 
-      window.localStorage.removeItem(
+      [
         "greenflow-customer-programmes-v1",
+        "greenflow-programmes-v3",
+        "greenflow-programmes-v2",
+        "greenflow-programmes-v1",
+      ].forEach((key) =>
+        window.localStorage.removeItem(key),
       );
 
       window.localStorage.removeItem(

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { useChemicalStore } from "@/components/chemical-store";
 import { useProgrammeStore } from "@/components/programme-store";
 import { useTreatmentStore } from "@/components/treatment-store";
 
@@ -24,6 +25,12 @@ export default function SeasonManagementPage() {
     ready: treatmentsReady,
     deleteTreatment,
   } = useTreatmentStore();
+
+  const {
+    chemicals,
+    stockMovements,
+    ready: chemicalsReady,
+  } = useChemicalStore();
 
   const [confirmation, setConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -59,10 +66,31 @@ export default function SeasonManagementPage() {
           treatment.status === "Needs Rescheduling" ||
           treatment.status === "Rescheduled",
       ).length,
-    };
-  }, [programmes, treatments]);
 
-  const ready = programmesReady && treatmentsReady;
+      chemicalProducts: chemicals.length,
+
+      stockMovements:
+        stockMovements.length,
+
+      totalPackEquivalents:
+        chemicals.reduce(
+          (total, chemical) =>
+            total +
+            chemical.currentStock,
+          0,
+        ),
+    };
+  }, [
+    programmes,
+    treatments,
+    chemicals,
+    stockMovements,
+  ]);
+
+  const ready =
+    programmesReady &&
+    treatmentsReady &&
+    chemicalsReady;
   const canReset =
     confirmation.trim() === CONFIRMATION_TEXT && !resetting;
 
@@ -82,7 +110,7 @@ export default function SeasonManagementPage() {
     if (!canReset) return;
 
     const confirmed = window.confirm(
-      "This will remove all treatment outcomes and return every programme visit to Scheduled. Customers, programme dates, chemicals, stock, groups, vans and business settings will be preserved. Continue?",
+      "Start a new season? Treatment records and programme visit outcomes will be cleared and visits returned to Scheduled. Customers, programme dates, chemical products, LIVE STOCK QUANTITIES, STOCK MOVEMENT HISTORY, groups, vans and business settings will be preserved. Continue?",
     );
 
     if (!confirmed) return;
@@ -117,7 +145,7 @@ export default function SeasonManagementPage() {
       setConfirmation("");
       setCompleted(true);
       setMessage(
-        `${summary.totalVisits} programme visits reset and ${summary.treatmentRecords} treatment records removed. GreenFlow is ready for a clean operational test.`,
+        `${summary.totalVisits} programme visits reset and ${summary.treatmentRecords} treatment records removed. Live stock and ${summary.stockMovements} stock movement records were preserved. GreenFlow is ready for the new season.`,
       );
     } catch (error) {
       console.error("Season reset failed:", error);
@@ -146,9 +174,9 @@ export default function SeasonManagementPage() {
             </h1>
 
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Return GreenFlow to a clean operational state while preserving
-              customers, programmes, scheduled dates, chemicals, stock, fleet
-              and business settings.
+              Start a fresh treatment season while preserving customers,
+              programme dates, chemical products, live stock quantities, the
+              shared stock movement history, fleet and business settings.
             </p>
           </header>
 
@@ -163,6 +191,13 @@ export default function SeasonManagementPage() {
               {message}
             </div>
           )}
+
+          <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+            <strong>Inventory protection:</strong>{" "}
+            Start New Season does not restore, reverse or clear stock. The live
+            Chemical Store balance and shared stock movement history are
+            preserved exactly as they stand.
+          </div>
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
@@ -185,9 +220,9 @@ export default function SeasonManagementPage() {
             />
 
             <SummaryCard
-              label="Already outstanding"
-              value={String(summary.plannedVisits)}
-              detail="Planned or scheduled"
+              label="Stock audit records"
+              value={String(summary.stockMovements)}
+              detail="Preserved"
             />
           </section>
 
@@ -260,6 +295,7 @@ export default function SeasonManagementPage() {
                   "Treatment templates",
                   "Chemicals and fertilisers",
                   "Current stock quantities",
+                  "Shared stock movement history",
                   "Equipment",
                   "Business settings",
                   "Invoice settings",
@@ -269,11 +305,46 @@ export default function SeasonManagementPage() {
                 ))}
               </div>
 
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                    Chemical products
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-green-950">
+                    {summary.chemicalProducts}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                    Pack-equivalents
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-green-950">
+                    {summary.totalPackEquivalents.toLocaleString(
+                      "en-GB",
+                      {
+                        maximumFractionDigits: 3,
+                      },
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                    Stock movements
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-green-950">
+                    {summary.stockMovements}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-                <strong>Stock quantities are deliberately preserved.</strong>{" "}
-                This reset does not reverse earlier stock deductions because
-                GreenFlow cannot reliably separate test deductions from genuine
-                manual stock changes.
+                <strong>Stock and its audit history are deliberately preserved.</strong>{" "}
+                This reset does not reverse earlier treatment deductions,
+                deliveries, manual usage or stock counts. Inventory should only
+                be restarted through the separate Reset Demo Inventory action in
+                Maintenance.
               </div>
             </article>
           </section>

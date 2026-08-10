@@ -106,8 +106,58 @@ type StockDeductionResult = {
   message: string;
 };
 
+export type ChemicalStockMovementType =
+  | "Delivery"
+  | "Usage"
+  | "Adjustment";
+
+export type ChemicalStockMovement = {
+  id: string;
+  chemicalId: string;
+  type: ChemicalStockMovementType;
+  packQuantity: number;
+  physicalAmount: number;
+  physicalUnit: ChemicalUnit;
+
+  /*
+   * Snapshot of the live pack-equivalent balance immediately
+   * after this movement. Optional so older saved movement
+   * records remain compatible.
+   */
+  balanceAfterPacks?: number;
+
+  date: string;
+  reference: string;
+  notes: string;
+  source: "Visit Centre" | "Stock Page";
+  createdAt: string;
+};
+
+type NewChemicalStockMovement = Omit<
+  ChemicalStockMovement,
+  "id" | "createdAt"
+>;
+
+export type StockDeductionContext = {
+  date?: string;
+  reference?: string;
+  notes?: string;
+};
+
+export type ChemicalStockDeductionRequest = {
+  chemicalId: string;
+  productAmount: number;
+  productUnit: ChemicalUnit;
+};
+
+export type StockBatchDeductionResult = {
+  success: boolean;
+  message: string;
+};
+
 type ChemicalStoreValue = {
   chemicals: ChemicalRecord[];
+  stockMovements: ChemicalStockMovement[];
   ready: boolean;
 
   addChemical: (
@@ -135,13 +185,28 @@ type ChemicalStoreValue = {
     chemicalId: string,
     productAmount: number,
     productUnit: ChemicalUnit,
+    context?: StockDeductionContext,
   ) => StockDeductionResult;
+
+  deductChemicalStockBatch: (
+    requests: ChemicalStockDeductionRequest[],
+    context?: StockDeductionContext,
+  ) => StockBatchDeductionResult;
+
+  recordStockMovement: (
+    movement: NewChemicalStockMovement,
+  ) => ChemicalStockMovement;
+
+  clearStockMovements: () => void;
 
   restoreDemoChemicals: () => void;
 };
 
 const STORAGE_KEY =
   "greenflow-chemicals-v1";
+
+const STOCK_MOVEMENT_STORAGE_KEY =
+  "greenflow-chemical-stock-movements-v1";
 
 const DEFAULT_EQUIPMENT = {
   nozzleColour: "Grey",
@@ -190,10 +255,11 @@ const demoChemicals: ChemicalRecord[] = [
     packUnit: "kg",
     costPerPack: 42,
 
-    currentStock: 10,
-    reorderLevel: 3,
+    // Pack-equivalents: 23 x 25 kg = 575 kg available.
+    currentStock: 23,
+    reorderLevel: 5,
 
-    applicationRate: 250,
+    applicationRate: 300,
     applicationRateUnit: "kg/ha",
 
     waterVolumePerHectare: 0,
@@ -241,8 +307,9 @@ const demoChemicals: ChemicalRecord[] = [
     packUnit: "L",
     costPerPack: 128,
 
-    currentStock: 2,
-    reorderLevel: 1,
+    // Pack-equivalents: 4 x 2 L = 8 L available.
+    currentStock: 4,
+    reorderLevel: 2,
 
     applicationRate: 2,
     applicationRateUnit: "L/ha",
@@ -291,7 +358,8 @@ const demoChemicals: ChemicalRecord[] = [
     packUnit: "L",
     costPerPack: 36,
 
-    currentStock: 4,
+    // Pack-equivalents: 6 x 10 L = 60 L available.
+    currentStock: 6,
     reorderLevel: 2,
 
     applicationRate: 20,
@@ -339,6 +407,11 @@ export function ChemicalStoreProvider({
   const [chemicals, setChemicals] =
     useState<ChemicalRecord[]>([]);
 
+  const [
+    stockMovements,
+    setStockMovements,
+  ] = useState<ChemicalStockMovement[]>([]);
+
   const [ready, setReady] =
     useState(false);
 
@@ -382,6 +455,30 @@ export function ChemicalStoreProvider({
       );
     }
 
+    const savedMovements =
+      window.localStorage.getItem(
+        STOCK_MOVEMENT_STORAGE_KEY,
+      );
+
+    if (savedMovements) {
+      try {
+        const parsed =
+          JSON.parse(
+            savedMovements,
+          ) as ChemicalStockMovement[];
+
+        if (Array.isArray(parsed)) {
+          setStockMovements(
+            parsed,
+          );
+        }
+      } catch {
+        window.localStorage.removeItem(
+          STOCK_MOVEMENT_STORAGE_KEY,
+        );
+      }
+    }
+
     setReady(true);
   }, []);
 
@@ -395,6 +492,19 @@ export function ChemicalStoreProvider({
       JSON.stringify(chemicals),
     );
   }, [chemicals, ready]);
+
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      STOCK_MOVEMENT_STORAGE_KEY,
+      JSON.stringify(
+        stockMovements,
+      ),
+    );
+  }, [stockMovements, ready]);
 
   function addChemical(
     input: NewChemicalInput = {},
@@ -510,107 +620,294 @@ export function ChemicalStoreProvider({
     );
   }
 
+  function recordStockMovement(
+    movement: NewChemicalStockMovement,
+  ) {
+    const created:
+      ChemicalStockMovement = {
+        ...movement,
+        id:
+          createStockMovementId(),
+        createdAt:
+          new Date().toISOString(),
+      };
+
+    setStockMovements(
+      (current) => [
+        created,
+        ...current,
+      ],
+    );
+
+    return created;
+  }
+
+  function clearStockMovements() {
+    setStockMovements([]);
+  }
+
   function deductChemicalStock(
     chemicalId: string,
     productAmount: number,
     productUnit: ChemicalUnit,
+    context: StockDeductionContext = {},
   ): StockDeductionResult {
-    const chemical =
-      chemicals.find(
-        (item) =>
-          item.id === chemicalId,
+    return deductChemicalStockBatch(
+      [
+        {
+          chemicalId,
+          productAmount,
+          productUnit,
+        },
+      ],
+      context,
+    );
+  }
+
+  function deductChemicalStockBatch(
+    requests: ChemicalStockDeductionRequest[],
+    context: StockDeductionContext = {},
+  ): StockBatchDeductionResult {
+    if (requests.length === 0) {
+      return {
+        success: true,
+        message:
+          "No stock deductions were required.",
+      };
+    }
+
+    type PreparedDeduction = {
+      chemical: ChemicalRecord;
+      physicalAmount: number;
+      packsUsed: number;
+    };
+
+    const preparedByChemical =
+      new Map<
+        string,
+        PreparedDeduction
+      >();
+
+    for (const request of requests) {
+      const chemical =
+        chemicals.find(
+          (item) =>
+            item.id ===
+            request.chemicalId,
+        );
+
+      if (!chemical) {
+        return {
+          success: false,
+          message:
+            "One of the selected stock products could not be found.",
+        };
+      }
+
+      if (
+        request.productAmount <= 0
+      ) {
+        return {
+          success: false,
+          message:
+            `${chemical.name} has an invalid treatment amount.`,
+        };
+      }
+
+      if (
+        chemical.packSize <= 0
+      ) {
+        return {
+          success: false,
+          message:
+            `${chemical.name} does not have a valid pack size.`,
+        };
+      }
+
+      const amountInPackUnit =
+        convertChemicalAmount(
+          request.productAmount,
+          request.productUnit,
+          chemical.packUnit,
+        );
+
+      if (
+        amountInPackUnit === null
+      ) {
+        return {
+          success: false,
+          message:
+            `The treatment unit ${request.productUnit} cannot be converted to the saved pack unit ${chemical.packUnit} for ${chemical.name}.`,
+        };
+      }
+
+      const existing =
+        preparedByChemical.get(
+          chemical.id,
+        );
+
+      const combinedPhysicalAmount =
+        (existing?.physicalAmount ??
+          0) +
+        amountInPackUnit;
+
+      preparedByChemical.set(
+        chemical.id,
+        {
+          chemical,
+          physicalAmount:
+            combinedPhysicalAmount,
+          packsUsed:
+            combinedPhysicalAmount /
+            chemical.packSize,
+        },
+      );
+    }
+
+    const prepared =
+      Array.from(
+        preparedByChemical.values(),
       );
 
-    if (!chemical) {
-      return {
-        success: false,
-        message:
-          "The selected chemical could not be found.",
-      };
+    /*
+     * Validate every product before changing any stock.
+     * This makes a bulk completion atomic: either every
+     * required product is available or nothing is deducted.
+     */
+    for (const item of prepared) {
+      if (
+        item.packsUsed >
+        item.chemical.currentStock +
+          0.000001
+      ) {
+        const availableAmount =
+          item.chemical.currentStock *
+          item.chemical.packSize;
+
+        return {
+          success: false,
+          message: `There is not enough ${item.chemical.name} in stock. Required: ${item.physicalAmount.toFixed(
+            3,
+          )} ${item.chemical.packUnit} (${item.packsUsed.toFixed(
+            3,
+          )} pack equivalents). Available: ${availableAmount.toFixed(
+            3,
+          )} ${item.chemical.packUnit} (${item.chemical.currentStock.toFixed(
+            3,
+          )} pack equivalents).`,
+        };
+      }
     }
 
-    if (productAmount <= 0) {
-      return {
-        success: false,
-        message:
-          "The product amount must be greater than zero.",
-      };
-    }
-
-    if (chemical.packSize <= 0) {
-      return {
-        success: false,
-        message:
-          `${chemical.name} does not have a valid pack size.`,
-      };
-    }
-
-    const amountInPackUnit =
-      convertChemicalAmount(
-        productAmount,
-        productUnit,
-        chemical.packUnit,
+    const deductions =
+      new Map<
+        string,
+        number
+      >(
+        prepared.map(
+          (item) => [
+            item.chemical.id,
+            item.packsUsed,
+          ],
+        ),
       );
-
-    if (amountInPackUnit === null) {
-      return {
-        success: false,
-        message:
-          `The treatment unit ${productUnit} cannot be converted to the saved pack unit ${chemical.packUnit}.`,
-      };
-    }
-
-    const packsUsed =
-      amountInPackUnit /
-      chemical.packSize;
-
-    if (
-      packsUsed >
-      chemical.currentStock
-    ) {
-      return {
-        success: false,
-
-        message: `There is not enough ${chemical.name} in stock. Required: ${packsUsed.toFixed(
-          3,
-        )} packs. Available: ${chemical.currentStock.toFixed(
-          3,
-        )} packs.`,
-      };
-    }
 
     setChemicals((current) =>
-      current.map((item) => {
+      current.map((chemical) => {
+        const packsUsed =
+          deductions.get(
+            chemical.id,
+          );
+
         if (
-          item.id !== chemicalId
+          packsUsed ===
+          undefined
         ) {
-          return item;
+          return chemical;
         }
 
         return {
-          ...item,
-
+          ...chemical,
           currentStock:
             roundToThreeDecimals(
               Math.max(
                 0,
-                item.currentStock -
+                chemical.currentStock -
                   packsUsed,
               ),
             ),
-
           updatedAt:
             new Date().toISOString(),
         };
       }),
     );
 
+    for (const item of prepared) {
+      recordStockMovement({
+        chemicalId:
+          item.chemical.id,
+        type: "Usage",
+        packQuantity:
+          -roundToThreeDecimals(
+            item.packsUsed,
+          ),
+        physicalAmount:
+          -roundToThreeDecimals(
+            item.physicalAmount,
+          ),
+        physicalUnit:
+          item.chemical.packUnit,
+        balanceAfterPacks:
+          roundToThreeDecimals(
+            Math.max(
+              0,
+              item.chemical.currentStock -
+                item.packsUsed,
+            ),
+          ),
+        date:
+          context.date ||
+          toDateValue(
+            new Date(),
+          ),
+        reference:
+          context.reference ||
+          "Treatment completion",
+        notes:
+          context.notes ||
+          "Automatically deducted when treatment visits were completed.",
+        source:
+          "Visit Centre",
+      });
+    }
+
+    const reorderWarnings =
+      prepared
+        .map((item) => {
+          const remaining =
+            item.chemical.currentStock -
+            item.packsUsed;
+
+          if (
+            remaining <
+            item.chemical.reorderLevel
+          ) {
+            return `${item.chemical.name} is now below its reorder level.`;
+          }
+
+          return "";
+        })
+        .filter(Boolean);
+
     return {
       success: true,
-
-      message: `${chemical.name} stock reduced by ${packsUsed.toFixed(
-        3,
-      )} packs.`,
+      message:
+        reorderWarnings.length >
+        0
+          ? `Stock deducted successfully. ${reorderWarnings.join(
+              " ",
+            )}`
+          : "Stock deducted successfully.",
     };
   }
 
@@ -618,12 +915,15 @@ export function ChemicalStoreProvider({
     setChemicals(
       cloneDemoChemicals(),
     );
+
+    setStockMovements([]);
   }
 
   const value =
     useMemo<ChemicalStoreValue>(
       () => ({
         chemicals,
+        stockMovements,
         ready,
 
         addChemical,
@@ -633,10 +933,18 @@ export function ChemicalStoreProvider({
         getChemicalById,
         calculateApplication,
         deductChemicalStock,
+        deductChemicalStockBatch,
+
+        recordStockMovement,
+        clearStockMovements,
 
         restoreDemoChemicals,
       }),
-      [chemicals, ready],
+      [
+        chemicals,
+        stockMovements,
+        ready,
+      ],
     );
 
   return (
@@ -987,6 +1295,29 @@ function cloneDemoChemicals() {
       ...chemical,
     }),
   );
+}
+
+function createStockMovementId() {
+  return `chemical-stock-movement-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function toDateValue(
+  date: Date,
+) {
+  const year =
+    date.getFullYear();
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, "0");
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function createChemicalId() {
