@@ -205,7 +205,8 @@ function VisitCentrePageContent() {
     treatments,
     ready: treatmentsReady,
     addTreatments,
-    hasTreatmentForProgrammeVisit,
+    updateTreatment,
+    hasFinalOutcomeForProgrammeVisit,
   } = useTreatmentStore();
 
   const {
@@ -850,17 +851,17 @@ function VisitCentrePageContent() {
       return;
     }
 
-    const alreadyRecordedJobs =
+    const alreadyFinalJobs =
       selectedJobs.filter((job) =>
-        hasTreatmentForProgrammeVisit(
+        hasFinalOutcomeForProgrammeVisit(
           job.programme.id,
           job.visit.id,
         ),
       );
 
-    if (alreadyRecordedJobs.length > 0) {
+    if (alreadyFinalJobs.length > 0) {
       const names =
-        alreadyRecordedJobs
+        alreadyFinalJobs
           .map(
             (job) =>
               job.customer.fullName,
@@ -868,9 +869,9 @@ function VisitCentrePageContent() {
           .join(", ");
 
       const error =
-        alreadyRecordedJobs.length === 1
-          ? `A treatment record already exists for ${names}. No stock has been deducted. Refresh the Visit Centre before trying again.`
-          : `Treatment records already exist for ${names}. No stock has been deducted. Refresh the Visit Centre before trying again.`;
+        alreadyFinalJobs.length === 1
+          ? `A final treatment outcome already exists for ${names}. No stock has been deducted. Refresh the Visit Centre before trying again.`
+          : `Final treatment outcomes already exist for ${names}. No stock has been deducted. Refresh the Visit Centre before trying again.`;
 
       setReviewError(error);
       showMessage(error);
@@ -954,7 +955,11 @@ function VisitCentrePageContent() {
       }
     }
 
-    const createdTreatments:
+    const treatmentRecords:
+      TreatmentRecord[] = [];
+    const newTreatmentRecords:
+      TreatmentRecord[] = [];
+    const updatedTreatmentRecords:
       TreatmentRecord[] = [];
 
     for (const [index, job] of selectedJobs.entries()) {
@@ -970,44 +975,94 @@ function VisitCentrePageContent() {
             )
           : [];
 
-      createdTreatments.push(
-        createTreatmentRecord({
-          id: createTreatmentId(index),
-          programmeId: job.programme.id,
-          programmeVisitId: job.visit.id,
-          invoiceNumber:
-            outcome === "Completed"
-              ? reservedInvoiceNumbers[index] ?? ""
-              : "",
-          customerNumber: job.customer.customerNumber,
-          scheduledDate: job.visit.scheduledDate,
-          recordedDate: new Date().toISOString(),
-          completedDate:
-            outcome === "Completed"
-              ? getTodayDateValue()
-              : "",
-          status: treatmentStatus,
-          treatmentName: job.visit.treatmentName,
-          treatmentAreaSquareMetres:
-            outcome === "Completed"
-              ? job.customer.lawnSize
-              : 0,
-          applications,
-          notes: appendNote(
-            notesWithObservations,
-            createOutcomeNote(
-              outcome,
-              replacementDate,
+      const existingPendingTreatment =
+        treatments.find(
+          (treatment) =>
+            treatment.programmeId ===
+              job.programme.id &&
+            treatment.programmeVisitId ===
+              job.visit.id &&
+            treatment.status !== "Completed" &&
+            treatment.status !== "Cancelled",
+        );
+
+      const outcomeNotes = appendNote(
+        notesWithObservations,
+        createOutcomeNote(
+          outcome,
+          replacementDate,
+        ),
+      );
+
+      const commonFields = {
+        programmeId: job.programme.id,
+        programmeVisitId: job.visit.id,
+        invoiceNumber:
+          outcome === "Completed"
+            ? reservedInvoiceNumbers[index] ?? ""
+            : "",
+        customerNumber:
+          job.customer.customerNumber,
+        scheduledDate:
+          job.visit.scheduledDate,
+        completedDate:
+          outcome === "Completed"
+            ? getTodayDateValue()
+            : "",
+        status: treatmentStatus,
+        treatmentName:
+          job.visit.treatmentName,
+        treatmentAreaSquareMetres:
+          outcome === "Completed"
+            ? job.customer.lawnSize
+            : 0,
+        applications,
+        nextVisitDate: needsReplacement
+          ? replacementDate
+          : findNextProgrammeVisitDate(
+              programmes,
+              job.customer.customerNumber,
+              job.visit.scheduledDate,
             ),
-          ),
-          nextVisitDate: needsReplacement
-            ? replacementDate
-            : findNextProgrammeVisitDate(
-                programmes,
-                job.customer.customerNumber,
-                job.visit.scheduledDate,
-              ),
-        }),
+      } as const;
+
+      if (existingPendingTreatment) {
+        const updatedTreatment =
+          createTreatmentRecord({
+            ...existingPendingTreatment,
+            ...commonFields,
+            id: existingPendingTreatment.id,
+            recordedDate:
+              existingPendingTreatment.recordedDate,
+            notes: appendNote(
+              existingPendingTreatment.notes,
+              outcomeNotes,
+            ),
+          });
+
+        treatmentRecords.push(
+          updatedTreatment,
+        );
+        updatedTreatmentRecords.push(
+          updatedTreatment,
+        );
+        continue;
+      }
+
+      const newTreatment =
+        createTreatmentRecord({
+          ...commonFields,
+          id: createTreatmentId(index),
+          recordedDate:
+            new Date().toISOString(),
+          notes: outcomeNotes,
+        });
+
+      treatmentRecords.push(
+        newTreatment,
+      );
+      newTreatmentRecords.push(
+        newTreatment,
       );
     }
 
@@ -1065,14 +1120,23 @@ function VisitCentrePageContent() {
       });
     }
 
-    const result = addTreatments(createdTreatments);
+    if (newTreatmentRecords.length > 0) {
+      addTreatments(
+        newTreatmentRecords,
+      );
+    }
+
+    updatedTreatmentRecords.forEach(
+      (treatment) =>
+        updateTreatment(treatment),
+    );
 
     const completedCount = selectedJobs.length;
 
     setCompletionResult({
       outcome,
       completedAt: new Date().toISOString(),
-      treatmentRecords: createdTreatments.map(
+      treatmentRecords: treatmentRecords.map(
         (treatment) => {
           const customer = selectedJobs.find(
             (job) =>
@@ -1124,15 +1188,6 @@ function VisitCentrePageContent() {
           : "Visit rescheduled successfully.",
     );
 
-    if (result.skipped > 0) {
-      window.setTimeout(() => {
-        showMessage(
-          `${result.skipped} duplicate treatment record${
-            result.skipped === 1 ? " was" : "s were"
-          } skipped.`,
-        );
-      }, 4500);
-    }
   }
 
   function resetSharedForm() {

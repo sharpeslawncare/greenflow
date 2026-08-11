@@ -16,6 +16,7 @@ import {
   type ChemicalUnit,
   useChemicalStore,
 } from "@/components/chemical-store";
+import { useTreatmentStore } from "@/components/treatment-store";
 
 type ChemicalFilter =
   | ChemicalType
@@ -66,12 +67,17 @@ const applicationRateUnits: ApplicationRateUnit[] =
 export default function ChemicalsPage() {
   const {
     chemicals,
+    stockMovements,
     ready,
     addChemical,
     updateChemical,
     deleteChemical,
     restoreDemoChemicals,
   } = useChemicalStore();
+
+  const {
+    treatments,
+  } = useTreatmentStore();
 
   const [
     selectedChemicalId,
@@ -374,9 +380,47 @@ export default function ChemicalsPage() {
       return;
     }
 
+    const hasTreatmentHistory =
+      treatments.some(
+        (treatment) =>
+          treatment.chemicalId ===
+            selectedChemical.id ||
+          treatment.applications.some(
+            (application) =>
+              application.productId ===
+              selectedChemical.id,
+          ),
+      );
+
+    const hasStockHistory =
+      stockMovements.some(
+        (movement) =>
+          movement.chemicalId ===
+          selectedChemical.id,
+      );
+
+    if (
+      hasTreatmentHistory ||
+      hasStockHistory
+    ) {
+      const historyReason =
+        hasTreatmentHistory &&
+        hasStockHistory
+          ? "treatment and stock movement history"
+          : hasTreatmentHistory
+            ? "treatment history"
+            : "stock movement history";
+
+      window.alert(
+        `"${selectedChemical.name}" has ${historyReason} and cannot be permanently deleted.\n\nArchive the product instead so GreenFlow can preserve its historical records.`,
+      );
+
+      return;
+    }
+
     const confirmed =
       window.confirm(
-        `Permanently delete "${selectedChemical.name}"?`,
+        `Permanently delete "${selectedChemical.name}"?\n\nThis product has no treatment or stock movement history. This action cannot be undone.`,
       );
 
     if (!confirmed) {
