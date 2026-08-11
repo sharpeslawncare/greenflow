@@ -28,6 +28,10 @@ type StockFilter =
   | "In stock"
   | "Archived";
 
+type ChemicalMessageTone =
+  | "success"
+  | "error";
+
 type ApplicationCalculation = {
   productRequired: number;
   productUnit: ChemicalUnit;
@@ -105,6 +109,11 @@ export default function ChemicalsPage() {
 
   const [message, setMessage] =
     useState("");
+
+  const [messageTone, setMessageTone] =
+    useState<ChemicalMessageTone>(
+      "success",
+    );
 
   const filteredChemicals =
     useMemo(() => {
@@ -293,6 +302,7 @@ export default function ChemicalsPage() {
     if (!draft) {
       showMessage(
         "Select or create a chemical first.",
+        "error",
       );
       return;
     }
@@ -300,6 +310,122 @@ export default function ChemicalsPage() {
     if (!draft.name.trim()) {
       showMessage(
         "Enter the chemical or product name.",
+        "error",
+      );
+      return;
+    }
+
+    const normalisedName =
+      draft.name.trim().toLowerCase();
+
+    const duplicateChemical =
+      chemicals.find(
+        (chemical) =>
+          chemical.id !== draft.id &&
+          chemical.name
+            .trim()
+            .toLowerCase() ===
+            normalisedName,
+      );
+
+    if (duplicateChemical) {
+      showMessage(
+        `A chemical or product named "${duplicateChemical.name}" already exists. Open that record instead or use a different name.`,
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(draft.packSize) ||
+      draft.packSize <= 0
+    ) {
+      showMessage(
+        "Pack size must be greater than 0.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(draft.costPerPack) ||
+      draft.costPerPack < 0
+    ) {
+      showMessage(
+        "Cost per pack must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(draft.currentStock) ||
+      draft.currentStock < 0
+    ) {
+      showMessage(
+        "Current stock must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(draft.reorderLevel) ||
+      draft.reorderLevel < 0
+    ) {
+      showMessage(
+        "Reorder level must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(draft.applicationRate) ||
+      draft.applicationRate < 0
+    ) {
+      showMessage(
+        "Application rate must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.waterVolumePerHectare,
+      ) ||
+      draft.waterVolumePerHectare < 0
+    ) {
+      showMessage(
+        "Water volume per hectare must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isInteger(
+        draft.maximumAnnualApplications,
+      ) ||
+      draft.maximumAnnualApplications < 0
+    ) {
+      showMessage(
+        "Maximum annual applications must be a whole number of 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.maximumAnnualDose,
+      ) ||
+      draft.maximumAnnualDose < 0
+    ) {
+      showMessage(
+        "Maximum annual dose must be 0 or greater.",
+        "error",
       );
       return;
     }
@@ -475,8 +601,10 @@ export default function ChemicalsPage() {
 
   function showMessage(
     text: string,
+    tone: ChemicalMessageTone = "success",
   ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -545,7 +673,18 @@ export default function ChemicalsPage() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={
+                messageTone === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}

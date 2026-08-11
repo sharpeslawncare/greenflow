@@ -111,11 +111,13 @@ export function CustomerStoreProvider({
            * available.
            */
           setCustomers(
-            parsedCustomers
-              .map(
+            deduplicateCustomers(
+              parsedCustomers.map(
                 normaliseStoredCustomer,
-              )
-              .sort(sortCustomers),
+              ),
+            ).sort(
+              sortCustomers,
+            ),
           );
         }
       } catch {
@@ -148,11 +150,28 @@ export function CustomerStoreProvider({
   function addCustomer(
     customer: CustomerInput,
   ) {
+    const newCustomer =
+      normaliseNewCustomer(
+        customer,
+      );
+
+    if (
+      !newCustomer.customerNumber
+    ) {
+      return {
+        success: false,
+        message:
+          "Enter a customer number before adding the customer.",
+      };
+    }
+
     const duplicate =
       customers.some(
         (existingCustomer) =>
-          existingCustomer.customerNumber ===
-          customer.customerNumber,
+          sameCustomerNumber(
+            existingCustomer.customerNumber,
+            newCustomer.customerNumber,
+          ),
       );
 
     if (duplicate) {
@@ -160,7 +179,7 @@ export function CustomerStoreProvider({
         success: false,
 
         message:
-          `Customer number ${customer.customerNumber} already exists.`,
+          `Customer number ${newCustomer.customerNumber} already exists.`,
       };
     }
 
@@ -169,10 +188,6 @@ export function CustomerStoreProvider({
      * programme from today unless a future start
      * date has explicitly been supplied.
      */
-    const newCustomer =
-      normaliseNewCustomer(
-        customer,
-      );
 
     setCustomers(
       (currentCustomers) =>
@@ -198,8 +213,10 @@ export function CustomerStoreProvider({
         currentCustomers.map(
           (customer) => {
             if (
-              customer.customerNumber !==
-              updatedCustomer.customerNumber
+              !sameCustomerNumber(
+                customer.customerNumber,
+                updatedCustomer.customerNumber,
+              )
             ) {
               return customer;
             }
@@ -218,8 +235,10 @@ export function CustomerStoreProvider({
   ) {
     return customers.find(
       (customer) =>
-        customer.customerNumber ===
-        customerNumber,
+        sameCustomerNumber(
+          customer.customerNumber,
+          customerNumber,
+        ),
     );
   }
 
@@ -271,8 +290,12 @@ export function CustomerStoreProvider({
     replacementCustomers: Customer[],
   ) {
     const normalisedCustomers =
-      normaliseEstablishedCustomers(
-        replacementCustomers,
+      deduplicateCustomers(
+        normaliseEstablishedCustomers(
+          replacementCustomers,
+        ),
+      ).sort(
+        sortCustomers,
       );
 
     setCustomers(
@@ -332,17 +355,19 @@ export function useCustomerStore() {
 function normaliseEstablishedCustomers(
   customers: Customer[],
 ): StoredCustomer[] {
-  return customers
-    .map((customer) => ({
-      ...customer,
+  return deduplicateCustomers(
+    customers.map((customer) =>
+      normaliseStoredCustomer({
+        ...customer,
 
-      /*
-       * Blank means this is an established customer
-       * and all five group dates may be retained.
-       */
-      programmeStartDate: "",
-    }))
-    .sort(sortCustomers);
+        /*
+         * Blank means this is an established customer
+         * and all five group dates may be retained.
+         */
+        programmeStartDate: "",
+      }),
+    ),
+  ).sort(sortCustomers);
 }
 
 function normaliseStoredCustomer(
@@ -351,38 +376,41 @@ function normaliseStoredCustomer(
 ): StoredCustomer {
   return {
     customerNumber:
-      customer.customerNumber ??
-      "",
+      normaliseCustomerNumber(
+        customer.customerNumber,
+      ),
 
     firstName:
-      customer.firstName ?? "",
+      customer.firstName?.trim() ?? "",
 
     surname:
-      customer.surname ?? "",
+      customer.surname?.trim() ?? "",
 
     fullName:
-      customer.fullName ??
+      customer.fullName?.trim() ||
       [
-        customer.firstName,
-        customer.surname,
+        customer.firstName?.trim(),
+        customer.surname?.trim(),
       ]
         .filter(Boolean)
         .join(" "),
 
     address:
-      customer.address ?? "",
+      customer.address?.trim() ?? "",
 
     postcode:
-      customer.postcode ?? "",
+      customer.postcode
+        ?.trim()
+        .toUpperCase() ?? "",
 
     email:
-      customer.email ?? "",
+      customer.email?.trim() ?? "",
 
     homePhone:
-      customer.homePhone ?? "",
+      customer.homePhone?.trim() ?? "",
 
     mobilePhone:
-      customer.mobilePhone ?? "",
+      customer.mobilePhone?.trim() ?? "",
 
     lawnSize:
       safeNumber(
@@ -433,7 +461,7 @@ function normaliseStoredCustomer(
       ),
 
     notes:
-      customer.notes ?? "",
+      customer.notes?.trim() ?? "",
 
     /*
      * Missing values belong to records created
@@ -531,6 +559,228 @@ function normalisePreferredContact(
   }
 
   return "SMS";
+}
+
+function normaliseCustomerNumber(
+  value: string | undefined,
+) {
+  return value?.trim() ?? "";
+}
+
+function sameCustomerNumber(
+  first: string,
+  second: string,
+) {
+  const firstNumber =
+    normaliseCustomerNumber(
+      first,
+    );
+
+  const secondNumber =
+    normaliseCustomerNumber(
+      second,
+    );
+
+  return (
+    Boolean(firstNumber) &&
+    firstNumber === secondNumber
+  );
+}
+
+function customerPriority(
+  customer: StoredCustomer,
+) {
+  return (
+    Number(
+      Boolean(customer.fullName),
+    ) *
+      100 +
+    Number(
+      Boolean(customer.address),
+    ) *
+      50 +
+    Number(
+      Boolean(customer.postcode),
+    ) *
+      25 +
+    Number(
+      Boolean(
+        customer.email ||
+        customer.mobilePhone ||
+        customer.homePhone,
+      ),
+    ) *
+      20 +
+    Number(
+      customer.lawnSize > 0,
+    ) *
+      10 +
+    Number(
+      customer.treatmentPrice > 0,
+    ) *
+      10 +
+    Number(
+      Boolean(
+        customer.programmeStartDate,
+      ),
+    ) *
+      5 +
+    Number(
+      Boolean(customer.notes),
+    )
+  );
+}
+
+function mergeDuplicateCustomers(
+  preferred: StoredCustomer,
+  secondary: StoredCustomer,
+): StoredCustomer {
+  return normaliseStoredCustomer({
+    ...secondary,
+    ...preferred,
+    customerNumber:
+      preferred.customerNumber ||
+      secondary.customerNumber,
+    firstName:
+      preferred.firstName ||
+      secondary.firstName,
+    surname:
+      preferred.surname ||
+      secondary.surname,
+    fullName:
+      preferred.fullName ||
+      secondary.fullName,
+    address:
+      preferred.address ||
+      secondary.address,
+    postcode:
+      preferred.postcode ||
+      secondary.postcode,
+    email:
+      preferred.email ||
+      secondary.email,
+    homePhone:
+      preferred.homePhone ||
+      secondary.homePhone,
+    mobilePhone:
+      preferred.mobilePhone ||
+      secondary.mobilePhone,
+    lawnSize:
+      preferred.lawnSize > 0
+        ? preferred.lawnSize
+        : secondary.lawnSize,
+    treatmentPrice:
+      preferred.treatmentPrice > 0
+        ? preferred.treatmentPrice
+        : secondary.treatmentPrice,
+    nextVisit:
+      preferred.nextVisit !==
+      "Not yet scheduled"
+        ? preferred.nextVisit
+        : secondary.nextVisit,
+    lastVisit:
+      preferred.lastVisit !==
+      "Not yet visited"
+        ? preferred.lastVisit
+        : secondary.lastVisit,
+    notes:
+      preferred.notes ||
+      secondary.notes,
+    programmeStartDate:
+      preferred.programmeStartDate ||
+      secondary.programmeStartDate,
+  });
+}
+
+function deduplicateCustomers(
+  customers: StoredCustomer[],
+) {
+  const byCustomerNumber =
+    new Map<
+      string,
+      StoredCustomer
+    >();
+
+  const withoutNumber:
+    StoredCustomer[] = [];
+
+  for (
+    const customer of customers
+  ) {
+    const customerNumber =
+      normaliseCustomerNumber(
+        customer.customerNumber,
+      );
+
+    if (!customerNumber) {
+      withoutNumber.push(
+        customer,
+      );
+      continue;
+    }
+
+    const normalised = {
+      ...customer,
+      customerNumber,
+    };
+
+    const existing =
+      byCustomerNumber.get(
+        customerNumber,
+      );
+
+    if (!existing) {
+      byCustomerNumber.set(
+        customerNumber,
+        normalised,
+      );
+      continue;
+    }
+
+    const preferred =
+      customerPriority(
+        normalised,
+      ) >
+      customerPriority(
+        existing,
+      )
+        ? normalised
+        : existing;
+
+    const secondary =
+      preferred === normalised
+        ? existing
+        : normalised;
+
+    byCustomerNumber.set(
+      customerNumber,
+      mergeDuplicateCustomers(
+        preferred,
+        secondary,
+      ),
+    );
+  }
+
+  /*
+   * Blank customer numbers are not considered valid
+   * identities. Keep at most one legacy blank record
+   * rather than allowing multiple ambiguous records
+   * to survive normalisation.
+   */
+  const bestBlank =
+    withoutNumber
+      .sort(
+        (first, second) =>
+          customerPriority(second) -
+          customerPriority(first),
+      )[0];
+
+  return [
+    ...byCustomerNumber.values(),
+    ...(bestBlank
+      ? [bestBlank]
+      : []),
+  ];
 }
 
 function sortCustomers(

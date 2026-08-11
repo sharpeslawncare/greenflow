@@ -81,16 +81,62 @@ export default function QuotePage() {
       .filter(Boolean)
       .join(" ");
 
+  const createdDate =
+    isDateValue(enquiry.createdAt.slice(0, 10))
+      ? enquiry.createdAt.slice(0, 10)
+      : todayDate();
+
   const quoteDate =
-    enquiry.quoteDate ||
-    enquiry.createdAt.slice(0, 10);
+    isDateValue(enquiry.quoteDate)
+      ? enquiry.quoteDate
+      : createdDate;
 
   const expiryDate =
-    enquiry.quoteExpiryDate ||
-    addDaysToDate(quoteDate, 30);
+    isDateValue(enquiry.quoteExpiryDate)
+      ? enquiry.quoteExpiryDate
+      : addDaysToDate(quoteDate, 30);
+
+  const quoteStateIsPrintable =
+    enquiry.quoteStatus === "Draft" ||
+    enquiry.quoteStatus === "Presented" ||
+    enquiry.quoteStatus === "Accepted" ||
+    enquiry.status === "Quote Prepared" ||
+    enquiry.status === "Quote Accepted" ||
+    enquiry.status === "Converted to Customer";
+
+  const quoteNumbersAreValid =
+    Number.isFinite(enquiry.lawnSizeSquareMetres) &&
+    enquiry.lawnSizeSquareMetres > 0 &&
+    Number.isFinite(enquiry.quotedTreatmentPrice) &&
+    enquiry.quotedTreatmentPrice > 0;
+
+  const printableQuote =
+    quoteStateIsPrintable &&
+    quoteNumbersAreValid;
+
+  const quoteExpired =
+    expiryDate < todayDate();
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 print:bg-white print:p-0">
+      {!printableQuote && (
+        <div role="alert" className="no-print mx-auto mb-4 max-w-[900px] rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm leading-6 text-red-900">
+          <div className="font-bold">Quotation is not ready to print</div>
+          <p className="mt-1">
+            GreenFlow requires a prepared/accepted quote state, a lawn area greater than 0 m² and a quoted treatment price greater than £0.00.
+          </p>
+        </div>
+      )}
+
+      {printableQuote && quoteExpired && (
+        <div role="status" className="no-print mx-auto mb-4 max-w-[900px] rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950">
+          <div className="font-bold">Quotation expired</div>
+          <p className="mt-1">
+            This quotation expired on {formatDate(expiryDate)}. Confirm the price and validity before sending it again.
+          </p>
+        </div>
+      )}
+
       <div className="no-print mx-auto mb-4 flex max-w-[900px] flex-wrap items-center justify-between gap-3">
         <Link
           href="/enquiries"
@@ -101,15 +147,27 @@ export default function QuotePage() {
 
         <button
           type="button"
-          onClick={() =>
-            window.print()
+          disabled={!printableQuote}
+          onClick={() => {
+            if (!printableQuote) return;
+            window.print();
+          }}
+          title={
+            printableQuote
+              ? undefined
+              : "A valid prepared quotation is required before printing."
           }
-          className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+          className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white ${
+            printableQuote
+              ? "bg-[#176b37] hover:bg-[#125b2f]"
+              : "cursor-not-allowed bg-slate-400"
+          }`}
         >
           Print or save PDF
         </button>
       </div>
 
+      {printableQuote ? (
       <article
         className="mx-auto box-border min-h-[297mm] w-[210mm] bg-white p-[14mm] text-slate-900 shadow-lg print:min-h-0 print:shadow-none"
         style={
@@ -272,7 +330,9 @@ export default function QuotePage() {
             <QuoteRow
               label="Quote status"
               value={
-                enquiry.quoteStatus
+                quoteExpired
+                  ? `${enquiry.quoteStatus} · Expired`
+                  : enquiry.quoteStatus
               }
             />
           </div>
@@ -415,7 +475,8 @@ export default function QuotePage() {
 
           <p className="mt-3 leading-7 text-green-950">
             Once this quotation is accepted,
-            Sharpes Lawn Care can create your
+            {settings.business.businessName ||
+              "the lawn-care business"} can create your
             customer account and arrange the
             first suitable seasonal treatment
             visit.
@@ -453,6 +514,19 @@ export default function QuotePage() {
           </div>
         </footer>
       </article>
+      ) : (
+        <div className="mx-auto max-w-[900px] rounded-2xl border border-red-200 bg-white p-10 text-center shadow-sm">
+          <h1 className="text-2xl font-bold text-red-800">
+            Quotation unavailable
+          </h1>
+          <p className="mt-3 text-slate-600">
+            This enquiry cannot be presented as a customer quotation until its quote status, lawn area and quoted treatment price are valid.
+          </p>
+          <Link href="/enquiries" className="mt-6 inline-flex rounded-xl bg-[#176b37] px-5 py-3 font-semibold text-white">
+            Return to enquiries
+          </Link>
+        </div>
+      )}
     </main>
   );
 }
@@ -522,7 +596,46 @@ function parseDate(value: string) {
   );
 }
 
+function toDateValue(
+  date: Date,
+) {
+  const year = date.getFullYear();
+
+  const month = String(
+    date.getMonth() + 1,
+  ).padStart(2, "0");
+
+  const day = String(
+    date.getDate(),
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function isDateValue(
+  value: string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const date = parseDate(value);
+
+  return (
+    !Number.isNaN(date.getTime()) &&
+    toDateValue(date) === value
+  );
+}
+
 function formatDate(value: string) {
+  if (!isDateValue(value)) {
+    return "No valid date";
+  }
+
   return new Intl.DateTimeFormat(
     "en-GB",
     {
@@ -537,21 +650,22 @@ function addDaysToDate(
   value: string,
   days: number,
 ) {
-  const date = parseDate(value);
+  const safeValue =
+    isDateValue(value)
+      ? value
+      : todayDate();
+
+  const date = parseDate(safeValue);
 
   date.setDate(
     date.getDate() + days,
   );
 
-  const year = date.getFullYear();
+  return toDateValue(date);
+}
 
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
-
-  const day = String(
-    date.getDate(),
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+function todayDate() {
+  return toDateValue(
+    new Date(),
+  );
 }

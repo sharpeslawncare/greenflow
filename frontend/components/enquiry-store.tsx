@@ -175,8 +175,10 @@ export function EnquiryStoreProvider({
 
         if (Array.isArray(parsed)) {
           setEnquiries(
-            parsed.map(
-              normaliseEnquiryRecord,
+            deduplicateEnquiries(
+              parsed.map(
+                normaliseEnquiryRecord,
+              ),
             ),
           );
         }
@@ -277,7 +279,7 @@ export function EnquiryStoreProvider({
       lawnSizeSquareMetres: 0,
 
       minimumPriceApplied: false,
-      pricePerSquareMetre: 0.18,
+      pricePerSquareMetre: 0.20,
       calculatedTreatmentPrice: 0,
       quotedTreatmentPrice: 0,
 
@@ -405,7 +407,7 @@ export function EnquiryStoreProvider({
                 "Converted to Customer",
               quoteStatus: "Accepted",
               convertedCustomerNumber:
-                customerNumber,
+                customerNumber.trim(),
               convertedAt:
                 new Date().toISOString(),
               updatedAt:
@@ -476,10 +478,10 @@ function normaliseEnquiryRecord(
   enquiry: Partial<EnquiryRecord>,
 ): EnquiryRecord {
   const firstName =
-    enquiry.firstName ?? "";
+    enquiry.firstName?.trim() ?? "";
 
   const surname =
-    enquiry.surname ?? "";
+    enquiry.surname?.trim() ?? "";
 
   return {
     id:
@@ -489,8 +491,9 @@ function normaliseEnquiryRecord(
         .slice(2, 8)}`,
 
     enquiryNumber:
-      enquiry.enquiryNumber ??
-      "ENQ-0000",
+      normaliseEnquiryNumber(
+        enquiry.enquiryNumber,
+      ),
 
     createdAt:
       enquiry.createdAt ??
@@ -501,46 +504,50 @@ function normaliseEnquiryRecord(
       new Date().toISOString(),
 
     status:
-      enquiry.status ??
-      "New Enquiry",
+      normaliseEnquiryStatus(
+        enquiry.status,
+      ),
 
     source:
-      enquiry.source ??
-      "Recommendation",
+      normaliseEnquirySource(
+        enquiry.source,
+      ),
 
     referredBy:
-      enquiry.referredBy ?? "",
+      enquiry.referredBy?.trim() ?? "",
 
     firstName,
     surname,
 
     fullName:
-      enquiry.fullName ||
+      enquiry.fullName?.trim() ||
       createFullName(
         firstName,
         surname,
       ),
 
     address:
-      enquiry.address ?? "",
+      enquiry.address?.trim() ?? "",
 
     postcode:
-      enquiry.postcode ?? "",
+      enquiry.postcode
+        ?.trim()
+        .toUpperCase() ?? "",
 
     emailAddress:
-      enquiry.emailAddress ?? "",
+      enquiry.emailAddress?.trim() ?? "",
 
     homePhone:
-      enquiry.homePhone ?? "",
+      enquiry.homePhone?.trim() ?? "",
 
     mobilePhone:
-      enquiry.mobilePhone ?? "",
+      enquiry.mobilePhone?.trim() ?? "",
 
     initialMessage:
-      enquiry.initialMessage ?? "",
+      enquiry.initialMessage?.trim() ?? "",
 
     internalNotes:
-      enquiry.internalNotes ?? "",
+      enquiry.internalNotes?.trim() ?? "",
 
     siteVisitDate:
       enquiry.siteVisitDate ?? "",
@@ -552,28 +559,34 @@ function normaliseEnquiryRecord(
       enquiry.lawnMeasured ?? false,
 
     lawnSizeSquareMetres:
-      enquiry.lawnSizeSquareMetres ??
-      0,
+      safeNonNegativeNumber(
+        enquiry.lawnSizeSquareMetres,
+      ),
 
     minimumPriceApplied:
       enquiry.minimumPriceApplied ??
       false,
 
     pricePerSquareMetre:
-      enquiry.pricePerSquareMetre ??
-      0.18,
+      safeNonNegativeNumber(
+        enquiry.pricePerSquareMetre,
+        0.20,
+      ),
 
     calculatedTreatmentPrice:
-      enquiry.calculatedTreatmentPrice ??
-      0,
+      safeNonNegativeNumber(
+        enquiry.calculatedTreatmentPrice,
+      ),
 
     quotedTreatmentPrice:
-      enquiry.quotedTreatmentPrice ??
-      0,
+      safeNonNegativeNumber(
+        enquiry.quotedTreatmentPrice,
+      ),
 
     quoteStatus:
-      enquiry.quoteStatus ??
-      "Not Prepared",
+      normaliseQuoteStatus(
+        enquiry.quoteStatus,
+      ),
 
     quoteDate:
       enquiry.quoteDate ?? "",
@@ -582,39 +595,365 @@ function normaliseEnquiryRecord(
       enquiry.quoteExpiryDate ?? "",
 
     quoteNotes:
-      enquiry.quoteNotes ?? "",
+      enquiry.quoteNotes?.trim() ?? "",
 
     treatmentStartedImmediately:
       enquiry.treatmentStartedImmediately ??
       false,
 
     suggestedGroupNumber:
-      enquiry.suggestedGroupNumber ??
-      1,
+      safePositiveInteger(
+        enquiry.suggestedGroupNumber,
+        1,
+      ),
 
     suggestedVanNumber:
-      enquiry.suggestedVanNumber ??
-      1,
+      safePositiveInteger(
+        enquiry.suggestedVanNumber,
+        1,
+      ),
 
     extraWorkRequired:
       enquiry.extraWorkRequired ??
       false,
 
     extraWorkDescription:
-      enquiry.extraWorkDescription ??
-      "",
+      enquiry.extraWorkDescription?.trim() ?? "",
 
     preferredExtraWorkSeason:
-      enquiry.preferredExtraWorkSeason ??
-      "",
+      enquiry.preferredExtraWorkSeason?.trim() ?? "",
 
     convertedCustomerNumber:
-      enquiry.convertedCustomerNumber ??
-      "",
+      enquiry.convertedCustomerNumber?.trim() ?? "",
 
     convertedAt:
       enquiry.convertedAt ?? "",
   };
+}
+
+function normaliseEnquiryNumber(
+  value: string | undefined,
+) {
+  const trimmed =
+    value?.trim().toUpperCase() ?? "";
+
+  return trimmed || "ENQ-0000";
+}
+
+function normaliseEnquiryStatus(
+  value:
+    | EnquiryStatus
+    | string
+    | undefined,
+): EnquiryStatus {
+  if (
+    value === "New Enquiry" ||
+    value === "Visit Arranged" ||
+    value === "Quote Prepared" ||
+    value === "Quote Accepted" ||
+    value === "Quote Declined" ||
+    value === "Converted to Customer" ||
+    value === "Closed"
+  ) {
+    return value;
+  }
+
+  return "New Enquiry";
+}
+
+function normaliseEnquirySource(
+  value:
+    | EnquirySource
+    | string
+    | undefined,
+): EnquirySource {
+  if (
+    value === "Recommendation" ||
+    value === "Website" ||
+    value === "Telephone" ||
+    value === "Email" ||
+    value === "Social Media" ||
+    value === "Other"
+  ) {
+    return value;
+  }
+
+  return "Recommendation";
+}
+
+function normaliseQuoteStatus(
+  value:
+    | QuoteStatus
+    | string
+    | undefined,
+): QuoteStatus {
+  if (
+    value === "Not Prepared" ||
+    value === "Draft" ||
+    value === "Presented" ||
+    value === "Accepted" ||
+    value === "Declined"
+  ) {
+    return value;
+  }
+
+  return "Not Prepared";
+}
+
+function safeNonNegativeNumber(
+  value: number | undefined,
+  fallback = 0,
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return fallback;
+  }
+
+  return Math.max(
+    0,
+    value,
+  );
+}
+
+function safePositiveInteger(
+  value: number | undefined,
+  fallback: number,
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return fallback;
+  }
+
+  return Math.max(
+    1,
+    Math.floor(value),
+  );
+}
+
+function enquiryPriority(
+  enquiry: EnquiryRecord,
+) {
+  return (
+    Number(
+      Boolean(enquiry.fullName),
+    ) *
+      100 +
+    Number(
+      Boolean(enquiry.address),
+    ) *
+      50 +
+    Number(
+      Boolean(enquiry.postcode),
+    ) *
+      25 +
+    Number(
+      Boolean(
+        enquiry.emailAddress ||
+        enquiry.mobilePhone ||
+        enquiry.homePhone,
+      ),
+    ) *
+      20 +
+    Number(
+      enquiry.lawnSizeSquareMetres > 0,
+    ) *
+      10 +
+    Number(
+      enquiry.quotedTreatmentPrice > 0,
+    ) *
+      10 +
+    Number(
+      Boolean(
+        enquiry.convertedCustomerNumber,
+      ),
+    ) *
+      10 +
+    Number(
+      Boolean(enquiry.internalNotes),
+    )
+  );
+}
+
+function mergeDuplicateEnquiries(
+  preferred: EnquiryRecord,
+  secondary: EnquiryRecord,
+): EnquiryRecord {
+  return normaliseEnquiryRecord({
+    ...secondary,
+    ...preferred,
+    id:
+      preferred.id ||
+      secondary.id,
+    enquiryNumber:
+      preferred.enquiryNumber !==
+      "ENQ-0000"
+        ? preferred.enquiryNumber
+        : secondary.enquiryNumber,
+    firstName:
+      preferred.firstName ||
+      secondary.firstName,
+    surname:
+      preferred.surname ||
+      secondary.surname,
+    fullName:
+      preferred.fullName ||
+      secondary.fullName,
+    address:
+      preferred.address ||
+      secondary.address,
+    postcode:
+      preferred.postcode ||
+      secondary.postcode,
+    emailAddress:
+      preferred.emailAddress ||
+      secondary.emailAddress,
+    homePhone:
+      preferred.homePhone ||
+      secondary.homePhone,
+    mobilePhone:
+      preferred.mobilePhone ||
+      secondary.mobilePhone,
+    initialMessage:
+      preferred.initialMessage ||
+      secondary.initialMessage,
+    internalNotes:
+      preferred.internalNotes ||
+      secondary.internalNotes,
+    lawnSizeSquareMetres:
+      preferred.lawnSizeSquareMetres > 0
+        ? preferred.lawnSizeSquareMetres
+        : secondary.lawnSizeSquareMetres,
+    pricePerSquareMetre:
+      preferred.pricePerSquareMetre > 0
+        ? preferred.pricePerSquareMetre
+        : secondary.pricePerSquareMetre,
+    calculatedTreatmentPrice:
+      preferred.calculatedTreatmentPrice > 0
+        ? preferred.calculatedTreatmentPrice
+        : secondary.calculatedTreatmentPrice,
+    quotedTreatmentPrice:
+      preferred.quotedTreatmentPrice > 0
+        ? preferred.quotedTreatmentPrice
+        : secondary.quotedTreatmentPrice,
+    convertedCustomerNumber:
+      preferred.convertedCustomerNumber ||
+      secondary.convertedCustomerNumber,
+    convertedAt:
+      preferred.convertedAt ||
+      secondary.convertedAt,
+  });
+}
+
+function deduplicateEnquiries(
+  enquiries: EnquiryRecord[],
+) {
+  const byId =
+    new Map<
+      string,
+      EnquiryRecord
+    >();
+
+  for (
+    const enquiry of enquiries
+  ) {
+    const existing =
+      byId.get(
+        enquiry.id,
+      );
+
+    if (!existing) {
+      byId.set(
+        enquiry.id,
+        enquiry,
+      );
+      continue;
+    }
+
+    const preferred =
+      enquiryPriority(
+        enquiry,
+      ) >
+      enquiryPriority(
+        existing,
+      )
+        ? enquiry
+        : existing;
+
+    const secondary =
+      preferred === enquiry
+        ? existing
+        : enquiry;
+
+    byId.set(
+      enquiry.id,
+      mergeDuplicateEnquiries(
+        preferred,
+        secondary,
+      ),
+    );
+  }
+
+  const byNumber =
+    new Map<
+      string,
+      EnquiryRecord
+    >();
+
+  for (
+    const enquiry of byId.values()
+  ) {
+    const number =
+      normaliseEnquiryNumber(
+        enquiry.enquiryNumber,
+      );
+
+    const existing =
+      byNumber.get(number);
+
+    if (
+      !existing ||
+      number === "ENQ-0000"
+    ) {
+      byNumber.set(
+        number === "ENQ-0000"
+          ? `${number}-${enquiry.id}`
+          : number,
+        enquiry,
+      );
+      continue;
+    }
+
+    const preferred =
+      enquiryPriority(
+        enquiry,
+      ) >
+      enquiryPriority(
+        existing,
+      )
+        ? enquiry
+        : existing;
+
+    const secondary =
+      preferred === enquiry
+        ? existing
+        : enquiry;
+
+    byNumber.set(
+      number,
+      mergeDuplicateEnquiries(
+        preferred,
+        secondary,
+      ),
+    );
+  }
+
+  return Array.from(
+    byNumber.values(),
+  );
 }
 
 function createNextEnquiryNumber(

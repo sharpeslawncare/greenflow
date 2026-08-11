@@ -38,6 +38,10 @@ type SettingsTab =
   | "branding"
   | "fleet";
 
+type SettingsMessageTone =
+  | "success"
+  | "error";
+
 const tabs: Array<{
   id: SettingsTab;
   label: string;
@@ -133,6 +137,11 @@ export default function SettingsPage() {
   const [message, setMessage] =
     useState("");
 
+  const [messageTone, setMessageTone] =
+    useState<SettingsMessageTone>(
+      "success",
+    );
+
   const [healthCheckRun, setHealthCheckRun] =
     useState(false);
 
@@ -152,8 +161,12 @@ export default function SettingsPage() {
     }
   }, []);
 
-  function showMessage(text: string) {
+  function showMessage(
+    text: string,
+    tone: SettingsMessageTone = "success",
+  ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -258,6 +271,7 @@ export default function SettingsPage() {
     } catch {
       showMessage(
         "The selected file is not valid JSON.",
+        "error",
       );
       return;
     }
@@ -267,6 +281,7 @@ export default function SettingsPage() {
     ) {
       showMessage(
         "The selected file is not a valid GreenFlow backup.",
+        "error",
       );
       return;
     }
@@ -508,6 +523,7 @@ export default function SettingsPage() {
       if (phrase !== null) {
         showMessage(
           'Full demo reset cancelled. The phrase must be exactly "RESET DEMO".',
+          "error",
         );
       }
       return;
@@ -545,6 +561,32 @@ export default function SettingsPage() {
 
     window.location.reload();
   }
+
+  const minimumNextInvoiceNumber =
+    Math.max(
+      1,
+      ...treatments.map(
+        (treatment) => {
+          const match =
+            treatment.invoiceNumber
+              ?.trim()
+              .match(/(\d+)$/);
+
+          if (!match) {
+            return 0;
+          }
+
+          const assignedNumber =
+            Number(match[1]);
+
+          return Number.isFinite(
+            assignedNumber,
+          )
+            ? assignedNumber + 1
+            : 0;
+        },
+      ),
+    );
 
   function testInvoiceNumber() {
     const confirmed = window.confirm(
@@ -617,7 +659,18 @@ export default function SettingsPage() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={
+                messageTone === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}
@@ -709,11 +762,17 @@ export default function SettingsPage() {
                 <InvoicesTab
                   settings={settings.invoices}
                   nextInvoiceNumber={getNextInvoiceNumber()}
+                  minimumNextInvoiceNumber={
+                    minimumNextInvoiceNumber
+                  }
                   updateSettings={
                     updateInvoiceSettings
                   }
                   onIncreaseInvoiceNumber={
                     testInvoiceNumber
+                  }
+                  showMessage={
+                    showMessage
                   }
                 />
               )}
@@ -1774,16 +1833,98 @@ function BusinessTab({
 function InvoicesTab({
   settings,
   nextInvoiceNumber,
+  minimumNextInvoiceNumber,
   updateSettings,
   onIncreaseInvoiceNumber,
+  showMessage,
 }: {
   settings: InvoiceSettings;
   nextInvoiceNumber: string;
+  minimumNextInvoiceNumber: number;
   updateSettings: (
     updates: Partial<InvoiceSettings>,
   ) => void;
   onIncreaseInvoiceNumber: () => void;
+  showMessage: (
+    text: string,
+    tone?: SettingsMessageTone,
+  ) => void;
 }) {
+  const [
+    invoiceNumberDraft,
+    setInvoiceNumberDraft,
+  ] = useState(
+    String(
+      settings.nextInvoiceNumber,
+    ),
+  );
+
+  useEffect(() => {
+    setInvoiceNumberDraft(
+      String(
+        settings.nextInvoiceNumber,
+      ),
+    );
+  }, [
+    settings.nextInvoiceNumber,
+  ]);
+
+  function saveInvoiceNumberDraft() {
+    const trimmed =
+      invoiceNumberDraft.trim();
+
+    const parsed =
+      Number(trimmed);
+
+    if (
+      !trimmed ||
+      !Number.isInteger(parsed) ||
+      parsed < 1
+    ) {
+      setInvoiceNumberDraft(
+        String(
+          settings.nextInvoiceNumber,
+        ),
+      );
+
+      showMessage(
+        "Next invoice number must be a whole number of at least 1.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      parsed <
+      minimumNextInvoiceNumber
+    ) {
+      setInvoiceNumberDraft(
+        String(
+          settings.nextInvoiceNumber,
+        ),
+      );
+
+      showMessage(
+        `Next invoice number cannot be lower than ${minimumNextInvoiceNumber} because a higher invoice number has already been assigned.`,
+        "error",
+      );
+      return;
+    }
+
+    updateSettings({
+      nextInvoiceNumber:
+        parsed,
+    });
+
+    setInvoiceNumberDraft(
+      String(parsed),
+    );
+
+    showMessage(
+      "Next invoice number updated.",
+    );
+  }
+
   return (
     <div>
       <SectionHeading
@@ -1810,20 +1951,37 @@ function InvoicesTab({
           <Field label="Next invoice number">
             <input
               type="number"
-              min="1"
+              min={
+                minimumNextInvoiceNumber
+              }
+              step="1"
               value={
-                settings.nextInvoiceNumber
+                invoiceNumberDraft
               }
               onChange={(event) =>
-                updateSettings({
-                  nextInvoiceNumber:
-                    Number(
-                      event.target.value,
-                    ) || 1,
-                })
+                setInvoiceNumberDraft(
+                  event.target.value,
+                )
               }
+              onBlur={
+                saveInvoiceNumberDraft
+              }
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter"
+                ) {
+                  event.preventDefault();
+                  saveInvoiceNumberDraft();
+                  event.currentTarget.blur();
+                }
+              }}
               className={inputClass}
             />
+
+            <div className="mt-1 text-xs text-slate-500">
+              Lowest safe next number:{" "}
+              {minimumNextInvoiceNumber}
+            </div>
           </Field>
 
           <Field label="Number padding">
@@ -1967,10 +2125,7 @@ function InvoicesTab({
             </div>
 
             <p className="mt-3 text-sm leading-6 text-green-800">
-              This is a preview only. GreenFlow is
-              not yet reserving or permanently
-              assigning invoice numbers to individual
-              documents.
+              GreenFlow reserves invoice numbers during successful Visit Centre completion before stock is deducted. This preview shows the next number currently available for reservation.
             </p>
 
             <button
@@ -1978,16 +2133,12 @@ function InvoicesTab({
               onClick={onIncreaseInvoiceNumber}
               className="mt-4 w-full rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
             >
-              Test next number
+              Increase next number
             </button>
           </div>
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-            Sequential invoice numbering needs to be
-            finalised when GreenFlow is connected to
-            its permanent database. Until then,
-            QuickBooks remains the official invoice
-            and VAT record.
+            The current browser-based sequence is protected against moving below invoice numbers already assigned to Treatment Records. A permanent database will still be required for fully transactional multi-user invoice numbering.
           </div>
         </aside>
       </div>
@@ -2530,6 +2681,7 @@ function FleetTab({
   restoreDefaultFleet: () => void;
   showMessage: (
     text: string,
+    tone?: SettingsMessageTone,
   ) => void;
 }) {
   const [newVehicleName, setNewVehicleName] =
@@ -2558,6 +2710,7 @@ function FleetTab({
     ) {
       showMessage(
         "At least one vehicle must remain active.",
+        "error",
       );
       return;
     }

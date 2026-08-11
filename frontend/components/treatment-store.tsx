@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -121,15 +122,31 @@ export type TreatmentRecord = {
   pressureBar: number;
 };
 
+
+export type TreatmentSaveResult = {
+  success: boolean;
+  reason:
+    | "saved"
+    | "duplicate-treatment"
+    | "duplicate-invoice"
+    | "missing-invoice"
+    | "not-found";
+  message: string;
+};
+
 type TreatmentStoreValue = {
   treatments: TreatmentRecord[];
   ready: boolean;
-  addTreatment: (treatment: TreatmentRecord) => void;
+  addTreatment: (
+    treatment: TreatmentRecord,
+  ) => TreatmentSaveResult;
   addTreatments: (treatments: TreatmentRecord[]) => {
     added: number;
     skipped: number;
   };
-  updateTreatment: (treatment: TreatmentRecord) => void;
+  updateTreatment: (
+    treatment: TreatmentRecord,
+  ) => TreatmentSaveResult;
   deleteTreatment: (treatmentId: string) => void;
   getTreatmentById: (
     treatmentId: string,
@@ -248,13 +265,20 @@ export function TreatmentStoreProvider({
 }) {
   const [treatments, setTreatments] =
     useState<TreatmentRecord[]>([]);
+  const treatmentsRef =
+    useRef<TreatmentRecord[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const saved = getSavedData();
 
     if (!saved) {
-      setTreatments(cloneDemoTreatments());
+      const demo =
+        cloneDemoTreatments();
+
+      treatmentsRef.current =
+        demo;
+      setTreatments(demo);
       setReady(true);
       return;
     }
@@ -264,18 +288,36 @@ export function TreatmentStoreProvider({
         Partial<TreatmentRecord>
       >;
 
-      setTreatments(
+      const loadedTreatments =
         Array.isArray(parsed)
-          ? parsed.map(normaliseTreatmentRecord)
-          : cloneDemoTreatments(),
+          ? parsed.map(
+              normaliseTreatmentRecord,
+            )
+          : cloneDemoTreatments();
+
+      treatmentsRef.current =
+        loadedTreatments;
+      setTreatments(
+        loadedTreatments,
       );
     } catch {
       clearStoredData();
-      setTreatments(cloneDemoTreatments());
+
+      const demo =
+        cloneDemoTreatments();
+
+      treatmentsRef.current =
+        demo;
+      setTreatments(demo);
     }
 
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    treatmentsRef.current =
+      treatments;
+  }, [treatments]);
 
   useEffect(() => {
     if (!ready) return;
@@ -292,34 +334,104 @@ export function TreatmentStoreProvider({
 
   function addTreatment(
     treatment: TreatmentRecord,
-  ) {
+  ): TreatmentSaveResult {
     const normalised =
       normaliseTreatmentRecord(treatment);
 
-    setTreatments((current) =>
+    if (
+      normalised.status ===
+        "Completed" &&
+      !normalised.invoiceNumber
+    ) {
+      return {
+        success: false,
+        reason: "missing-invoice",
+        message:
+          "A completed treatment must have a reserved invoice number before it can be saved.",
+      };
+    }
+
+    const current =
+      treatmentsRef.current;
+
+    const duplicateIdentity =
       current.some((item) =>
         isSameTreatmentIdentity(
           item,
           normalised,
         ),
-      )
-        ? current
-        : [normalised, ...current],
-    );
+      );
+
+    if (duplicateIdentity) {
+      return {
+        success: false,
+        reason: "duplicate-treatment",
+        message:
+          "A treatment record already exists for this programme visit.",
+      };
+    }
+
+    const duplicateInvoice =
+      current.some((item) =>
+        hasSameInvoiceNumber(
+          item,
+          normalised,
+        ),
+      );
+
+    if (duplicateInvoice) {
+      return {
+        success: false,
+        reason: "duplicate-invoice",
+        message:
+          `Invoice number ${normalised.invoiceNumber} is already attached to another treatment record.`,
+      };
+    }
+
+    const next = [
+      normalised,
+      ...current,
+    ];
+
+    treatmentsRef.current =
+      next;
+    setTreatments(next);
+
+    return {
+      success: true,
+      reason: "saved",
+      message:
+        "Treatment record saved.",
+    };
   }
 
   function addTreatments(
     incoming: TreatmentRecord[],
   ) {
-    const normalised = incoming.map(
-      normaliseTreatmentRecord,
-    );
+    const normalised =
+      incoming.map(
+        normaliseTreatmentRecord,
+      );
 
-    const unique: TreatmentRecord[] = [];
+    const current =
+      treatmentsRef.current;
 
-    for (const candidate of normalised) {
-      const alreadyExists =
-        treatments.some((item) =>
+    const unique:
+      TreatmentRecord[] = [];
+
+    for (
+      const candidate of normalised
+    ) {
+      if (
+        candidate.status ===
+          "Completed" &&
+        !candidate.invoiceNumber
+      ) {
+        continue;
+      }
+
+      const duplicateIdentity =
+        current.some((item) =>
           isSameTreatmentIdentity(
             item,
             candidate,
@@ -332,73 +444,157 @@ export function TreatmentStoreProvider({
           ),
         );
 
-      if (!alreadyExists) {
+      const duplicateInvoice =
+        current.some((item) =>
+          hasSameInvoiceNumber(
+            item,
+            candidate,
+          ),
+        ) ||
+        unique.some((item) =>
+          hasSameInvoiceNumber(
+            item,
+            candidate,
+          ),
+        );
+
+      if (
+        !duplicateIdentity &&
+        !duplicateInvoice
+      ) {
         unique.push(candidate);
       }
     }
 
-    setTreatments((current) => {
-      const actuallyUnique =
-        unique.filter(
-          (candidate) =>
-            !current.some((item) =>
-              isSameTreatmentIdentity(
-                item,
-                candidate,
-              ),
-            ),
-        );
-
-      return [
-        ...actuallyUnique,
+    if (unique.length > 0) {
+      const next = [
+        ...unique,
         ...current,
       ];
-    });
+
+      treatmentsRef.current =
+        next;
+      setTreatments(next);
+    }
 
     return {
       added: unique.length,
       skipped:
-        normalised.length - unique.length,
+        normalised.length -
+        unique.length,
     };
   }
 
   function updateTreatment(
     treatment: TreatmentRecord,
-  ) {
+  ): TreatmentSaveResult {
     const normalised =
       normaliseTreatmentRecord(treatment);
 
-    setTreatments((current) => {
-      const collision =
-        current.some(
-          (item) =>
-            item.id !== normalised.id &&
-            isSameTreatmentIdentity(
-              item,
-              normalised,
-            ),
-        );
+    const current =
+      treatmentsRef.current;
 
-      if (collision) {
-        return current;
-      }
-
-      return current.map((item) =>
-        item.id === normalised.id
-          ? normalised
-          : item,
+    const existing =
+      current.find(
+        (item) =>
+          item.id === normalised.id,
       );
-    });
+
+    if (!existing) {
+      return {
+        success: false,
+        reason: "not-found",
+        message:
+          "The treatment record could not be found, so no changes were saved.",
+      };
+    }
+
+    if (
+      normalised.status ===
+        "Completed" &&
+      !normalised.invoiceNumber
+    ) {
+      return {
+        success: false,
+        reason: "missing-invoice",
+        message:
+          "A completed treatment must have a reserved invoice number before it can be saved.",
+      };
+    }
+
+    const identityCollision =
+      current.some(
+        (item) =>
+          item.id !==
+            normalised.id &&
+          isSameTreatmentIdentity(
+            item,
+            normalised,
+          ),
+      );
+
+    if (identityCollision) {
+      return {
+        success: false,
+        reason: "duplicate-treatment",
+        message:
+          "Another treatment record already exists for this programme visit.",
+      };
+    }
+
+    const invoiceCollision =
+      current.some(
+        (item) =>
+          item.id !==
+            normalised.id &&
+          hasSameInvoiceNumber(
+            item,
+            normalised,
+          ),
+      );
+
+    if (invoiceCollision) {
+      return {
+        success: false,
+        reason: "duplicate-invoice",
+        message:
+          `Invoice number ${normalised.invoiceNumber} is already attached to another treatment record.`,
+      };
+    }
+
+    const next =
+      current.map(
+        (item) =>
+          item.id ===
+          normalised.id
+            ? normalised
+            : item,
+      );
+
+    treatmentsRef.current =
+      next;
+    setTreatments(next);
+
+    return {
+      success: true,
+      reason: "saved",
+      message:
+        "Treatment record updated.",
+    };
   }
 
   function deleteTreatment(
     treatmentId: string,
   ) {
-    setTreatments((current) =>
-      current.filter(
-        (item) => item.id !== treatmentId,
-      ),
-    );
+    const next =
+      treatmentsRef.current.filter(
+        (item) =>
+          item.id !== treatmentId,
+      );
+
+    treatmentsRef.current =
+      next;
+    setTreatments(next);
   }
 
   function getTreatmentById(
@@ -466,7 +662,12 @@ export function TreatmentStoreProvider({
   }
 
   function restoreDemoTreatments() {
-    setTreatments(cloneDemoTreatments());
+    const demo =
+      cloneDemoTreatments();
+
+    treatmentsRef.current =
+      demo;
+    setTreatments(demo);
   }
 
   const value = useMemo<TreatmentStoreValue>(
@@ -561,7 +762,7 @@ function normaliseTreatmentRecord(
     programmeVisitId:
       treatment.programmeVisitId ?? "",
     invoiceNumber:
-      treatment.invoiceNumber ?? "",
+      treatment.invoiceNumber?.trim() ?? "",
     customerNumber:
       treatment.customerNumber ?? "",
     scheduledDate:
@@ -571,7 +772,11 @@ function normaliseTreatmentRecord(
       new Date().toISOString(),
     completedDate:
       treatment.completedDate ?? "",
-    status: normaliseStatus(treatment.status),
+    status:
+      normalisePersistedStatus(
+        treatment.status,
+        treatment.invoiceNumber,
+      ),
     treatmentName:
       treatment.treatmentName ?? "",
     treatmentAreaSquareMetres: safeNumber(
@@ -1009,6 +1214,33 @@ function normaliseSpotSprayPercentage(
     : 100;
 }
 
+function normalisePersistedStatus(
+  status:
+    | TreatmentStatus
+    | string
+    | undefined,
+  invoiceNumber:
+    | string
+    | undefined,
+): TreatmentStatus {
+  const normalised =
+    normaliseStatus(status);
+
+  if (
+    normalised === "Completed" &&
+    !invoiceNumber?.trim()
+  ) {
+    /*
+     * Legacy/corrupt records must not silently remain
+     * completed without an invoice number now that
+     * invoice allocation is a required completion step.
+     */
+    return "Needs Rescheduling";
+  }
+
+  return normalised;
+}
+
 function normaliseStatus(
   status:
     | TreatmentStatus
@@ -1024,7 +1256,20 @@ function normaliseStatus(
     return status;
   }
 
-  return "Completed";
+  /*
+   * Older treatment records may pre-date explicit status
+   * values. Preserve that legacy behaviour for a genuinely
+   * missing status, but do not turn an unrecognised/corrupt
+   * status into a completed treatment.
+   */
+  if (
+    status === undefined ||
+    status === ""
+  ) {
+    return "Completed";
+  }
+
+  return "Needs Rescheduling";
 }
 
 function isFinalTreatmentStatus(
@@ -1111,6 +1356,35 @@ function isSameTreatmentIdentity(
   }
 
   return first.id === second.id;
+}
+
+function normaliseInvoiceNumber(
+  value: string,
+) {
+  return value
+    .trim()
+    .toUpperCase();
+}
+
+function hasSameInvoiceNumber(
+  first: TreatmentRecord,
+  second: TreatmentRecord,
+) {
+  const firstInvoice =
+    normaliseInvoiceNumber(
+      first.invoiceNumber,
+    );
+
+  const secondInvoice =
+    normaliseInvoiceNumber(
+      second.invoiceNumber,
+    );
+
+  return (
+    Boolean(firstInvoice) &&
+    Boolean(secondInvoice) &&
+    firstInvoice === secondInvoice
+  );
 }
 
 function createTreatmentId() {

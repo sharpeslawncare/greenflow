@@ -339,6 +339,13 @@ export default function CommunicationsPage() {
   }
 
   function addSelectedToQueue() {
+    if (!data.template.trim()) {
+      showMessage(
+        "Enter reminder wording before adding messages to the queue.",
+      );
+      return;
+    }
+
     if (selectedCustomerRecords.length === 0) {
       showMessage(
         "Select at least one customer first.",

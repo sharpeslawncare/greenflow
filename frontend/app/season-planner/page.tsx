@@ -15,6 +15,10 @@ import {
 } from "@/components/season-store";
 import { STANDARD_TREATMENTS } from "@/lib/standard-treatments";
 
+type SeasonMessageTone =
+  | "success"
+  | "error";
+
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
@@ -43,6 +47,11 @@ export default function SeasonPlannerPage() {
 
   const [message, setMessage] =
     useState("");
+
+  const [messageTone, setMessageTone] =
+    useState<SeasonMessageTone>(
+      "success",
+    );
 
   const selectedSeason =
     seasons.find(
@@ -155,6 +164,19 @@ export default function SeasonPlannerPage() {
     ) {
       showMessage(
         "Choose a valid excluded date.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      Number(
+        excludedDate.slice(0, 4),
+      ) !== draft.year
+    ) {
+      showMessage(
+        `Excluded dates must fall within the ${draft.year} season.`,
+        "error",
       );
       return;
     }
@@ -166,6 +188,7 @@ export default function SeasonPlannerPage() {
     ) {
       showMessage(
         "That date is already excluded.",
+        "error",
       );
       return;
     }
@@ -208,14 +231,167 @@ export default function SeasonPlannerPage() {
     ) {
       showMessage(
         "Choose a valid Group 1 start date.",
+        "error",
       );
       return;
     }
 
-    saveSeason(draft);
+    if (
+      Number(
+        draft.firstGroupStartDate.slice(0, 4),
+      ) !== draft.year
+    ) {
+      showMessage(
+        `Group 1's start date must fall within the ${draft.year} season.`,
+        "error",
+      );
+      return;
+    }
+
+    if (!draft.name.trim()) {
+      showMessage(
+        "Enter a calendar name.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isInteger(
+        draft.groupCount,
+      ) ||
+      draft.groupCount < 1
+    ) {
+      showMessage(
+        "Number of groups must be a whole number of at least 1.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isInteger(
+        draft.groupsPerWorkingDay,
+      ) ||
+      draft.groupsPerWorkingDay < 1
+    ) {
+      showMessage(
+        "Groups per day must be a whole number of at least 1.",
+        "error",
+      );
+      return;
+    }
+
+    const unnamedRound =
+      draft.treatmentRounds.find(
+        (round) =>
+          !round.treatmentName.trim(),
+      );
+
+    if (unnamedRound) {
+      showMessage(
+        "Every treatment round must have a treatment name.",
+        "error",
+      );
+      return;
+    }
+
+    const invalidGap =
+      draft.treatmentRounds.find(
+        (round, index) =>
+          index > 0 &&
+          (
+            !Number.isInteger(
+              round.gapAfterPreviousDays,
+            ) ||
+            round.gapAfterPreviousDays < 1
+          ),
+      );
+
+    if (invalidGap) {
+      showMessage(
+        "Treatment gaps must be whole numbers of at least 1 day.",
+        "error",
+      );
+      return;
+    }
+
+    const normalisedNames =
+      draft.treatmentRounds.map(
+        (round) =>
+          round.treatmentName
+            .trim()
+            .toLowerCase(),
+      );
+
+    const hasDuplicateNames =
+      normalisedNames.some(
+        (name, index) =>
+          normalisedNames.indexOf(
+            name,
+          ) !== index,
+      );
+
+    if (hasDuplicateNames) {
+      showMessage(
+        "Each treatment round must have a unique name.",
+        "error",
+      );
+      return;
+    }
+
+    const invalidExcludedDate =
+      draft.excludedDates.find(
+        (date) =>
+          !isDateValue(date),
+      );
+
+    if (invalidExcludedDate) {
+      showMessage(
+        "One or more excluded dates are invalid.",
+        "error",
+      );
+      return;
+    }
+
+    const excludedDateOutsideSeason =
+      draft.excludedDates.find(
+        (date) =>
+          Number(
+            date.slice(0, 4),
+          ) !== draft.year,
+      );
+
+    if (excludedDateOutsideSeason) {
+      showMessage(
+        `All excluded dates must fall within the ${draft.year} season.`,
+        "error",
+      );
+      return;
+    }
+
+    const cleanedDraft: SeasonCalendar = {
+      ...draft,
+      name: draft.name.trim(),
+      treatmentRounds:
+        draft.treatmentRounds.map(
+          (round, index) => ({
+            ...round,
+            treatmentName:
+              round.treatmentName.trim(),
+            gapAfterPreviousDays:
+              index === 0
+                ? 0
+                : round.gapAfterPreviousDays,
+          }),
+        ) as SeasonCalendar["treatmentRounds"],
+    };
+
+    saveSeason(cleanedDraft);
+    setDraft(cleanedDraft);
 
     showMessage(
-      `${draft.year} group calendar saved and regenerated.`,
+      `${cleanedDraft.year} group calendar saved and regenerated.`,
     );
   }
 
@@ -240,8 +416,10 @@ export default function SeasonPlannerPage() {
 
   function showMessage(
     text: string,
+    tone: SeasonMessageTone = "success",
   ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -323,7 +501,18 @@ export default function SeasonPlannerPage() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={
+                messageTone === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}
@@ -883,6 +1072,7 @@ function NumberField({
         <input
           type="number"
           min={min}
+          step="1"
           value={value}
           onChange={(event) =>
             onChange(

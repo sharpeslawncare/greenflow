@@ -23,6 +23,10 @@ import {
   useSeasonStore,
 } from "@/components/season-store";
 
+type ProgrammeMessageTone =
+  | "success"
+  | "error";
+
 type VisitDisplayRow = {
   visitNumber: number;
   treatmentName: string;
@@ -84,6 +88,11 @@ export default function ProgrammesPage() {
 
   const [message, setMessage] =
     useState("");
+
+  const [messageTone, setMessageTone] =
+    useState<ProgrammeMessageTone>(
+      "success",
+    );
 
   const activeCustomers =
     useMemo(
@@ -313,6 +322,7 @@ export default function ProgrammesPage() {
     if (!row.visit) {
       showMessage(
         "This treatment round is not part of the customer's programme.",
+        "error",
       );
       return;
     }
@@ -325,6 +335,7 @@ export default function ProgrammesPage() {
     ) {
       showMessage(
         "Completed or skipped historical visits cannot be moved here.",
+        "error",
       );
       return;
     }
@@ -352,8 +363,14 @@ export default function ProgrammesPage() {
     if (
       !selectedCustomer ||
       !selectedProgramme ||
+      !selectedSeason ||
+      !selectedGroupDates ||
       !row.visit
     ) {
+      showMessage(
+        "The customer programme, season or group calendar could not be loaded.",
+        "error",
+      );
       return;
     }
 
@@ -364,6 +381,19 @@ export default function ProgrammesPage() {
     ) {
       showMessage(
         "Choose a valid replacement date.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      Number(
+        replacementDate.slice(0, 4),
+      ) !== selectedYear
+    ) {
+      showMessage(
+        `Choose a replacement date within the ${selectedYear} season.`,
+        "error",
       );
       return;
     }
@@ -378,6 +408,7 @@ export default function ProgrammesPage() {
     ) {
       showMessage(
         "A treatment cannot be scheduled on a date that has already passed.",
+        "error",
       );
       return;
     }
@@ -398,6 +429,7 @@ export default function ProgrammesPage() {
         `This customer already has ${conflictingVisit.treatmentName} scheduled on ${formatDate(
           replacementDate,
         )}.`,
+        "error",
       );
       return;
     }
@@ -484,6 +516,7 @@ export default function ProgrammesPage() {
     if (!result) {
       showMessage(
         "The season or group calendar could not be found.",
+        "error",
       );
       return;
     }
@@ -501,8 +534,10 @@ export default function ProgrammesPage() {
 
   function showMessage(
     text: string,
+    tone: ProgrammeMessageTone = "success",
   ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -596,7 +631,18 @@ export default function ProgrammesPage() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+            <div
+              role={
+                messageTone === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}

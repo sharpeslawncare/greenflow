@@ -64,6 +64,10 @@ type VisitProductMode =
   | "today"
   | "custom";
 
+type VisitMessageTone =
+  | "success"
+  | "error";
+
 type ProductSelection = {
   id: string;
   chemicalId: string;
@@ -256,6 +260,10 @@ function VisitCentrePageContent() {
 
   const [replacementDate, setReplacementDate] = useState("");
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] =
+    useState<VisitMessageTone>(
+      "success",
+    );
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewError, setReviewError] = useState("");
@@ -729,6 +737,7 @@ function VisitCentrePageContent() {
     ) {
       showMessage(
         "Choose and save at least one product in the standard mix first.",
+        "error",
       );
       return;
     }
@@ -793,7 +802,10 @@ function VisitCentrePageContent() {
       const error =
         "Select at least one scheduled customer.";
       setReviewError(error);
-      showMessage(error);
+      showMessage(
+        error,
+        "error",
+      );
       return;
     }
 
@@ -806,7 +818,10 @@ function VisitCentrePageContent() {
       const error =
         "Failed or cancelled visits must be recorded one customer at a time.";
       setReviewError(error);
-      showMessage(error);
+      showMessage(
+        error,
+        "error",
+      );
       return;
     }
 
@@ -814,7 +829,10 @@ function VisitCentrePageContent() {
       const error =
         "Choose a valid replacement date.";
       setReviewError(error);
-      showMessage(error);
+      showMessage(
+        error,
+        "error",
+      );
       return;
     }
 
@@ -822,8 +840,49 @@ function VisitCentrePageContent() {
       const error =
         "The replacement date cannot be in the past.";
       setReviewError(error);
-      showMessage(error);
+      showMessage(
+        error,
+        "error",
+      );
       return;
+    }
+
+    if (needsReplacement) {
+      const job = selectedJobs[0];
+
+      const conflictingVisit =
+        programmes
+          .filter(
+            (programme) =>
+              programme.customerNumber ===
+              job.customer.customerNumber,
+          )
+          .flatMap(
+            (programme) =>
+              programme.visits,
+          )
+          .find(
+            (visit) =>
+              visit.id !== job.visit.id &&
+              (visit.status === "Scheduled" ||
+                visit.status === "Planned") &&
+              visit.scheduledDate ===
+                replacementDate,
+          );
+
+      if (conflictingVisit) {
+        const error =
+          `${job.customer.fullName} already has ${conflictingVisit.treatmentName} scheduled on ${formatDate(
+            replacementDate,
+          )}. Choose a different replacement date.`;
+
+        setReviewError(error);
+        showMessage(
+          error,
+          "error",
+        );
+        return;
+      }
     }
 
     if (outcome === "Completed" && selectedProducts.length === 0) {
@@ -874,7 +933,10 @@ function VisitCentrePageContent() {
           : `Final treatment outcomes already exist for ${names}. No stock has been deducted. Refresh the Visit Centre before trying again.`;
 
       setReviewError(error);
-      showMessage(error);
+      showMessage(
+        error,
+        "error",
+      );
       return;
     }
 
@@ -895,6 +957,25 @@ function VisitCentrePageContent() {
           : "Needs Rescheduling";
 
     let reservedInvoiceNumbers: string[] = [];
+
+    if (outcome === "Completed") {
+      reservedInvoiceNumbers =
+        reserveInvoiceNumbers(
+          selectedJobs.length,
+        );
+
+      if (
+        reservedInvoiceNumbers.length !==
+        selectedJobs.length
+      ) {
+        const error =
+          "GreenFlow could not reserve the required invoice numbers. The visit has not been recorded.";
+
+        setReviewError(error);
+        showMessage(error);
+        return;
+      }
+    }
 
     if (outcome === "Completed") {
       const stockResult =
@@ -931,26 +1012,8 @@ function VisitCentrePageContent() {
         );
         showMessage(
           stockResult.message,
+          "error",
         );
-        return;
-      }
-    }
-
-    if (outcome === "Completed") {
-      reservedInvoiceNumbers =
-        reserveInvoiceNumbers(
-          selectedJobs.length,
-        );
-
-      if (
-        reservedInvoiceNumbers.length !==
-        selectedJobs.length
-      ) {
-        const error =
-          "GreenFlow could not reserve the required invoice numbers. The visit has not been recorded.";
-
-        setReviewError(error);
-        showMessage(error);
         return;
       }
     }
@@ -1206,8 +1269,12 @@ function VisitCentrePageContent() {
     setReplacementDate("");
   }
 
-  function showMessage(text: string) {
+  function showMessage(
+    text: string,
+    tone: VisitMessageTone = "success",
+  ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -1333,7 +1400,18 @@ function VisitCentrePageContent() {
           )}
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={
+                messageTone === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}

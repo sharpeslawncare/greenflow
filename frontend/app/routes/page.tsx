@@ -35,6 +35,10 @@ type RouteCustomer = {
   completed: boolean;
 };
 
+type RouteMessageTone =
+  | "success"
+  | "error";
+
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
@@ -105,6 +109,11 @@ export default function RoutesPage() {
   const [message, setMessage] =
     useState("");
 
+  const [messageTone, setMessageTone] =
+    useState<RouteMessageTone>(
+      "success",
+    );
+
   const selectedSeason =
     seasons.find(
       (season) =>
@@ -151,50 +160,33 @@ export default function RoutesPage() {
       [customers],
     );
 
-
-  useEffect(() => {
-    if (
-      !fleetReady ||
-      activeVehicles.length === 0
-    ) {
-      return;
-    }
-
-    const activeVanNumbers =
-      new Set(
-        activeVehicles.map(
-          (vehicle) =>
-            vehicle.number,
+  const activeVanNumbers =
+    useMemo(
+      () =>
+        new Set(
+          activeVehicles.map(
+            (vehicle) =>
+              vehicle.number,
+          ),
         ),
-      );
+      [activeVehicles],
+    );
 
-    const fallbackVanNumber =
-      activeVehicles[0].number;
+  const customersWithInvalidVan =
+    useMemo(
+      () =>
+        activeCustomers.filter(
+          (customer) =>
+            !activeVanNumbers.has(
+              customer.vanNumber,
+            ),
+        ),
+      [
+        activeCustomers,
+        activeVanNumbers,
+      ],
+    );
 
-    for (
-      const customer of
-      activeCustomers
-    ) {
-      if (
-        activeVanNumbers.has(
-          customer.vanNumber,
-        )
-      ) {
-        continue;
-      }
-
-      updateCustomer({
-        ...customer,
-        vanNumber:
-          fallbackVanNumber,
-      });
-    }
-  }, [
-    activeCustomers,
-    activeVehicles,
-    fleetReady,
-    updateCustomer,
-  ]);
 
   const groupNumbers =
     useMemo(() => {
@@ -263,6 +255,7 @@ export default function RoutesPage() {
       );
 
     if (
+      activeNumbers.length === 0 ||
       activeNumbers.includes(
         destinationVan,
       )
@@ -271,7 +264,7 @@ export default function RoutesPage() {
     }
 
     setDestinationVan(
-      activeNumbers[0] ?? 1,
+      activeNumbers[0],
     );
   }, [
     activeVehicles,
@@ -765,6 +758,31 @@ export default function RoutesPage() {
     ) {
       showMessage(
         "Select at least one customer first.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !groupNumbers.includes(
+        destinationGroup,
+      )
+    ) {
+      showMessage(
+        "Choose a valid destination group.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !activeVanNumbers.has(
+        destinationVan,
+      )
+    ) {
+      showMessage(
+        "Choose an active destination van before moving customers.",
+        "error",
       );
       return;
     }
@@ -816,6 +834,18 @@ export default function RoutesPage() {
     customer: StoredCustomer,
     vanNumber: number,
   ) {
+    if (
+      !activeVanNumbers.has(
+        vanNumber,
+      )
+    ) {
+      showMessage(
+        "Choose an active van.",
+        "error",
+      );
+      return;
+    }
+
     updateCustomer({
       ...customer,
       vanNumber,
@@ -852,6 +882,7 @@ export default function RoutesPage() {
     ) {
       showMessage(
         "There are no remaining customers to optimise.",
+        "error",
       );
       return;
     }
@@ -894,8 +925,10 @@ export default function RoutesPage() {
 
   function showMessage(
     text: string,
+    tone: RouteMessageTone = "success",
   ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -1051,9 +1084,39 @@ export default function RoutesPage() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={
+                messageTone === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
+          )}
+
+          {customersWithInvalidVan.length > 0 && (
+            <section
+              role="alert"
+              className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950"
+            >
+              <div className="font-bold">
+                Van assignments need attention
+              </div>
+
+              <p className="mt-1">
+                {customersWithInvalidVan.length} active customer{customersWithInvalidVan.length === 1 ? "" : "s"} are assigned to a van that is missing or inactive. GreenFlow has not changed those assignments automatically.
+              </p>
+
+              <p className="mt-2">
+                Review the affected customers below and deliberately assign each one to an active van.
+              </p>
+            </section>
           )}
 
           {!selectedSeason && (
@@ -1648,7 +1711,14 @@ export default function RoutesPage() {
                     onClick={
                       moveSelectedCustomers
                     }
-                    className="h-11 rounded-xl bg-[#176b37] px-4 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                    disabled={
+                      activeVehicles.length === 0
+                    }
+                    className={`h-11 rounded-xl px-4 text-sm font-semibold text-white ${
+                      activeVehicles.length === 0
+                        ? "cursor-not-allowed bg-slate-400"
+                        : "bg-[#176b37] hover:bg-[#125b2f]"
+                    }`}
                   >
                     Move selected
                   </button>
@@ -1783,8 +1853,27 @@ export default function RoutesPage() {
                                   ),
                                 )
                               }
-                              className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                              className={`rounded-lg border bg-white px-2 py-2 text-sm ${
+                                activeVanNumbers.has(
+                                  customer.vanNumber,
+                                )
+                                  ? "border-slate-300"
+                                  : "border-amber-400 bg-amber-50"
+                              }`}
                             >
+                              {!activeVanNumbers.has(
+                                customer.vanNumber,
+                              ) && (
+                                <option
+                                  value={
+                                    customer.vanNumber
+                                  }
+                                  disabled
+                                >
+                                  Van {customer.vanNumber} — inactive/missing
+                                </option>
+                              )}
+
                               {activeVehicles.map(
                                 (vehicle) => (
                                   <option

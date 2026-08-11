@@ -315,90 +315,186 @@ export default function CustomersPage() {
     event.preventDefault();
     setFormError("");
 
-    if (
-      !form.customerNumber.trim() ||
-      !form.fullName.trim() ||
-      !form.address.trim() ||
-      !form.postcode.trim()
+    const customerNumber =
+      form.customerNumber.trim();
+    const fullName =
+      form.fullName.trim();
+    const address =
+      form.address.trim();
+    const postcode =
+      form.postcode.trim().toUpperCase();
+    const email =
+      form.email.trim();
+    const homePhone =
+      form.homePhone.trim();
+    const mobilePhone =
+      form.mobilePhone.trim();
+
+    const lawnSize =
+      Number(form.lawnSize);
+    const groupNumber =
+      Number(form.groupNumber);
+    const treatmentPrice =
+      Number(form.treatmentPrice);
+    const vanNumber =
+      Number(form.vanNumber);
+
+    const validationErrors: string[] = [];
+
+    if (!customerNumber) {
+      validationErrors.push(
+        "Enter a customer number.",
+      );
+    } else if (
+      customers.some(
+        (customer) =>
+          customer.customerNumber.trim() ===
+          customerNumber,
+      )
     ) {
+      validationErrors.push(
+        `Customer number ${customerNumber} already exists.`,
+      );
+    }
+
+    if (!fullName) {
+      validationErrors.push(
+        "Enter the customer's full name.",
+      );
+    }
+
+    if (!address) {
+      validationErrors.push(
+        "Enter the customer's address.",
+      );
+    }
+
+    if (!postcode) {
+      validationErrors.push(
+        "Enter the customer's postcode.",
+      );
+    }
+
+    if (
+      !email &&
+      !mobilePhone &&
+      !homePhone
+    ) {
+      validationErrors.push(
+        "Enter at least one contact method: email, mobile phone or home phone.",
+      );
+    }
+
+    if (
+      form.lawnSize.trim() === "" ||
+      !Number.isFinite(lawnSize) ||
+      lawnSize < 0
+    ) {
+      validationErrors.push(
+        "Lawn size must be a valid number of 0 m² or more.",
+      );
+    }
+
+    if (
+      form.groupNumber.trim() === "" ||
+      !Number.isInteger(groupNumber) ||
+      groupNumber < 1
+    ) {
+      validationErrors.push(
+        "Group number must be a whole number of 1 or greater.",
+      );
+    }
+
+    if (
+      form.vanNumber.trim() === "" ||
+      !Number.isInteger(vanNumber) ||
+      vanNumber < 1
+    ) {
+      validationErrors.push(
+        "Van number must be a whole number of 1 or greater.",
+      );
+    }
+
+    if (
+      form.treatmentPrice.trim() === "" ||
+      !Number.isFinite(treatmentPrice) ||
+      treatmentPrice < 0
+    ) {
+      validationErrors.push(
+        "Treatment price must be a valid amount of £0 or more.",
+      );
+    }
+
+    if (
+      email &&
+      !isValidEmailAddress(email)
+    ) {
+      validationErrors.push(
+        "Enter a valid email address or leave the email field blank.",
+      );
+    }
+
+    if (
+      form.preferredContact === "SMS" &&
+      !mobilePhone
+    ) {
+      validationErrors.push(
+        "Preferred contact is SMS, so enter a mobile phone number.",
+      );
+    }
+
+    if (
+      form.preferredContact === "Email" &&
+      !email
+    ) {
+      validationErrors.push(
+        "Preferred contact is Email, so enter an email address.",
+      );
+    }
+
+    if (
+      form.preferredContact === "Telephone" &&
+      !mobilePhone &&
+      !homePhone
+    ) {
+      validationErrors.push(
+        "Preferred contact is Telephone, so enter a mobile or home phone number.",
+      );
+    }
+
+    if (validationErrors.length > 0) {
       setFormError(
-        "Customer number, full name, address and postcode are required.",
+        validationErrors.join(" • "),
       );
       return;
     }
 
     const customer: Customer = {
-      customerNumber:
-        form.customerNumber.trim(),
-
-      firstName:
-        form.firstName.trim(),
-
-      surname:
-        form.surname.trim(),
-
-      fullName:
-        form.fullName.trim(),
-
-      address:
-        form.address.trim(),
-
-      postcode:
-        form.postcode
-          .trim()
-          .toUpperCase(),
-
-      email:
-        form.email.trim(),
-
-      homePhone:
-        form.homePhone.trim(),
-
-      mobilePhone:
-        form.mobilePhone.trim(),
-
-      lawnSize:
-        Number(
-          form.lawnSize,
-        ) || 0,
-
-      groupNumber:
-        Number(
-          form.groupNumber,
-        ) || 1,
-
-      treatmentPrice:
-        Number(
-          form.treatmentPrice,
-        ) || 18,
-
-      status:
-        form.status,
-
-      vanNumber:
-        Number(
-          form.vanNumber,
-        ) || 1,
-
+      customerNumber,
+      firstName: form.firstName.trim(),
+      surname: form.surname.trim(),
+      fullName,
+      address,
+      postcode,
+      email,
+      homePhone,
+      mobilePhone,
+      lawnSize,
+      groupNumber,
+      treatmentPrice,
+      status: form.status,
+      vanNumber,
       nextVisit:
         form.nextVisit.trim() ||
         "Not yet scheduled",
-
       lastVisit:
         form.lastVisit.trim() ||
         "No previous visit",
-
-      lockedGate:
-        form.lockedGate,
-
-      dogOnProperty:
-        form.dogOnProperty,
-
+      lockedGate: form.lockedGate,
+      dogOnProperty: form.dogOnProperty,
       preferredContact:
         form.preferredContact,
-
-      notes:
-        form.notes.trim(),
+      notes: form.notes.trim(),
     };
 
     const result =
@@ -1220,8 +1316,8 @@ export default function CustomersPage() {
                 <input
                   type="number"
                   min="1"
-                  max="20"
-                  value={form.groupNumber}
+                  step="1"
+value={form.groupNumber}
                   onChange={(event) =>
                     setForm({
                       ...form,
@@ -1236,6 +1332,7 @@ export default function CustomersPage() {
                 <input
                   type="number"
                   min="1"
+                  step="1"
                   value={form.vanNumber}
                   onChange={(event) =>
                     setForm({
@@ -1401,6 +1498,14 @@ function FormField({
   );
 }
 
+
+function isValidEmailAddress(
+  value: string,
+) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value,
+  );
+}
 
 function compareRows(
   first: CustomerRow,

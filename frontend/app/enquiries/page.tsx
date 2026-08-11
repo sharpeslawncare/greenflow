@@ -23,6 +23,7 @@ import {
   type ProgrammeVisit,
   useProgrammeStore,
 } from "@/components/programme-store";
+import { useFleetStore } from "@/components/fleet-store";
 import {
   demoCustomers,
   type Customer,
@@ -31,6 +32,10 @@ import {
 type StatusFilter =
   | EnquiryStatus
   | "All";
+
+type MessageTone =
+  | "success"
+  | "error";
 
 const enquirySources: EnquirySource[] = [
   "Recommendation",
@@ -67,6 +72,37 @@ const standardTreatmentNames = [
   "Winter moss control",
 ];
 
+function StatusBadge({
+  status,
+}: {
+  status: EnquiryStatus;
+}) {
+  const styles =
+    status ===
+      "Converted to Customer" ||
+    status === "Quote Accepted"
+      ? "bg-green-100 text-green-800"
+      : status ===
+            "Quote Declined" ||
+          status === "Closed"
+        ? "bg-red-100 text-red-700"
+        : status ===
+            "Quote Prepared"
+          ? "bg-blue-100 text-blue-800"
+          : status ===
+              "Visit Arranged"
+            ? "bg-amber-100 text-amber-800"
+            : "bg-slate-100 text-slate-700";
+
+  return (
+    <span
+      className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${styles}`}
+    >
+      {status}
+    </span>
+  );
+}
+
 export default function EnquiriesPage() {
   const {
     enquiries,
@@ -75,7 +111,6 @@ export default function EnquiriesPage() {
     updateEnquiry,
     deleteEnquiry,
     calculateQuote,
-    markConverted,
     restoreDemoEnquiries,
   } = useEnquiryStore();
 
@@ -89,6 +124,12 @@ export default function EnquiriesPage() {
     ready: programmesReady,
     saveProgramme,
   } = useProgrammeStore();
+
+  const {
+    vehicles,
+    activeVehicles,
+    ready: fleetReady,
+  } = useFleetStore();
 
   const currentYear =
     new Date().getFullYear();
@@ -104,6 +145,9 @@ export default function EnquiriesPage() {
 
   const [message, setMessage] =
     useState("");
+
+  const [messageTone, setMessageTone] =
+    useState<MessageTone>("success");
 
   const [
     generateProgramme,
@@ -282,23 +326,174 @@ export default function EnquiriesPage() {
     if (!draft) {
       showMessage(
         "Select or create an enquiry first.",
+        "error",
+      );
+      return;
+    }
+
+    const firstName =
+      draft.firstName.trim();
+    const surname =
+      draft.surname.trim();
+    const address =
+      draft.address.trim();
+    const postcode =
+      draft.postcode.trim().toUpperCase();
+    const emailAddress =
+      draft.emailAddress.trim();
+    const homePhone =
+      draft.homePhone.trim();
+    const mobilePhone =
+      draft.mobilePhone.trim();
+
+    if (
+      !firstName &&
+      !surname
+    ) {
+      showMessage(
+        "Enter at least a first name or surname.",
+        "error",
+      );
+      return;
+    }
+
+    if (!address) {
+      showMessage(
+        "Enter the enquiry address.",
+        "error",
       );
       return;
     }
 
     if (
-      !draft.firstName.trim() &&
-      !draft.surname.trim()
+      emailAddress &&
+      !isValidEmailAddress(
+        emailAddress,
+      )
     ) {
       showMessage(
-        "Enter at least a first name or surname.",
+        "Enter a valid email address or leave the email field blank.",
+        "error",
       );
       return;
     }
 
-    if (!draft.address.trim()) {
+    if (
+      !emailAddress &&
+      !mobilePhone &&
+      !homePhone
+    ) {
       showMessage(
-        "Enter the enquiry address.",
+        "Enter at least one contact method: email, mobile phone or home phone.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.quoteDate &&
+      draft.quoteExpiryDate &&
+      draft.quoteExpiryDate < draft.quoteDate
+    ) {
+      showMessage(
+        "The quote expiry date cannot be earlier than the quote date.",
+        "error",
+      );
+      return;
+    }
+
+    const quoteIsPreparedOrBeyond =
+      draft.quoteStatus === "Draft" ||
+      draft.quoteStatus === "Presented" ||
+      draft.quoteStatus === "Accepted" ||
+      draft.status === "Quote Prepared" ||
+      draft.status === "Quote Accepted";
+
+    if (
+      quoteIsPreparedOrBeyond &&
+      (
+        !Number.isFinite(
+          draft.lawnSizeSquareMetres,
+        ) ||
+        draft.lawnSizeSquareMetres <= 0
+      )
+    ) {
+      showMessage(
+        "Enter the measured lawn size before saving a prepared or accepted quote.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      quoteIsPreparedOrBeyond &&
+      (
+        !Number.isFinite(
+          draft.quotedTreatmentPrice,
+        ) ||
+        draft.quotedTreatmentPrice <= 0
+      )
+    ) {
+      showMessage(
+        "Calculate or enter a treatment price before saving a prepared or accepted quote.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.suggestedGroupNumber,
+      ) ||
+      !Number.isInteger(
+        draft.suggestedGroupNumber,
+      ) ||
+      draft.suggestedGroupNumber < 1
+    ) {
+      showMessage(
+        "Suggested group must be a positive whole number.",
+        "error",
+      );
+      return;
+    }
+
+    const suggestedVehicle =
+      vehicles.find(
+        (vehicle) =>
+          vehicle.number ===
+          draft.suggestedVanNumber,
+      );
+
+    if (
+      !suggestedVehicle ||
+      !suggestedVehicle.active
+    ) {
+      showMessage(
+        "Choose an active fleet vehicle for the suggested van.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.status === "Quote Accepted" &&
+      draft.quoteStatus !== "Accepted"
+    ) {
+      showMessage(
+        "Set the quote status to Accepted before saving an accepted enquiry.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.quoteStatus === "Accepted" &&
+      draft.status !== "Quote Accepted" &&
+      draft.status !== "Converted to Customer"
+    ) {
+      showMessage(
+        "Set the enquiry status to Quote Accepted before saving an accepted quote.",
+        "error",
       );
       return;
     }
@@ -306,27 +501,41 @@ export default function EnquiriesPage() {
     const savedEnquiry: EnquiryRecord = {
       ...draft,
 
-      firstName:
-        draft.firstName.trim(),
+      firstName,
 
-      surname:
-        draft.surname.trim(),
+      surname,
 
       fullName: [
-        draft.firstName,
-        draft.surname,
+        firstName,
+        surname,
       ]
-        .map((part) => part.trim())
         .filter(Boolean)
         .join(" "),
 
-      address:
-        draft.address.trim(),
+      address,
 
-      postcode:
-        draft.postcode
-          .trim()
-          .toUpperCase(),
+      postcode,
+
+      emailAddress,
+
+      homePhone,
+
+      mobilePhone,
+
+      referredBy:
+        draft.referredBy.trim(),
+
+      initialMessage:
+        draft.initialMessage.trim(),
+
+      internalNotes:
+        draft.internalNotes.trim(),
+
+      quoteNotes:
+        draft.quoteNotes.trim(),
+
+      extraWorkDescription:
+        draft.extraWorkDescription.trim(),
     };
 
     updateEnquiry(savedEnquiry);
@@ -334,7 +543,7 @@ export default function EnquiriesPage() {
     setDraft(savedEnquiry);
 
     showMessage(
-      `${draft.enquiryNumber} saved.`,
+      `${savedEnquiry.enquiryNumber} saved.`,
     );
   }
 
@@ -364,6 +573,32 @@ export default function EnquiriesPage() {
 
   function calculateCurrentQuote() {
     if (!draft) {
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.lawnSizeSquareMetres,
+      ) ||
+      draft.lawnSizeSquareMetres <= 0
+    ) {
+      showMessage(
+        "Enter the measured lawn size before calculating the quotation.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.pricePerSquareMetre,
+      ) ||
+      draft.pricePerSquareMetre <= 0
+    ) {
+      showMessage(
+        "Enter a price per square metre greater than £0.00.",
+        "error",
+      );
       return;
     }
 
@@ -427,19 +662,53 @@ export default function EnquiriesPage() {
       return;
     }
 
+    if (
+      !Number.isFinite(
+        draft.lawnSizeSquareMetres,
+      ) ||
+      draft.lawnSizeSquareMetres <= 0
+    ) {
+      showMessage(
+        "Enter the measured lawn size before marking the quote as presented.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.quotedTreatmentPrice,
+      ) ||
+      draft.quotedTreatmentPrice <= 0
+    ) {
+      showMessage(
+        "Calculate or enter a treatment price before marking the quote as presented.",
+        "error",
+      );
+      return;
+    }
+
+    const quoteDate =
+      draft.quoteDate || todayDate();
+
+    const quoteExpiryDate =
+      draft.quoteExpiryDate ||
+      addDaysToDate(quoteDate, 30);
+
+    if (quoteExpiryDate < quoteDate) {
+      showMessage(
+        "The quote expiry date cannot be earlier than the quote date.",
+        "error",
+      );
+      return;
+    }
+
     setDraft({
       ...draft,
       status: "Quote Prepared",
       quoteStatus: "Presented",
-      quoteDate:
-        draft.quoteDate ||
-        todayDate(),
-      quoteExpiryDate:
-        draft.quoteExpiryDate ||
-        addDaysToDate(
-          todayDate(),
-          30,
-        ),
+      quoteDate,
+      quoteExpiryDate,
     });
 
     showMessage(
@@ -452,10 +721,53 @@ export default function EnquiriesPage() {
       return;
     }
 
+    if (
+      !Number.isFinite(
+        draft.lawnSizeSquareMetres,
+      ) ||
+      draft.lawnSizeSquareMetres <= 0
+    ) {
+      showMessage(
+        "Enter the measured lawn size before accepting the quote.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.quotedTreatmentPrice,
+      ) ||
+      draft.quotedTreatmentPrice <= 0
+    ) {
+      showMessage(
+        "Calculate or enter a treatment price before accepting the quote.",
+        "error",
+      );
+      return;
+    }
+
+    const quoteDate =
+      draft.quoteDate || todayDate();
+
+    const quoteExpiryDate =
+      draft.quoteExpiryDate ||
+      addDaysToDate(quoteDate, 30);
+
+    if (quoteExpiryDate < quoteDate) {
+      showMessage(
+        "The quote expiry date cannot be earlier than the quote date.",
+        "error",
+      );
+      return;
+    }
+
     setDraft({
       ...draft,
       status: "Quote Accepted",
       quoteStatus: "Accepted",
+      quoteDate,
+      quoteExpiryDate,
     });
 
     showMessage(
@@ -483,18 +795,20 @@ export default function EnquiriesPage() {
     if (!draft) {
       showMessage(
         "Select an enquiry first.",
+        "error",
       );
       return;
     }
 
     if (
       draft.status !==
-        "Quote Accepted" &&
+        "Quote Accepted" ||
       draft.quoteStatus !==
         "Accepted"
     ) {
       showMessage(
         "The quotation must be accepted before conversion.",
+        "error",
       );
       return;
     }
@@ -504,6 +818,7 @@ export default function EnquiriesPage() {
     ) {
       showMessage(
         `This enquiry has already been converted into customer ${draft.convertedCustomerNumber}.`,
+        "error",
       );
       return;
     }
@@ -511,6 +826,7 @@ export default function EnquiriesPage() {
     if (!draft.fullName.trim()) {
       showMessage(
         "Enter the customer name before converting.",
+        "error",
       );
       return;
     }
@@ -518,24 +834,134 @@ export default function EnquiriesPage() {
     if (!draft.address.trim()) {
       showMessage(
         "Enter the customer address before converting.",
+        "error",
+      );
+      return;
+    }
+
+    const postcode =
+      draft.postcode
+        .trim()
+        .toUpperCase();
+
+    const emailAddress =
+      draft.emailAddress.trim();
+
+    const mobilePhone =
+      draft.mobilePhone.trim();
+
+    const homePhone =
+      draft.homePhone.trim();
+
+    if (!postcode) {
+      showMessage(
+        "Enter the customer postcode before converting.",
+        "error",
       );
       return;
     }
 
     if (
+      emailAddress &&
+      !isValidEmailAddress(
+        emailAddress,
+      )
+    ) {
+      showMessage(
+        "Enter a valid email address or leave the email field blank.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !emailAddress &&
+      !mobilePhone &&
+      !homePhone
+    ) {
+      showMessage(
+        "Enter at least one contact method before converting: email, mobile phone or home phone.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.suggestedGroupNumber,
+      ) ||
+      !Number.isInteger(
+        draft.suggestedGroupNumber,
+      ) ||
+      draft.suggestedGroupNumber < 1
+    ) {
+      showMessage(
+        "Choose a valid positive whole-number group before converting.",
+        "error",
+      );
+      return;
+    }
+
+    const conversionVehicle =
+      vehicles.find(
+        (vehicle) =>
+          vehicle.number ===
+          draft.suggestedVanNumber,
+      );
+
+    if (
+      !conversionVehicle ||
+      !conversionVehicle.active
+    ) {
+      showMessage(
+        "Choose an active fleet vehicle before converting the enquiry.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.lawnSizeSquareMetres,
+      ) ||
       draft.lawnSizeSquareMetres <= 0
     ) {
       showMessage(
         "Record the measured lawn size before converting.",
+        "error",
       );
       return;
     }
 
     if (
+      !Number.isFinite(
+        draft.quotedTreatmentPrice,
+      ) ||
       draft.quotedTreatmentPrice <= 0
     ) {
       showMessage(
         "Calculate or enter the treatment price before converting.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      generateProgramme &&
+      (
+        !Number.isFinite(
+          programmeYear,
+        ) ||
+        !Number.isInteger(
+          programmeYear,
+        ) ||
+        programmeYear < 2020 ||
+        programmeYear > 2100
+      )
+    ) {
+      showMessage(
+        "Choose a valid programme year between 2020 and 2100.",
+        "error",
       );
       return;
     }
@@ -546,6 +972,28 @@ export default function EnquiriesPage() {
     ) {
       showMessage(
         "Choose the first treatment date.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      generateProgramme &&
+      (
+        !isDateInputValue(
+          programmeStartDate,
+        ) ||
+        Number(
+          programmeStartDate.slice(
+            0,
+            4,
+          ),
+        ) !== programmeYear
+      )
+    ) {
+      showMessage(
+        "The first treatment date must fall within the selected programme year.",
+        "error",
       );
       return;
     }
@@ -561,6 +1009,17 @@ export default function EnquiriesPage() {
             programmeStartDate,
           )
         : [];
+
+    if (
+      generateProgramme &&
+      programmeVisits.length === 0
+    ) {
+      showMessage(
+        "No treatment visits could be created for the selected programme year and start date.",
+        "error",
+      );
+      return;
+    }
 
     const firstProgrammeVisit =
       programmeVisits[0];
@@ -582,19 +1041,14 @@ export default function EnquiriesPage() {
       address:
         draft.address.trim(),
 
-      postcode:
-        draft.postcode
-          .trim()
-          .toUpperCase(),
+      postcode,
 
       email:
-        draft.emailAddress.trim(),
+        emailAddress,
 
-      homePhone:
-        draft.homePhone.trim(),
+      homePhone,
 
-      mobilePhone:
-        draft.mobilePhone.trim(),
+      mobilePhone,
 
       groupNumber:
         draft.suggestedGroupNumber,
@@ -652,7 +1106,10 @@ export default function EnquiriesPage() {
       addCustomer(newCustomer);
 
     if (!result.success) {
-      showMessage(result.message);
+      showMessage(
+        result.message,
+        "error",
+      );
       return;
     }
 
@@ -687,14 +1144,50 @@ export default function EnquiriesPage() {
       saveProgramme(programme);
     }
 
-    markConverted(
-      draft.id,
-      customerNumber,
-    );
-
     const convertedDraft: EnquiryRecord =
       {
         ...draft,
+
+        firstName:
+          draft.firstName.trim(),
+
+        surname:
+          draft.surname.trim(),
+
+        fullName:
+          draft.fullName.trim(),
+
+        address:
+          draft.address.trim(),
+
+        postcode:
+          draft.postcode
+            .trim()
+            .toUpperCase(),
+
+        emailAddress:
+          draft.emailAddress.trim(),
+
+        homePhone:
+          draft.homePhone.trim(),
+
+        mobilePhone:
+          draft.mobilePhone.trim(),
+
+        referredBy:
+          draft.referredBy.trim(),
+
+        initialMessage:
+          draft.initialMessage.trim(),
+
+        internalNotes:
+          draft.internalNotes.trim(),
+
+        quoteNotes:
+          draft.quoteNotes.trim(),
+
+        extraWorkDescription:
+          draft.extraWorkDescription.trim(),
 
         status:
           "Converted to Customer",
@@ -708,6 +1201,7 @@ export default function EnquiriesPage() {
           new Date().toISOString(),
       };
 
+    updateEnquiry(convertedDraft);
     setDraft(convertedDraft);
 
     if (
@@ -780,8 +1274,12 @@ export default function EnquiriesPage() {
     );
   }
 
-  function showMessage(text: string) {
+  function showMessage(
+    text: string,
+    tone: MessageTone = "success",
+  ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -791,7 +1289,8 @@ export default function EnquiriesPage() {
   const ready =
     enquiriesReady &&
     customersReady &&
-    programmesReady;
+    programmesReady &&
+    fleetReady;
 
   if (!ready) {
     return (
@@ -851,7 +1350,14 @@ export default function EnquiriesPage() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={messageTone === "error" ? "alert" : "status"}
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}
@@ -1383,6 +1889,7 @@ export default function EnquiriesPage() {
                           <input
                             type="number"
                             min="1"
+                            step="1"
                             value={
                               selectedEnquiry.suggestedGroupNumber
                             }
@@ -1392,7 +1899,7 @@ export default function EnquiriesPage() {
                                 Number(
                                   event.target
                                     .value,
-                                ) || 1,
+                                ),
                               )
                             }
                             className={inputClass}
@@ -1415,18 +1922,40 @@ export default function EnquiriesPage() {
                             }
                             className={inputClass}
                           >
-                            <option value={1}>
-                              Van 1
-                            </option>
+                            {!activeVehicles.some(
+                              (vehicle) =>
+                                vehicle.number ===
+                                selectedEnquiry.suggestedVanNumber,
+                            ) && (
+                              <option
+                                value={
+                                  selectedEnquiry.suggestedVanNumber
+                                }
+                                disabled
+                              >
+                                Van {selectedEnquiry.suggestedVanNumber} — inactive/missing
+                              </option>
+                            )}
 
-                            <option value={2}>
-                              Van 2
-                            </option>
-
-                            <option value={3}>
-                              Van 3
-                            </option>
+                            {activeVehicles.map(
+                              (vehicle) => (
+                                <option
+                                  key={
+                                    vehicle.id
+                                  }
+                                  value={
+                                    vehicle.number
+                                  }
+                                >
+                                  {vehicle.name}
+                                </option>
+                              ),
+                            )}
                           </select>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            Only active fleet vehicles can be assigned when the enquiry becomes a customer.
+                          </p>
                         </Field>
 
                         <ToggleField
@@ -1482,7 +2011,7 @@ export default function EnquiriesPage() {
                                 Number(
                                   event.target
                                     .value,
-                                ) || 0,
+                                ),
                               )
                             }
                             className={inputClass}
@@ -1503,7 +2032,7 @@ export default function EnquiriesPage() {
                                 Number(
                                   event.target
                                     .value,
-                                ) || 0,
+                                ),
                               )
                             }
                             className={inputClass}
@@ -1559,7 +2088,7 @@ export default function EnquiriesPage() {
                                 Number(
                                   event.target
                                     .value,
-                                ) || 0,
+                                ),
                               )
                             }
                             className={inputClass}
@@ -1805,8 +2334,7 @@ export default function EnquiriesPage() {
                                           event
                                             .target
                                             .value,
-                                        ) ||
-                                          currentYear,
+                                        ),
                                       )
                                     }
                                     className={
@@ -1915,6 +2443,37 @@ export default function EnquiriesPage() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+function isValidEmailAddress(
+  value: string,
+) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value,
+  );
+}
+
+function isDateInputValue(
+  value: string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const date =
+    parseDateValue(value);
+
+  return (
+    !Number.isNaN(
+      date.getTime(),
+    ) &&
+    toDateInputValue(date) ===
+      value
   );
 }
 
@@ -2259,36 +2818,5 @@ function ResultBox({
         {detail}
       </div>
     </div>
-  );
-}
-
-function StatusBadge({
-  status,
-}: {
-  status: EnquiryStatus;
-}) {
-  const styles =
-    status ===
-      "Converted to Customer" ||
-    status === "Quote Accepted"
-      ? "bg-green-100 text-green-800"
-      : status ===
-            "Quote Declined" ||
-          status === "Closed"
-        ? "bg-red-100 text-red-700"
-        : status ===
-            "Quote Prepared"
-          ? "bg-blue-100 text-blue-800"
-          : status ===
-              "Visit Arranged"
-            ? "bg-amber-100 text-amber-800"
-            : "bg-slate-100 text-slate-700";
-
-  return (
-    <span
-      className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${styles}`}
-    >
-      {status}
-    </span>
   );
 }

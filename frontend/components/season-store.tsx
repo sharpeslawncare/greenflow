@@ -145,9 +145,13 @@ export function SeasonStoreProvider({
 
         if (Array.isArray(parsed)) {
           setSeasons(
-            parsed
-              .map(normaliseSeason)
-              .sort(sortSeasons),
+            deduplicateSeasons(
+              parsed.map(
+                normaliseSeason,
+              ),
+            ).sort(
+              sortSeasons,
+            ),
           );
         }
       } catch {
@@ -210,34 +214,20 @@ export function SeasonStoreProvider({
         normaliseSeason(season),
       );
 
-    setSeasons((current) => {
-      const exists =
-        current.some(
+    setSeasons((current) =>
+      [
+        regenerated,
+        ...current.filter(
           (item) =>
-            item.id ===
-              regenerated.id ||
-            item.year ===
-              regenerated.year,
-        );
-
-      if (!exists) {
-        return [
-          regenerated,
-          ...current,
-        ].sort(sortSeasons);
-      }
-
-      return current
-        .map((item) =>
-          item.id ===
-            regenerated.id ||
-          item.year ===
-            regenerated.year
-            ? regenerated
-            : item,
-        )
-        .sort(sortSeasons);
-    });
+            item.year !==
+              regenerated.year &&
+            item.id !==
+              regenerated.id,
+        ),
+      ].sort(
+        sortSeasons,
+      ),
+    );
   }
 
   function createSeason({
@@ -245,10 +235,14 @@ export function SeasonStoreProvider({
     firstGroupStartDate,
     groupCount,
   }: CreateSeasonInput) {
+    const normalisedYear =
+      safeSeasonYear(year);
+
     const existing =
       seasons.find(
         (season) =>
-          season.year === year,
+          season.year ===
+          normalisedYear,
       );
 
     if (existing) {
@@ -257,7 +251,7 @@ export function SeasonStoreProvider({
 
     const season =
       createDefaultSeason(
-        year,
+        normalisedYear,
         firstGroupStartDate,
         groupCount,
       );
@@ -344,7 +338,15 @@ export function SeasonStoreProvider({
     year: number,
     date: string,
   ) {
-    if (!isDateValue(date)) {
+    if (
+      !isDateValue(date) ||
+      Number(
+        date.slice(
+          0,
+          4,
+        ),
+      ) !== year
+    ) {
       return;
     }
 
@@ -489,23 +491,41 @@ export function useSeasonStore() {
 
 export function createDefaultSeason(
   year: number,
-  firstGroupStartDate =
-    getDefaultSeasonStartDate(year),
+  firstGroupStartDate?: string,
   groupCount =
     DEFAULT_GROUP_COUNT,
 ): SeasonCalendar {
+  const safeYear =
+    safeSeasonYear(year);
+
+  const safeStartDate =
+    isDateValue(
+      firstGroupStartDate ?? "",
+    ) &&
+    Number(
+      firstGroupStartDate!.slice(
+        0,
+        4,
+      ),
+    ) === safeYear
+      ? firstGroupStartDate!
+      : getDefaultSeasonStartDate(
+          safeYear,
+        );
+
   const now =
     new Date().toISOString();
 
   return generateSeasonDates({
-    id: `season-${year}`,
+    id: `season-${safeYear}`,
 
-    year,
+    year: safeYear,
 
     name:
-      `${year} Standard Treatment Season`,
+      `${safeYear} Standard Treatment Season`,
 
-    firstGroupStartDate,
+    firstGroupStartDate:
+      safeStartDate,
 
     groupCount:
       Math.max(
@@ -546,7 +566,14 @@ export function generateSeasonDates(
     Array.from(
       new Set(
         season.excludedDates.filter(
-          isDateValue,
+          (date) =>
+            isDateValue(date) &&
+            Number(
+              date.slice(
+                0,
+                4,
+              ),
+            ) === season.year,
         ),
       ),
     ).sort();
@@ -772,11 +799,9 @@ function normaliseSeason(
     Partial<SeasonCalendar>,
 ): SeasonCalendar {
   const year =
-    typeof season.year ===
-      "number" &&
-    Number.isFinite(season.year)
-      ? Math.floor(season.year)
-      : new Date().getFullYear();
+    safeSeasonYear(
+      season.year,
+    );
 
   const fallback =
     createDefaultSeason(year);
@@ -796,7 +821,13 @@ function normaliseSeason(
       isDateValue(
         season.firstGroupStartDate ??
           "",
-      )
+      ) &&
+      Number(
+        season.firstGroupStartDate!.slice(
+          0,
+          4,
+        ),
+      ) === year
         ? season.firstGroupStartDate!
         : fallback.firstGroupStartDate,
 
@@ -950,6 +981,188 @@ function isDateValue(
     ) &&
     toDateValue(date) === value
   );
+}
+
+function safeSeasonYear(
+  value: number | undefined,
+) {
+  const currentYear =
+    new Date().getFullYear();
+
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return currentYear;
+  }
+
+  const year =
+    Math.floor(value);
+
+  if (
+    year < 2000 ||
+    year > 2100
+  ) {
+    return currentYear;
+  }
+
+  return year;
+}
+
+function seasonPriority(
+  season: SeasonCalendar,
+) {
+  const updatedAt =
+    Date.parse(
+      season.updatedAt,
+    );
+
+  const createdAt =
+    Date.parse(
+      season.createdAt,
+    );
+
+  const timestamp =
+    Number.isFinite(updatedAt)
+      ? updatedAt
+      : Number.isFinite(
+            createdAt,
+          )
+        ? createdAt
+        : 0;
+
+  return (
+    timestamp +
+    season.excludedDates.length *
+      10 +
+    season.groupCount
+  );
+}
+
+function mergeDuplicateSeasons(
+  preferred: SeasonCalendar,
+  secondary: SeasonCalendar,
+) {
+  return normaliseSeason({
+    ...secondary,
+    ...preferred,
+    id:
+      preferred.id ||
+      secondary.id,
+    name:
+      preferred.name ||
+      secondary.name,
+    firstGroupStartDate:
+      preferred.firstGroupStartDate ||
+      secondary.firstGroupStartDate,
+    excludedDates:
+      Array.from(
+        new Set([
+          ...secondary.excludedDates,
+          ...preferred.excludedDates,
+        ]),
+      ),
+    treatmentRounds:
+      preferred.treatmentRounds,
+    createdAt:
+      preferred.createdAt ||
+      secondary.createdAt,
+    updatedAt:
+      preferred.updatedAt ||
+      secondary.updatedAt,
+  });
+}
+
+function deduplicateSeasons(
+  seasons: SeasonCalendar[],
+) {
+  const byYear =
+    new Map<
+      number,
+      SeasonCalendar
+    >();
+
+  for (
+    const season of seasons
+  ) {
+    const existing =
+      byYear.get(
+        season.year,
+      );
+
+    if (!existing) {
+      byYear.set(
+        season.year,
+        season,
+      );
+      continue;
+    }
+
+    const preferred =
+      seasonPriority(
+        season,
+      ) >
+      seasonPriority(
+        existing,
+      )
+        ? season
+        : existing;
+
+    const secondary =
+      preferred === season
+        ? existing
+        : season;
+
+    byYear.set(
+      season.year,
+      mergeDuplicateSeasons(
+        preferred,
+        secondary,
+      ),
+    );
+  }
+
+  const seenIds =
+    new Set<string>();
+
+  return Array.from(
+    byYear.values(),
+  ).map((season) => {
+    if (
+      !seenIds.has(
+        season.id,
+      )
+    ) {
+      seenIds.add(
+        season.id,
+      );
+      return season;
+    }
+
+    const repaired = {
+      ...season,
+      id:
+        `season-${season.year}`,
+    };
+
+    let suffix = 2;
+
+    while (
+      seenIds.has(
+        repaired.id,
+      )
+    ) {
+      repaired.id =
+        `season-${season.year}-${suffix}`;
+      suffix += 1;
+    }
+
+    seenIds.add(
+      repaired.id,
+    );
+
+    return repaired;
+  });
 }
 
 function safePositiveInteger(

@@ -20,6 +20,7 @@ import {
 } from "@/components/programme-store";
 import { useSeasonStore } from "@/components/season-store";
 import { useTreatmentStore } from "@/components/treatment-store";
+import { useFleetStore } from "@/components/fleet-store";
 
 type CustomerProfileClientProps = {
   customerNumber: string;
@@ -33,6 +34,10 @@ type TabId =
   | "communications"
   | "chemicals"
   | "notes";
+
+type ProfileMessageTone =
+  | "success"
+  | "error";
 
 const tabs: Array<{
   id: TabId;
@@ -109,6 +114,12 @@ export function CustomerProfileClient({
     ready: treatmentsReady,
   } = useTreatmentStore();
 
+  const {
+    vehicles,
+    activeVehicles,
+    ready: fleetReady,
+  } = useFleetStore();
+
   const customer =
     getCustomer(customerNumber);
 
@@ -131,6 +142,13 @@ export function CustomerProfileClient({
     savedMessage,
     setSavedMessage,
   ] = useState("");
+
+  const [
+    savedMessageTone,
+    setSavedMessageTone,
+  ] = useState<ProfileMessageTone>(
+    "success",
+  );
 
   useEffect(() => {
     if (!customer) {
@@ -294,7 +312,8 @@ export function CustomerProfileClient({
     customersReady &&
     programmesReady &&
     seasonsReady &&
-    treatmentsReady;
+    treatmentsReady &&
+    fleetReady;
 
   if (!ready) {
     return (
@@ -313,13 +332,26 @@ export function CustomerProfileClient({
     );
   }
 
+  function showProfileMessage(
+    text: string,
+    tone: ProfileMessageTone = "success",
+  ) {
+    setSavedMessage(text);
+    setSavedMessageTone(tone);
+
+    window.setTimeout(() => {
+      setSavedMessage("");
+    }, 3500);
+  }
+
   function beginEditing() {
   const currentCustomer =
     getCustomer(customerNumber);
 
   if (!currentCustomer) {
-    setSavedMessage(
+    showProfileMessage(
       "The customer record could not be loaded.",
+      "error",
     );
     return;
   }
@@ -350,37 +382,276 @@ function cancelEditing() {
       return;
     }
 
+    const currentCustomer =
+      getCustomer(customerNumber);
+
+    if (!currentCustomer) {
+      showProfileMessage(
+        "The customer record could not be loaded.",
+        "error",
+      );
+      return;
+    }
+
+    const firstName =
+      draft.firstName.trim();
+
+    const surname =
+      draft.surname.trim();
+
+    const fullName =
+      draft.fullName.trim() ||
+      [firstName, surname]
+        .filter(Boolean)
+        .join(" ");
+
+    const address =
+      draft.address.trim();
+
+    const postcode =
+      draft.postcode
+        .trim()
+        .toUpperCase();
+
+    const email =
+      draft.email.trim();
+
+    const mobilePhone =
+      draft.mobilePhone.trim();
+
+    const homePhone =
+      draft.homePhone.trim();
+
+    if (!firstName && !surname) {
+      showProfileMessage(
+        "Enter at least a first name or surname.",
+        "error",
+      );
+      return;
+    }
+
+    if (!address) {
+      showProfileMessage(
+        "Enter the customer's address.",
+        "error",
+      );
+      return;
+    }
+
+    if (!postcode) {
+      showProfileMessage(
+        "Enter the customer's postcode.",
+        "error",
+      );
+      return;
+    }
+
     if (
+      email &&
+      !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(
+        email,
+      )
+    ) {
+      showProfileMessage(
+        "Enter a valid email address or leave the email field blank.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !email &&
+      !mobilePhone &&
+      !homePhone
+    ) {
+      showProfileMessage(
+        "Enter at least one contact method: email, mobile phone or home phone.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.preferredContact === "Email" &&
+      !email
+    ) {
+      showProfileMessage(
+        "Enter an email address when Email is the preferred contact method.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.preferredContact === "SMS" &&
+      !mobilePhone
+    ) {
+      showProfileMessage(
+        "Enter a mobile phone number when SMS is the preferred contact method.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.preferredContact === "Telephone" &&
+      !mobilePhone &&
+      !homePhone
+    ) {
+      showProfileMessage(
+        "Enter a mobile or home phone number when Telephone is the preferred contact method.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.lawnSize,
+      ) ||
+      draft.lawnSize <= 0
+    ) {
+      showProfileMessage(
+        "Lawn size must be a valid number greater than 0 m².",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.treatmentPrice,
+      ) ||
+      draft.treatmentPrice <= 0
+    ) {
+      showProfileMessage(
+        "Treatment price must be a valid amount greater than £0.00.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.groupNumber,
+      ) ||
+      !Number.isInteger(
+        draft.groupNumber,
+      ) ||
       draft.groupNumber < 1
     ) {
-      setSavedMessage(
-        "Group number must be at least 1.",
+      showProfileMessage(
+        "Group number must be a positive whole number.",
+        "error",
+      );
+      return;
+    }
+
+    const selectedVehicle =
+      vehicles.find(
+        (vehicle) =>
+          vehicle.number ===
+          draft.vanNumber,
+      );
+
+    if (!selectedVehicle) {
+      showProfileMessage(
+        "Choose a van that exists in the fleet.",
+        "error",
+      );
+      return;
+    }
+
+    const currentVehicle =
+      vehicles.find(
+        (vehicle) =>
+          vehicle.number ===
+          currentCustomer.vanNumber,
+      );
+
+    const keepingCurrentInactiveVan =
+      currentVehicle &&
+      !currentVehicle.active &&
+      currentVehicle.number ===
+        draft.vanNumber;
+
+    if (
+      !selectedVehicle.active &&
+      !keepingCurrentInactiveVan
+    ) {
+      showProfileMessage(
+        "Choose an active van. Inactive vans cannot be newly assigned to a customer.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.programmeStartDate &&
+      !isDateValue(
+        draft.programmeStartDate,
+      )
+    ) {
+      showProfileMessage(
+        "Enter a valid programme eligibility date or leave it blank.",
+        "error",
       );
       return;
     }
 
     updateCustomer({
       ...draft,
-
-      fullName:
-        draft.fullName.trim() ||
-        [
-          draft.firstName.trim(),
-          draft.surname.trim(),
-        ]
-          .filter(Boolean)
-          .join(" "),
+      firstName,
+      surname,
+      fullName,
+      address,
+      postcode,
+      email,
+      mobilePhone,
+      homePhone,
+      lawnSize:
+        Number(
+          draft.lawnSize,
+        ),
+      treatmentPrice:
+        Number(
+          draft.treatmentPrice.toFixed(
+            2,
+          ),
+        ),
+      groupNumber:
+        Math.floor(
+          draft.groupNumber,
+        ),
+      vanNumber:
+        draft.vanNumber,
+      notes: draft.notes.trim(),
     });
 
     setEditing(false);
 
-    setSavedMessage(
+    showProfileMessage(
       "Customer changes saved. Their programme will automatically follow the dates assigned to the selected group.",
     );
+  }
 
-    window.setTimeout(() => {
-      setSavedMessage("");
-    }, 3500);
+  function vehiclesLabel(
+    vanNumber: number,
+  ) {
+    const vehicle =
+      vehicles.find(
+        (item) =>
+          item.number ===
+          vanNumber,
+      );
+
+    if (!vehicle) {
+      return `Van ${vanNumber} — missing`;
+    }
+
+    return vehicle.active
+      ? vehicle.name
+      : `${vehicle.name} — inactive`;
   }
 
   const aerationPrice =
@@ -393,7 +664,18 @@ function cancelEditing() {
     <>
       <div className="flex h-[calc(100vh-9rem)] min-h-[590px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {savedMessage && (
-          <div className="border-b border-green-200 bg-green-50 px-5 py-3 text-sm font-semibold text-green-800">
+          <div
+            role={
+              savedMessageTone === "error"
+                ? "alert"
+                : "status"
+            }
+            className={`border-b px-5 py-3 text-sm font-semibold ${
+              savedMessageTone === "error"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-green-200 bg-green-50 text-green-800"
+            }`}
+          >
             {savedMessage}
           </div>
         )}
@@ -556,6 +838,9 @@ function cancelEditing() {
               }
               scarificationPrice={
                 scarificationPrice
+              }
+              vehiclesLabel={
+                vehiclesLabel
               }
             />
           )}
@@ -838,6 +1123,7 @@ function cancelEditing() {
                 <input
                   type="number"
                   min="1"
+                  step="1"
                   value={
                     draft.groupNumber
                   }
@@ -846,12 +1132,9 @@ function cancelEditing() {
                       ...draft,
 
                       groupNumber:
-                        Math.max(
-                          1,
-                          Number(
-                            event.target
-                              .value,
-                          ) || 1,
+                        Number(
+                          event.target
+                            .value,
                         ),
                     })
                   }
@@ -895,18 +1178,16 @@ function cancelEditing() {
                 <input
                   type="number"
                   min="0"
+                  step="0.01"
                   value={draft.lawnSize}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
 
                       lawnSize:
-                        Math.max(
-                          0,
-                          Number(
-                            event.target
-                              .value,
-                          ) || 0,
+                        Number(
+                          event.target
+                            .value,
                         ),
                     })
                   }
@@ -927,12 +1208,9 @@ function cancelEditing() {
                       ...draft,
 
                       treatmentPrice:
-                        Math.max(
-                          0,
-                          Number(
-                            event.target
-                              .value,
-                          ) || 0,
+                        Number(
+                          event.target
+                            .value,
                         ),
                     })
                   }
@@ -940,27 +1218,79 @@ function cancelEditing() {
                 />
               </FormField>
 
-              <FormField label="Van number">
-                <input
-                  type="number"
-                  min="1"
+              <FormField label="Assigned van">
+                <select
                   value={draft.vanNumber}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
 
                       vanNumber:
-                        Math.max(
-                          1,
-                          Number(
-                            event.target
-                              .value,
-                          ) || 1,
+                        Number(
+                          event.target
+                            .value,
                         ),
                     })
                   }
                   className={inputClass}
-                />
+                >
+                  {(() => {
+                    const currentVehicle =
+                      vehicles.find(
+                        (vehicle) =>
+                          vehicle.number ===
+                          draft.vanNumber,
+                      );
+
+                    const currentIsInactive =
+                      currentVehicle &&
+                      !currentVehicle.active;
+
+                    return (
+                      <>
+                        {currentIsInactive && (
+                          <option
+                            value={
+                              currentVehicle.number
+                            }
+                          >
+                            {currentVehicle.name} — inactive
+                          </option>
+                        )}
+
+                        {!currentVehicle &&
+                          draft.vanNumber > 0 && (
+                            <option
+                              value={
+                                draft.vanNumber
+                              }
+                            >
+                              Van {draft.vanNumber} — missing from fleet
+                            </option>
+                          )}
+
+                        {activeVehicles.map(
+                          (vehicle) => (
+                            <option
+                              key={
+                                vehicle.id
+                              }
+                              value={
+                                vehicle.number
+                              }
+                            >
+                              {vehicle.name}
+                            </option>
+                          ),
+                        )}
+                      </>
+                    );
+                  })()}
+                </select>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Only active fleet vehicles can be newly assigned. An existing inactive assignment remains visible until you deliberately change it.
+                </p>
               </FormField>
 
               <FormField label="Access and property alerts">
@@ -1048,6 +1378,7 @@ function OverviewTab({
   treatmentPrice,
   aerationPrice,
   scarificationPrice,
+  vehiclesLabel,
 }: {
   customer: StoredCustomer;
   nextVisit: string;
@@ -1056,6 +1387,9 @@ function OverviewTab({
   treatmentPrice: number;
   aerationPrice: number;
   scarificationPrice: number;
+  vehiclesLabel: (
+    vanNumber: number,
+  ) => string;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -1130,7 +1464,11 @@ function OverviewTab({
 
         <CompactRow
           label="Van"
-          value={`Van ${customer.vanNumber}`}
+          value={
+            vehiclesLabel(
+              customer.vanNumber,
+            )
+          }
         />
 
         <AlertRow

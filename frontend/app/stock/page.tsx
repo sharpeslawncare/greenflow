@@ -46,6 +46,10 @@ type ProductForm = {
   supplier: string;
 };
 
+type StockMessageTone =
+  | "success"
+  | "error";
+
 const METADATA_STORAGE_KEY =
   "greenflow-stock-metadata-v2";
 
@@ -71,6 +75,11 @@ export default function StockPage() {
 
   const [message, setMessage] =
     useState("");
+
+  const [messageTone, setMessageTone] =
+    useState<StockMessageTone>(
+      "success",
+    );
 
   const [
     metadata,
@@ -456,6 +465,19 @@ export default function StockPage() {
           "Adjustment"
           ? "Choose a product and enter a stock count of zero or more pack-equivalents."
           : "Choose a product and enter a pack quantity greater than zero.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !isDateValue(
+        movementForm.date,
+      )
+    ) {
+      showMessage(
+        "Choose a valid stock movement date.",
+        "error",
       );
       return;
     }
@@ -483,6 +505,7 @@ export default function StockPage() {
           )} pack equivalents of usage because only ${chemical.currentStock.toFixed(
             3,
           )} are available.`,
+          "error",
         );
         return;
       }
@@ -567,11 +590,30 @@ export default function StockPage() {
   ) {
     event.preventDefault();
 
-    if (
-      !productForm.name.trim()
-    ) {
+    const productName =
+      productForm.name.trim();
+
+    if (!productName) {
       showMessage(
         "Enter a product name.",
+        "error",
+      );
+      return;
+    }
+
+    const duplicateProduct =
+      chemicals.find(
+        (chemical) =>
+          chemical.name
+            .trim()
+            .toLowerCase() ===
+          productName.toLowerCase(),
+      );
+
+    if (duplicateProduct) {
+      showMessage(
+        `A product named "${duplicateProduct.name}" already exists. Open that product instead or use a different name.`,
+        "error",
       );
       return;
     }
@@ -591,6 +633,11 @@ export default function StockPage() {
         productForm.reorderLevel,
       );
 
+    const preferredOrderQuantity =
+      Number(
+        productForm.preferredOrderQuantity,
+      );
+
     if (
       !Number.isFinite(
         packSize,
@@ -598,7 +645,50 @@ export default function StockPage() {
       packSize <= 0
     ) {
       showMessage(
-        "Enter a valid pack size.",
+        "Enter a valid pack size greater than zero.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      productForm.openingStock.trim() === "" ||
+      !Number.isFinite(
+        openingStock,
+      ) ||
+      openingStock < 0
+    ) {
+      showMessage(
+        "Enter an opening stock value of zero or more pack-equivalents.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      productForm.reorderLevel.trim() === "" ||
+      !Number.isFinite(
+        reorderLevel,
+      ) ||
+      reorderLevel < 0
+    ) {
+      showMessage(
+        "Enter a reorder level of zero or more pack-equivalents.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      productForm.preferredOrderQuantity.trim() === "" ||
+      !Number.isFinite(
+        preferredOrderQuantity,
+      ) ||
+      preferredOrderQuantity < 0
+    ) {
+      showMessage(
+        "Enter a preferred order quantity of zero or more packs.",
+        "error",
       );
       return;
     }
@@ -606,30 +696,15 @@ export default function StockPage() {
     const chemical =
       addChemical({
         name:
-          productForm.name.trim(),
+          productName,
         type:
           productForm.type,
         packSize,
         packUnit:
           productForm.packUnit,
         currentStock:
-          Math.max(
-            0,
-            Number.isFinite(
-              openingStock,
-            )
-              ? openingStock
-              : 0,
-          ),
-        reorderLevel:
-          Math.max(
-            0,
-            Number.isFinite(
-              reorderLevel,
-            )
-              ? reorderLevel
-              : 0,
-          ),
+          openingStock,
+        reorderLevel,
         active: true,
       });
 
@@ -639,13 +714,7 @@ export default function StockPage() {
         [chemical.id]: {
           supplier:
             productForm.supplier.trim(),
-          preferredOrderQuantity:
-            Math.max(
-              0,
-              Number(
-                productForm.preferredOrderQuantity,
-              ) || 0,
-            ),
+          preferredOrderQuantity,
         },
       }),
     );
@@ -770,8 +839,10 @@ export default function StockPage() {
 
   function showMessage(
     text: string,
+    tone: StockMessageTone = "success",
   ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -886,7 +957,18 @@ export default function StockPage() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={
+                messageTone === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}
@@ -2186,6 +2268,39 @@ function todayDate() {
     ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function isDateValue(
+  value: string,
+) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const [
+    year,
+    month,
+    day,
+  ] = value
+    .split("-")
+    .map(Number);
+
+  const date =
+    new Date(
+      year,
+      month - 1,
+      day,
+    );
+
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
 }
 
 function formatDate(

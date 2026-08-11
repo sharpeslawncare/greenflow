@@ -136,6 +136,49 @@ export default function TreatmentDocumentPage() {
     treatment.status ===
     "Completed";
 
+  const invoiceReference =
+    treatment.invoiceNumber.trim();
+
+  const documentDate =
+    getRecordDate(
+      treatment,
+    );
+
+  const invoiceProblems: string[] = [];
+
+  if (completed) {
+    if (!invoiceReference) {
+      invoiceProblems.push(
+        "The invoice number is missing.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        customer.treatmentPrice,
+      ) ||
+      customer.treatmentPrice <= 0
+    ) {
+      invoiceProblems.push(
+        "The customer treatment price must be greater than £0.00.",
+      );
+    }
+
+    if (
+      !isDateValue(
+        documentDate,
+      )
+    ) {
+      invoiceProblems.push(
+        "The completed treatment does not have a valid document date.",
+      );
+    }
+  }
+
+  const invoiceBlocked =
+    completed &&
+    invoiceProblems.length > 0;
+
   const documentTitle =
     completed
       ? "Treatment report & invoice"
@@ -264,6 +307,35 @@ export default function TreatmentDocumentPage() {
         }
       `}</style>
 
+      {invoiceBlocked && (
+        <div
+          role="alert"
+          className="print-hide mx-auto mb-4 max-w-[190mm] rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm leading-6 text-red-900"
+        >
+          <div className="font-bold">
+            Invoice unavailable
+          </div>
+
+          <p className="mt-1">
+            GreenFlow has blocked this completed-treatment invoice because one or more required invoice checks failed.
+          </p>
+
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {invoiceProblems.map(
+              (problem) => (
+                <li key={problem}>
+                  {problem}
+                </li>
+              ),
+            )}
+          </ul>
+
+          <p className="mt-2">
+            Customer #{customer.customerNumber} · Treatment: {treatment.treatmentName}
+          </p>
+        </div>
+      )}
+
       <div className="print-hide mx-auto mb-4 flex max-w-[190mm] flex-wrap items-center justify-between gap-3">
         <div>
           <Link
@@ -288,10 +360,26 @@ export default function TreatmentDocumentPage() {
 
           <button
             type="button"
-            onClick={() =>
-              window.print()
+            disabled={invoiceBlocked}
+            onClick={() => {
+              if (
+                invoiceBlocked
+              ) {
+                return;
+              }
+
+              window.print();
+            }}
+            title={
+              invoiceBlocked
+                ? "This completed treatment has invoice validation errors that must be corrected before printing."
+                : undefined
             }
-            className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+            className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white ${
+              invoiceBlocked
+                ? "cursor-not-allowed bg-slate-400"
+                : "bg-[#176b37] hover:bg-[#125b2f]"
+            }`}
           >
             Print or save PDF
           </button>
@@ -299,6 +387,31 @@ export default function TreatmentDocumentPage() {
       </div>
 
       <div className="individual-print-document mx-auto w-[190mm]">
+        {invoiceBlocked ? (
+          <div className="rounded-2xl border border-red-200 bg-white p-10 text-center shadow-sm">
+            <h2 className="text-2xl font-bold text-red-800">
+              Invoice unavailable
+            </h2>
+
+            <p className="mt-3 text-slate-600">
+              This completed treatment cannot be presented as an invoice until all invoice-integrity checks pass.
+            </p>
+
+            <ul className="mx-auto mt-4 max-w-xl list-disc space-y-2 pl-5 text-left text-sm text-slate-600">
+              {invoiceProblems.map(
+                (problem) => (
+                  <li key={problem}>
+                    {problem}
+                  </li>
+                ),
+              )}
+            </ul>
+
+            <p className="mt-4 text-sm text-slate-500">
+              Return to GreenFlow and correct the underlying treatment or customer record before printing or saving this document.
+            </p>
+          </div>
+        ) : (
         <CustomerTreatmentDocument
           businessName={
             settings.business
@@ -332,11 +445,11 @@ export default function TreatmentDocumentPage() {
           customerNumber={
             customer.customerNumber
           }
-          visitDate={formatDate(
-            getRecordDate(
-              treatment,
-            ),
-          )}
+          visitDate={
+            formatDate(
+              documentDate,
+            )
+          }
           treatmentTitle={
             completed
               ? treatmentWording.title
@@ -344,8 +457,7 @@ export default function TreatmentDocumentPage() {
           }
           invoiceLabel="Invoice"
           invoiceReference={
-            treatment.invoiceNumber ||
-            customer.customerNumber
+            invoiceReference
           }
           treatmentDescription={
             visitInformation
@@ -370,7 +482,11 @@ export default function TreatmentDocumentPage() {
           }
           treatmentPrice={
             completed
-              ? customer.treatmentPrice
+              ? Number(
+                  customer.treatmentPrice.toFixed(
+                    2,
+                  ),
+                )
               : undefined
           }
           nextVisit={
@@ -384,6 +500,7 @@ export default function TreatmentDocumentPage() {
           }
           previewShadow
         />
+        )}
       </div>
     </main>
   );

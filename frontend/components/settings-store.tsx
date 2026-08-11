@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -251,6 +252,12 @@ export function SettingsStoreProvider({
   const [ready, setReady] =
     useState(false);
 
+  const invoiceSequenceRef =
+    useRef(
+      defaultSettings.invoices
+        .nextInvoiceNumber,
+    );
+
   useEffect(() => {
     const savedSettings =
       window.localStorage.getItem(
@@ -264,10 +271,17 @@ export function SettingsStoreProvider({
             savedSettings,
           ) as Partial<GreenFlowSettings>;
 
-        setSettings(
+        const mergedSettings =
           mergeSettingsWithDefaults(
             parsedSettings,
-          ),
+          );
+
+        invoiceSequenceRef.current =
+          mergedSettings.invoices
+            .nextInvoiceNumber;
+
+        setSettings(
+          mergedSettings,
         );
       } catch {
         window.localStorage.removeItem(
@@ -278,6 +292,15 @@ export function SettingsStoreProvider({
 
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    invoiceSequenceRef.current =
+      settings.invoices
+        .nextInvoiceNumber;
+  }, [
+    settings.invoices
+      .nextInvoiceNumber,
+  ]);
 
   useEffect(() => {
     if (!ready) return;
@@ -304,14 +327,34 @@ export function SettingsStoreProvider({
   function updateInvoiceSettings(
     updates: Partial<InvoiceSettings>,
   ) {
-    setSettings((current) => ({
-      ...current,
+    setSettings((current) => {
+      const normalisedUpdates =
+        normaliseInvoiceSettings({
+          ...current.invoices,
+          ...updates,
+        });
 
-      invoices: {
-        ...current.invoices,
-        ...updates,
-      },
-    }));
+      const nextInvoiceNumber =
+        Math.max(
+          current.invoices
+            .nextInvoiceNumber,
+          normalisedUpdates
+            .nextInvoiceNumber,
+          invoiceSequenceRef.current,
+        );
+
+      invoiceSequenceRef.current =
+        nextInvoiceNumber;
+
+      return {
+        ...current,
+
+        invoices: {
+          ...normalisedUpdates,
+          nextInvoiceNumber,
+        },
+      };
+    });
   }
 
   function updateTreatmentWording(
@@ -351,10 +394,10 @@ export function SettingsStoreProvider({
         current.advisories.map(
           (advisory) =>
             advisory.id === advisoryId
-              ? {
+              ? normaliseAdvisory({
                   ...advisory,
                   ...updates,
-                }
+                })
               : advisory,
         ),
     }));
@@ -412,6 +455,17 @@ export function SettingsStoreProvider({
   }
 
   function incrementInvoiceNumber() {
+    const nextNumber =
+      Math.max(
+        1,
+        Math.floor(
+          invoiceSequenceRef.current,
+        ),
+      ) + 1;
+
+    invoiceSequenceRef.current =
+      nextNumber;
+
     setSettings((current) => ({
       ...current,
 
@@ -419,8 +473,7 @@ export function SettingsStoreProvider({
         ...current.invoices,
 
         nextInvoiceNumber:
-          current.invoices
-            .nextInvoiceNumber + 1,
+          nextNumber,
       },
     }));
   }
@@ -428,10 +481,10 @@ export function SettingsStoreProvider({
   function reserveInvoiceNumbers(
     quantity: number,
   ) {
-    const safeQuantity = Math.max(
-      0,
-      Math.floor(quantity),
-    );
+    const safeQuantity =
+      safePositiveIntegerOrZero(
+        quantity,
+      );
 
     if (safeQuantity === 0) {
       return [];
@@ -439,9 +492,19 @@ export function SettingsStoreProvider({
 
     const {
       invoicePrefix,
-      nextInvoiceNumber,
       invoiceNumberPadding,
-    } = settings.invoices;
+    } =
+      normaliseInvoiceSettings(
+        settings.invoices,
+      );
+
+    const startNumber =
+      Math.max(
+        1,
+        Math.floor(
+          invoiceSequenceRef.current,
+        ),
+      );
 
     const invoiceNumbers =
       Array.from(
@@ -451,21 +514,25 @@ export function SettingsStoreProvider({
         (_, index) =>
           formatInvoiceNumber(
             invoicePrefix,
-            nextInvoiceNumber + index,
+            startNumber + index,
             invoiceNumberPadding,
           ),
       );
+
+    const nextNumber =
+      startNumber +
+      safeQuantity;
+
+    invoiceSequenceRef.current =
+      nextNumber;
 
     setSettings((current) => ({
       ...current,
 
       invoices: {
         ...current.invoices,
-
         nextInvoiceNumber:
-          current.invoices
-            .nextInvoiceNumber +
-          safeQuantity,
+          nextNumber,
       },
     }));
 
@@ -473,14 +540,26 @@ export function SettingsStoreProvider({
   }
 
   function restoreDefaultSettings() {
-    setSettings((current) => ({
-      ...defaultSettings,
-      invoices: {
-        ...defaultSettings.invoices,
-        nextInvoiceNumber:
-          current.invoices.nextInvoiceNumber,
-      },
-    }));
+    setSettings((current) => {
+      const nextInvoiceNumber =
+        Math.max(
+          current.invoices
+            .nextInvoiceNumber,
+          invoiceSequenceRef.current,
+          1,
+        );
+
+      invoiceSequenceRef.current =
+        nextInvoiceNumber;
+
+      return {
+        ...defaultSettings,
+        invoices: {
+          ...defaultSettings.invoices,
+          nextInvoiceNumber,
+        },
+      };
+    });
   }
 
   const value =
@@ -530,15 +609,17 @@ function mergeSettingsWithDefaults(
   savedSettings: Partial<GreenFlowSettings>,
 ): GreenFlowSettings {
   return {
-    business: {
-      ...defaultSettings.business,
-      ...savedSettings.business,
-    },
+    business:
+      normaliseBusinessSettings({
+        ...defaultSettings.business,
+        ...savedSettings.business,
+      }),
 
-    invoices: {
-      ...defaultSettings.invoices,
-      ...savedSettings.invoices,
-    },
+    invoices:
+      normaliseInvoiceSettings({
+        ...defaultSettings.invoices,
+        ...savedSettings.invoices,
+      }),
 
     treatmentWording: {
       ...defaultSettings.treatmentWording,
@@ -546,36 +627,14 @@ function mergeSettingsWithDefaults(
     },
 
     advisories:
-      Array.isArray(
-        savedSettings.advisories,
-      ) &&
-      savedSettings.advisories.length > 0
-        ? savedSettings.advisories.map(
-            (advisory, index) => ({
-              id:
-                advisory.id ??
-                `advisory-${index + 1}`,
-
-              title:
-                advisory.title ??
-                "Advisory",
-
-              wording:
-                advisory.wording ?? "",
-
-              type:
-                advisory.type ??
-                "information",
-
-              active:
-                advisory.active ?? true,
-            }),
-          )
-        : defaultSettings.advisories.map(
-            (advisory) => ({
-              ...advisory,
-            }),
-          ),
+      normaliseAdvisories(
+        Array.isArray(
+          savedSettings.advisories,
+        ) &&
+        savedSettings.advisories.length > 0
+          ? savedSettings.advisories
+          : defaultSettings.advisories,
+      ),
 
     branding: {
       ...defaultSettings.branding,
@@ -584,25 +643,233 @@ function mergeSettingsWithDefaults(
   };
 }
 
+function normaliseBusinessSettings(
+  settings: BusinessSettings,
+): BusinessSettings {
+  return {
+    ...settings,
+    applicationName:
+      settings.applicationName.trim(),
+    businessName:
+      settings.businessName.trim(),
+    proprietorName:
+      settings.proprietorName.trim(),
+    addressLine1:
+      settings.addressLine1.trim(),
+    addressLine2:
+      settings.addressLine2.trim(),
+    town:
+      settings.town.trim(),
+    county:
+      settings.county.trim(),
+    postcode:
+      settings.postcode
+        .trim()
+        .toUpperCase(),
+    telephone:
+      settings.telephone.trim(),
+    mobile:
+      settings.mobile.trim(),
+    email:
+      settings.email.trim(),
+    website:
+      settings.website.trim(),
+    vatNumber:
+      settings.vatNumber.trim(),
+    companyNumber:
+      settings.companyNumber.trim(),
+  };
+}
+
+function normaliseInvoiceSettings(
+  settings: InvoiceSettings,
+): InvoiceSettings {
+  return {
+    ...settings,
+    invoicePrefix:
+      settings.invoicePrefix
+        .trim()
+        .toUpperCase(),
+    nextInvoiceNumber:
+      safePositiveInteger(
+        settings.nextInvoiceNumber,
+        defaultSettings.invoices
+          .nextInvoiceNumber,
+      ),
+    invoiceNumberPadding:
+      Math.min(
+        12,
+        safePositiveInteger(
+          settings.invoiceNumberPadding,
+          defaultSettings.invoices
+            .invoiceNumberPadding,
+        ),
+      ),
+    paymentInstructions:
+      settings.paymentInstructions.trim(),
+    vatWording:
+      settings.vatWording.trim(),
+    footerMessage:
+      settings.footerMessage.trim(),
+    emailCopyMessage:
+      settings.emailCopyMessage.trim(),
+    showAmountIncludingVat:
+      settings.showAmountIncludingVat !==
+      false,
+  };
+}
+
+function normaliseAdvisoryType(
+  value:
+    | AdvisoryType
+    | string
+    | undefined,
+): AdvisoryType {
+  if (
+    value === "danger" ||
+    value === "warning" ||
+    value === "information"
+  ) {
+    return value;
+  }
+
+  return "information";
+}
+
+function normaliseAdvisory(
+  advisory: Partial<AdvisorySetting>,
+  fallbackId?: string,
+): AdvisorySetting {
+  return {
+    id:
+      advisory.id?.trim() ||
+      fallbackId ||
+      `advisory-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+    title:
+      advisory.title?.trim() ||
+      "Advisory",
+    wording:
+      advisory.wording?.trim() ?? "",
+    type:
+      normaliseAdvisoryType(
+        advisory.type,
+      ),
+    active:
+      advisory.active !== false,
+  };
+}
+
+function normaliseAdvisories(
+  advisories:
+    Array<Partial<AdvisorySetting>>,
+) {
+  const usedIds =
+    new Set<string>();
+
+  return advisories.map(
+    (advisory, index) => {
+      const normalised =
+        normaliseAdvisory(
+          advisory,
+          `advisory-${index + 1}`,
+        );
+
+      let id =
+        normalised.id;
+
+      if (
+        usedIds.has(id)
+      ) {
+        let suffix = 2;
+        let candidate =
+          `${id}-${suffix}`;
+
+        while (
+          usedIds.has(candidate)
+        ) {
+          suffix += 1;
+          candidate =
+            `${id}-${suffix}`;
+        }
+
+        id = candidate;
+      }
+
+      usedIds.add(id);
+
+      return {
+        ...normalised,
+        id,
+      };
+    },
+  );
+}
+
+function safePositiveInteger(
+  value: number | undefined,
+  fallback: number,
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return fallback;
+  }
+
+  return Math.max(
+    1,
+    Math.floor(value),
+  );
+}
+
+function safePositiveIntegerOrZero(
+  value: number,
+) {
+  if (
+    !Number.isFinite(value)
+  ) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.floor(value),
+  );
+}
+
 function formatInvoiceNumber(
   prefix: string,
   number: number,
   padding: number,
 ) {
-  const safePadding = Math.max(
-    1,
-    Math.floor(padding),
-  );
+  const safePadding =
+    Math.min(
+      12,
+      safePositiveInteger(
+        padding,
+        1,
+      ),
+    );
+
+  const safeNumber =
+    safePositiveInteger(
+      number,
+      1,
+    );
 
   const paddedNumber = String(
-    number,
+    safeNumber,
   ).padStart(
     safePadding,
     "0",
   );
 
   const cleanedPrefix =
-    prefix.trim();
+    prefix
+      .trim()
+      .toUpperCase();
 
   return cleanedPrefix
     ? `${cleanedPrefix}-${paddedNumber}`

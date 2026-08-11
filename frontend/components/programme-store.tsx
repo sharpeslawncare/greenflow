@@ -164,13 +164,13 @@ export function ProgrammeStoreProvider({
 
         if (Array.isArray(parsed)) {
           setProgrammes(
-            parsed
-              .map(
+            deduplicateProgrammes(
+              parsed.map(
                 normaliseStoredProgramme,
-              )
-              .sort(
-                sortProgrammes,
               ),
+            ).sort(
+              sortProgrammes,
+            ),
           );
         }
       } catch {
@@ -632,8 +632,10 @@ function synchroniseAllProgrammes(
   seasons: SeasonCalendar[],
 ) {
   let next =
-    existingProgrammes.map(
-      normaliseStoredProgramme,
+    deduplicateProgrammes(
+      existingProgrammes.map(
+        normaliseStoredProgramme,
+      ),
     );
 
   const activeCustomers =
@@ -966,22 +968,8 @@ function isCustomerDateOverride(
     return false;
   }
 
-  const notes =
-    visit.notes.toLowerCase();
-
-  return (
-    notes.includes(
-      "rescheduled from",
-    ) ||
-    notes.includes(
-      "successfully rescheduled",
-    ) ||
-    notes.includes(
-      "customer date override",
-    ) ||
-    notes.includes(
-      "[date override]",
-    )
+  return isLikelyOverrideVisit(
+    visit,
   );
 }
 
@@ -1016,54 +1004,57 @@ function normaliseStoredProgramme(
       ? programme.visits
       : [];
 
-  const visits:
+  const normalisedVisits:
     ProgrammeVisit[] =
-    rawVisits
-      .map(
-        (visit, index) => ({
-          id:
-            visit.id ??
-            createVisitId(
-              customerNumber,
-              year,
-              visit.visitNumber ??
-                index + 1,
-            ),
-
-          visitNumber:
+    rawVisits.map(
+      (visit, index) => ({
+        id:
+          visit.id ??
+          createVisitId(
+            customerNumber,
+            year,
             visit.visitNumber ??
-            index + 1,
+              index + 1,
+          ),
 
-          treatmentName:
-            visit.treatmentName ??
-            `Treatment ${
-              visit.visitNumber ??
-              index + 1
-            }`,
+        visitNumber:
+          visit.visitNumber ??
+          index + 1,
 
-          scheduledDate:
-            visit.scheduledDate ??
-            "",
+        treatmentName:
+          visit.treatmentName ??
+          `Treatment ${
+            visit.visitNumber ??
+            index + 1
+          }`,
 
-          gapAfterPreviousDays:
-            safeNonNegativeNumber(
-              visit.gapAfterPreviousDays,
-            ),
+        scheduledDate:
+          visit.scheduledDate ??
+          "",
 
-          status:
-            normaliseVisitStatus(
-              visit.status,
-            ),
+        gapAfterPreviousDays:
+          safeNonNegativeNumber(
+            visit.gapAfterPreviousDays,
+          ),
 
-          notes:
-            visit.notes ?? "",
-        }),
-      )
-      .sort(
-        (first, second) =>
-          first.visitNumber -
-          second.visitNumber,
-      );
+        status:
+          normaliseVisitStatus(
+            visit.status,
+          ),
+
+        notes:
+          visit.notes ?? "",
+      }),
+    );
+
+  const visits =
+    deduplicateVisits(
+      normalisedVisits,
+    ).sort(
+      (first, second) =>
+        first.visitNumber -
+        second.visitNumber,
+    );
 
   return {
     id:
@@ -1119,6 +1110,331 @@ function normaliseVisitStatus(
   }
 
   return "Scheduled";
+}
+
+function programmeKey(
+  programme: CustomerProgramme,
+) {
+  return `${programme.customerNumber}::${programme.year}`;
+}
+
+function programmePriority(
+  programme: CustomerProgramme,
+) {
+  const historicalVisitCount =
+    programme.visits.filter(
+      (visit) =>
+        visit.status ===
+          "Completed" ||
+        visit.status ===
+          "Skipped",
+    ).length;
+
+  const overrideVisitCount =
+    programme.visits.filter(
+      (visit) =>
+        isLikelyOverrideVisit(
+          visit,
+        ),
+    ).length;
+
+  return (
+    historicalVisitCount * 1000 +
+    overrideVisitCount * 100 +
+    programme.visits.length
+  );
+}
+
+function deduplicateProgrammes(
+  programmes: CustomerProgramme[],
+) {
+  const byKey =
+    new Map<
+      string,
+      CustomerProgramme
+    >();
+
+  for (
+    const programme of programmes
+  ) {
+    const key =
+      programmeKey(
+        programme,
+      );
+
+    const existing =
+      byKey.get(key);
+
+    if (!existing) {
+      byKey.set(
+        key,
+        programme,
+      );
+      continue;
+    }
+
+    const preferred =
+      programmePriority(
+        programme,
+      ) >
+      programmePriority(
+        existing,
+      )
+        ? programme
+        : existing;
+
+    const secondary =
+      preferred === programme
+        ? existing
+        : programme;
+
+    byKey.set(
+      key,
+      mergeDuplicateProgrammes(
+        preferred,
+        secondary,
+      ),
+    );
+  }
+
+  return Array.from(
+    byKey.values(),
+  );
+}
+
+function mergeDuplicateProgrammes(
+  preferred: CustomerProgramme,
+  secondary: CustomerProgramme,
+): CustomerProgramme {
+  return {
+    ...secondary,
+    ...preferred,
+    id:
+      preferred.id ||
+      secondary.id,
+    createdAt:
+      preferred.createdAt ||
+      secondary.createdAt,
+    programmeName:
+      preferred.programmeName ||
+      secondary.programmeName,
+    startDate:
+      preferred.startDate ||
+      secondary.startDate,
+    visits:
+      deduplicateVisits([
+        ...preferred.visits,
+        ...secondary.visits,
+      ]).sort(
+        (first, second) =>
+          first.visitNumber -
+          second.visitNumber,
+      ),
+  };
+}
+
+function deduplicateVisits(
+  visits: ProgrammeVisit[],
+) {
+  const byVisitNumber =
+    new Map<
+      number,
+      ProgrammeVisit
+    >();
+
+  const usedIds =
+    new Set<string>();
+
+  for (const visit of visits) {
+    const existing =
+      byVisitNumber.get(
+        visit.visitNumber,
+      );
+
+    if (!existing) {
+      const uniqueVisit =
+        ensureUniqueVisitId(
+          visit,
+          usedIds,
+        );
+
+      byVisitNumber.set(
+        uniqueVisit.visitNumber,
+        uniqueVisit,
+      );
+      usedIds.add(
+        uniqueVisit.id,
+      );
+      continue;
+    }
+
+    const preferred =
+      visitPriority(visit) >
+      visitPriority(existing)
+        ? visit
+        : existing;
+
+    const secondary =
+      preferred === visit
+        ? existing
+        : visit;
+
+    const merged =
+      mergeDuplicateVisits(
+        preferred,
+        secondary,
+      );
+
+    const withoutOldId =
+      new Set(usedIds);
+
+    withoutOldId.delete(
+      existing.id,
+    );
+
+    const uniqueMerged =
+      ensureUniqueVisitId(
+        merged,
+        withoutOldId,
+      );
+
+    byVisitNumber.set(
+      uniqueMerged.visitNumber,
+      uniqueMerged,
+    );
+
+    usedIds.clear();
+
+    for (
+      const storedVisit of
+      byVisitNumber.values()
+    ) {
+      usedIds.add(
+        storedVisit.id,
+      );
+    }
+  }
+
+  return Array.from(
+    byVisitNumber.values(),
+  );
+}
+
+function visitPriority(
+  visit: ProgrammeVisit,
+) {
+  const historicalScore =
+    visit.status === "Completed" ||
+    visit.status === "Skipped"
+      ? 1000
+      : 0;
+
+  const overrideScore =
+    isLikelyOverrideVisit(
+      visit,
+    )
+      ? 100
+      : 0;
+
+  const dataScore =
+    Number(
+      Boolean(
+        visit.scheduledDate,
+      ),
+    ) *
+      10 +
+    Number(
+      Boolean(
+        visit.treatmentName,
+      ),
+    ) *
+      5 +
+    Number(
+      Boolean(
+        visit.notes,
+      ),
+    );
+
+  return (
+    historicalScore +
+    overrideScore +
+    dataScore
+  );
+}
+
+function mergeDuplicateVisits(
+  preferred: ProgrammeVisit,
+  secondary: ProgrammeVisit,
+): ProgrammeVisit {
+  return {
+    ...secondary,
+    ...preferred,
+    id:
+      preferred.id ||
+      secondary.id,
+    treatmentName:
+      preferred.treatmentName ||
+      secondary.treatmentName,
+    scheduledDate:
+      preferred.scheduledDate ||
+      secondary.scheduledDate,
+    notes:
+      preferred.notes ||
+      secondary.notes,
+  };
+}
+
+function ensureUniqueVisitId(
+  visit: ProgrammeVisit,
+  usedIds: Set<string>,
+) {
+  if (
+    visit.id &&
+    !usedIds.has(
+      visit.id,
+    )
+  ) {
+    return visit;
+  }
+
+  let suffix = 2;
+  let candidate =
+    `${visit.id || "programme-visit"}-${suffix}`;
+
+  while (
+    usedIds.has(candidate)
+  ) {
+    suffix += 1;
+    candidate =
+      `${visit.id || "programme-visit"}-${suffix}`;
+  }
+
+  return {
+    ...visit,
+    id: candidate,
+  };
+}
+
+function isLikelyOverrideVisit(
+  visit: ProgrammeVisit,
+) {
+  const notes =
+    visit.notes.toLowerCase();
+
+  return (
+    notes.includes(
+      "rescheduled from",
+    ) ||
+    notes.includes(
+      "successfully rescheduled",
+    ) ||
+    notes.includes(
+      "customer date override",
+    ) ||
+    notes.includes(
+      "[date override]",
+    )
+  );
 }
 
 function programmesAreEqual(
