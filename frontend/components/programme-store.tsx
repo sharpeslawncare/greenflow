@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -76,13 +77,18 @@ export type CustomerProgramme = {
   visits: ProgrammeVisit[];
 };
 
+export type ProgrammeSaveResult = {
+  success: boolean;
+  message: string;
+};
+
 type ProgrammeStoreValue = {
   programmes: CustomerProgramme[];
   ready: boolean;
 
   saveProgramme: (
     programme: CustomerProgramme,
-  ) => void;
+  ) => ProgrammeSaveResult;
 
   deleteProgramme: (
     programmeId: string,
@@ -145,6 +151,11 @@ export function ProgrammeStoreProvider({
     [],
   );
 
+  const programmesRef =
+    useRef<
+      CustomerProgramme[]
+    >([]);
+
   const [ready, setReady] =
     useState(false);
 
@@ -163,20 +174,29 @@ export function ProgrammeStoreProvider({
         >;
 
         if (Array.isArray(parsed)) {
-          setProgrammes(
+          const loadedProgrammes =
             deduplicateProgrammes(
               parsed.map(
                 normaliseStoredProgramme,
               ),
             ).sort(
               sortProgrammes,
-            ),
+            );
+
+          programmesRef.current =
+            loadedProgrammes;
+
+          setProgrammes(
+            loadedProgrammes,
           );
         }
       } catch {
         window.localStorage.removeItem(
           STORAGE_KEY,
         );
+
+        programmesRef.current =
+          [];
 
         setProgrammes([]);
       }
@@ -202,21 +222,29 @@ export function ProgrammeStoreProvider({
       return;
     }
 
-    setProgrammes((current) => {
-      const next =
-        synchroniseAllProgrammes(
-          current,
-          customers,
-          seasons,
-        );
+    const current =
+      programmesRef.current;
 
-      return programmesAreEqual(
+    const next =
+      synchroniseAllProgrammes(
+        current,
+        customers,
+        seasons,
+      );
+
+    if (
+      programmesAreEqual(
         current,
         next,
       )
-        ? current
-        : next;
-    });
+    ) {
+      return;
+    }
+
+    programmesRef.current =
+      next;
+
+    setProgrammes(next);
   }, [
     ready,
     customersReady,
@@ -224,6 +252,11 @@ export function ProgrammeStoreProvider({
     customers,
     seasons,
   ]);
+
+  useEffect(() => {
+    programmesRef.current =
+      programmes;
+  }, [programmes]);
 
   useEffect(() => {
     if (!ready) {
@@ -238,7 +271,7 @@ export function ProgrammeStoreProvider({
 
   function saveProgramme(
     programme: CustomerProgramme,
-  ) {
+  ): ProgrammeSaveResult {
     const customer =
       customers.find(
         (item) =>
@@ -273,7 +306,6 @@ export function ProgrammeStoreProvider({
           mergeProgrammeWithSeason({
             existing:
               normalised,
-
             customer,
             season,
             groupDates,
@@ -281,16 +313,8 @@ export function ProgrammeStoreProvider({
       }
     }
 
-    /*
-     * A manually added Scheduled or Planned visit
-     * with a past date is removed.
-     *
-     * Completed and Skipped historical records are
-     * retained.
-     */
     normalised = {
       ...normalised,
-
       visits:
         removeInvalidPastActiveVisits(
           normalised.visits,
@@ -300,67 +324,101 @@ export function ProgrammeStoreProvider({
 
     normalised = {
       ...normalised,
-
       startDate:
         normalised.visits[0]
           ?.scheduledDate ??
         "",
     };
 
-    setProgrammes(
-      (current) => {
-        const existingIndex =
-          current.findIndex(
-            (item) =>
-              item.customerNumber ===
-                normalised.customerNumber &&
-              item.year ===
-                normalised.year,
-          );
+    if (
+      !normalised.customerNumber.trim()
+    ) {
+      return {
+        success: false,
+        message:
+          "Programme could not be saved because the customer number is missing.",
+      };
+    }
 
-        if (
-          existingIndex === -1
-        ) {
-          return [
+    if (
+      !Number.isFinite(
+        normalised.year,
+      )
+    ) {
+      return {
+        success: false,
+        message:
+          "Programme could not be saved because the programme year is invalid.",
+      };
+    }
+
+    const current =
+      programmesRef.current;
+
+    const existingIndex =
+      current.findIndex(
+        (item) =>
+          item.customerNumber ===
+            normalised.customerNumber &&
+          item.year ===
+            normalised.year,
+      );
+
+    const next =
+      existingIndex === -1
+        ? [
             normalised,
             ...current,
           ].sort(
             sortProgrammes,
-          );
-        }
-
-        return current
-          .map(
-            (item, index) =>
-              index ===
-              existingIndex
-                ? normalised
-                : item,
           )
-          .sort(
-            sortProgrammes,
-          );
-      },
-    );
+        : current
+            .map(
+              (item, index) =>
+                index ===
+                existingIndex
+                  ? normalised
+                  : item,
+            )
+            .sort(
+              sortProgrammes,
+            );
+
+    programmesRef.current =
+      next;
+
+    setProgrammes(next);
+
+    return {
+      success: true,
+      message:
+        existingIndex === -1
+          ? "Programme saved successfully."
+          : "Programme updated successfully.",
+    };
   }
 
   function deleteProgramme(
     programmeId: string,
   ) {
-    setProgrammes((current) =>
-      current.filter(
+    const next =
+      programmesRef.current.filter(
         (programme) =>
           programme.id !==
           programmeId,
-      ),
-    );
+      );
+
+    programmesRef.current =
+      next;
+
+    setProgrammes(next);
   }
 
   function getProgrammeForCustomer(
     customerNumber: string,
     year: number,
   ) {
-    return programmes.find(
+    return programmesRef.current.find(
       (programme) =>
         programme.customerNumber ===
           customerNumber &&
@@ -371,7 +429,7 @@ export function ProgrammeStoreProvider({
   function getProgrammesForCustomer(
     customerNumber: string,
   ) {
-    return programmes
+    return programmesRef.current
       .filter(
         (programme) =>
           programme.customerNumber ===
@@ -419,7 +477,7 @@ export function ProgrammeStoreProvider({
     }
 
     const existing =
-      programmes.find(
+      programmesRef.current.find(
         (programme) =>
           programme.customerNumber ===
             customerNumber &&
@@ -435,32 +493,42 @@ export function ProgrammeStoreProvider({
         forceGroupDates: true,
       });
 
-    setProgrammes((current) => {
-      const exists =
-        current.some(
-          (programme) =>
-            programme.customerNumber ===
-              customerNumber &&
-            programme.year === year,
-        );
+    const current =
+      programmesRef.current;
 
-      if (!exists) {
-        return [
-          updated,
-          ...current,
-        ].sort(sortProgrammes);
-      }
-
-      return current
-        .map((programme) =>
+    const exists =
+      current.some(
+        (programme) =>
           programme.customerNumber ===
-              customerNumber &&
-          programme.year === year
-            ? updated
-            : programme,
-        )
-        .sort(sortProgrammes);
-    });
+            customerNumber &&
+          programme.year === year,
+      );
+
+    const next =
+      !exists
+        ? [
+            updated,
+            ...current,
+          ].sort(
+            sortProgrammes,
+          )
+        : current
+            .map((programme) =>
+              programme.customerNumber ===
+                  customerNumber &&
+              programme.year ===
+                year
+                ? updated
+                : programme,
+            )
+            .sort(
+              sortProgrammes,
+            );
+
+    programmesRef.current =
+      next;
+
+    setProgrammes(next);
 
     return updated;
   }
@@ -487,13 +555,14 @@ export function ProgrammeStoreProvider({
 
     let createdCount = 0;
 
-    setProgrammes((current) => {
-      let next = [...current];
+    let next = [
+      ...programmesRef.current,
+    ];
 
-      for (
-        const customer of
-        activeCustomers
-      ) {
+    for (
+      const customer of
+      activeCustomers
+    ) {
         const groupDates =
           getGroupSeasonDates(
             season,
@@ -543,10 +612,14 @@ export function ProgrammeStoreProvider({
         }
       }
 
-      return next.sort(
-        sortProgrammes,
-      );
-    });
+    next.sort(
+      sortProgrammes,
+    );
+
+    programmesRef.current =
+      next;
+
+    setProgrammes(next);
 
     return createdCount;
   }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type ChangeEvent,
   type FormEvent,
   type ReactNode,
   useMemo,
@@ -65,6 +66,19 @@ type CustomerRow = {
   annualValue: number;
 };
 
+type CustomerImportRow = {
+  rowNumber: number;
+  customer: Customer;
+  errors: string[];
+  duplicateExisting: boolean;
+  duplicateInFile: boolean;
+};
+
+type CustomerImportPreview = {
+  fileName: string;
+  rows: CustomerImportRow[];
+};
+
 const PAGE_SIZE = 25;
 
 export default function CustomersPage() {
@@ -122,6 +136,23 @@ export default function CustomersPage() {
     successMessage,
     setSuccessMessage,
   ] = useState("");
+
+  const [
+    importPreview,
+    setImportPreview,
+  ] = useState<CustomerImportPreview | null>(
+    null,
+  );
+
+  const [
+    importError,
+    setImportError,
+  ] = useState("");
+
+  const [
+    importingCustomers,
+    setImportingCustomers,
+  ] = useState(false);
 
   const [form, setForm] =
     useState<CustomerForm>(() =>
@@ -292,6 +323,285 @@ export default function CustomersPage() {
   const ready =
     customersReady &&
     programmesReady;
+
+  const importValidRows =
+    importPreview?.rows.filter(
+      (row) =>
+        row.errors.length === 0 &&
+        !row.duplicateExisting &&
+        !row.duplicateInFile,
+    ) ?? [];
+
+  const importSkippedRows =
+    importPreview
+      ? importPreview.rows.length -
+        importValidRows.length
+      : 0;
+
+  async function handleImportFile(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file =
+      event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setImportError("");
+
+    if (
+      !file.name
+        .toLowerCase()
+        .endsWith(".csv")
+    ) {
+      setImportPreview(null);
+      setImportError(
+        "Choose a CSV file. Export your customer list as CSV before importing it into GreenFlow.",
+      );
+      return;
+    }
+
+    try {
+      const contents =
+        await file.text();
+
+      const parsedRows =
+        parseCsv(contents);
+
+      if (parsedRows.length < 2) {
+        setImportPreview(null);
+        setImportError(
+          "The CSV does not contain any customer rows.",
+        );
+        return;
+      }
+
+      const headers =
+        parsedRows[0].map(
+          normaliseImportHeader,
+        );
+
+      const requiredHeaderGroups = [
+        {
+          label: "customer number",
+          aliases: CUSTOMER_IMPORT_HEADERS.customerNumber,
+        },
+        {
+          label: "name",
+          aliases: [
+            ...CUSTOMER_IMPORT_HEADERS.fullName,
+            ...CUSTOMER_IMPORT_HEADERS.firstName,
+            ...CUSTOMER_IMPORT_HEADERS.surname,
+          ],
+        },
+        {
+          label: "address",
+          aliases: CUSTOMER_IMPORT_HEADERS.address,
+        },
+        {
+          label: "postcode",
+          aliases: CUSTOMER_IMPORT_HEADERS.postcode,
+        },
+      ];
+
+      const missingHeaders =
+        requiredHeaderGroups
+          .filter(
+            (group) =>
+              !group.aliases.some(
+                (alias) =>
+                  headers.includes(
+                    normaliseImportHeader(
+                      alias,
+                    ),
+                  ),
+              ),
+          )
+          .map(
+            (group) =>
+              group.label,
+          );
+
+      if (
+        missingHeaders.length > 0
+      ) {
+        setImportPreview(null);
+        setImportError(
+          `The CSV is missing recognised columns for: ${missingHeaders.join(
+            ", ",
+          )}.`,
+        );
+        return;
+      }
+
+      const existingNumbers =
+        new Set(
+          customers.map(
+            (customer) =>
+              customer.customerNumber.trim(),
+          ),
+        );
+
+      const seenInFile =
+        new Set<string>();
+
+      const rows =
+        parsedRows
+          .slice(1)
+          .filter(
+            (values) =>
+              values.some(
+                (value) =>
+                  value.trim() !== "",
+              ),
+          )
+          .map(
+            (values, index) => {
+              const record =
+                makeImportRecord(
+                  headers,
+                  values,
+                );
+
+              const customer =
+                customerFromImportRecord(
+                  record,
+                );
+
+              const errors =
+                validateImportedCustomer(
+                  customer,
+                );
+
+              const customerNumber =
+                customer.customerNumber.trim();
+
+              const duplicateExisting =
+                Boolean(
+                  customerNumber &&
+                    existingNumbers.has(
+                      customerNumber,
+                    ),
+                );
+
+              const duplicateInFile =
+                Boolean(
+                  customerNumber &&
+                    seenInFile.has(
+                      customerNumber,
+                    ),
+                );
+
+              if (customerNumber) {
+                seenInFile.add(
+                  customerNumber,
+                );
+              }
+
+              return {
+                rowNumber:
+                  index + 2,
+                customer,
+                errors,
+                duplicateExisting,
+                duplicateInFile,
+              };
+            });
+
+      setImportPreview({
+        fileName: file.name,
+        rows,
+      });
+    } catch {
+      setImportPreview(null);
+      setImportError(
+        "GreenFlow could not read that CSV file.",
+      );
+    }
+  }
+
+  function closeImportPreview() {
+    setImportPreview(null);
+    setImportError("");
+  }
+
+  function confirmCustomerImport() {
+    if (
+      !importPreview ||
+      importValidRows.length === 0
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Import ${importValidRows.length} customer${
+          importValidRows.length === 1
+            ? ""
+            : "s"
+        }? Existing customer numbers and invalid rows will be skipped.`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setImportingCustomers(true);
+
+    let imported = 0;
+    let failed = 0;
+
+    for (
+      const row of importValidRows
+    ) {
+      const result =
+        addCustomer(
+          row.customer,
+        );
+
+      if (result.success) {
+        imported += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    setImportingCustomers(false);
+    setImportPreview(null);
+    setImportError("");
+    setSearch("");
+    setCurrentPage(1);
+    setActiveTab("Active");
+
+    setSuccessMessage(
+      `${imported} customer${
+        imported === 1 ? "" : "s"
+      } imported successfully.${
+        importSkippedRows > 0
+          ? ` ${importSkippedRows} row${
+              importSkippedRows === 1
+                ? ""
+                : "s"
+            } skipped during validation.`
+          : ""
+      }${
+        failed > 0
+          ? ` ${failed} row${
+              failed === 1
+                ? ""
+                : "s"
+            } could not be added.`
+          : ""
+      } Next customer number is now ${getNextCustomerNumber()}.`,
+    );
+
+    window.setTimeout(() => {
+      setSuccessMessage("");
+    }, 6000);
+  }
 
   function openAddCustomer() {
     setForm(
@@ -614,6 +924,18 @@ export default function CustomersPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
+              <label className="cursor-pointer rounded-xl border border-[#338b45] bg-white px-5 py-2.5 text-sm font-semibold text-[#176b37] transition hover:bg-green-50">
+                Import customers CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={
+                    handleImportFile
+                  }
+                  className="hidden"
+                />
+              </label>
+
               <button
                 type="button"
                 onClick={
@@ -641,6 +963,12 @@ export default function CustomersPage() {
               {
                 successMessage
               }
+            </div>
+          )}
+
+          {importError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              {importError}
             </div>
           )}
 
@@ -1115,6 +1443,228 @@ export default function CustomersPage() {
         </div>
       </main>
 
+      {importPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="max-h-[92vh] w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-2xl font-bold">
+                  Preview customer import
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {importPreview.fileName} · Nothing has been imported yet.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  closeImportPreview
+                }
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-3">
+              <ImportSummaryCard
+                label="Rows found"
+                value={
+                  importPreview.rows.length
+                }
+              />
+
+              <ImportSummaryCard
+                label="Ready to import"
+                value={
+                  importValidRows.length
+                }
+                tone="success"
+              />
+
+              <ImportSummaryCard
+                label="Will be skipped"
+                value={
+                  importSkippedRows
+                }
+                tone={
+                  importSkippedRows > 0
+                    ? "warning"
+                    : "neutral"
+                }
+              />
+            </div>
+
+            <div className="max-h-[55vh] overflow-auto">
+              <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
+                <thead className="sticky top-0 bg-slate-100 text-xs font-bold uppercase tracking-wide text-slate-600">
+                  <tr>
+                    <th className="px-4 py-3">
+                      CSV row
+                    </th>
+                    <th className="px-4 py-3">
+                      Customer
+                    </th>
+                    <th className="px-4 py-3">
+                      Address
+                    </th>
+                    <th className="px-4 py-3">
+                      Status
+                    </th>
+                    <th className="px-4 py-3">
+                      Van / Group
+                    </th>
+                    <th className="px-4 py-3">
+                      Price
+                    </th>
+                    <th className="px-4 py-3">
+                      Import result
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {importPreview.rows.map(
+                    (row) => {
+                      const reasons = [
+                        ...row.errors,
+                        ...(row.duplicateExisting
+                          ? [
+                              "Customer number already exists in GreenFlow.",
+                            ]
+                          : []),
+                        ...(row.duplicateInFile
+                          ? [
+                              "Duplicate customer number in this CSV.",
+                            ]
+                          : []),
+                      ];
+
+                      const valid =
+                        reasons.length === 0;
+
+                      return (
+                        <tr
+                          key={`${row.rowNumber}-${row.customer.customerNumber}`}
+                          className="border-t border-slate-100 align-top"
+                        >
+                          <td className="px-4 py-3 font-semibold text-slate-500">
+                            {row.rowNumber}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-slate-900">
+                              {row.customer.customerNumber || "No number"} ·{" "}
+                              {row.customer.fullName || "No name"}
+                            </div>
+
+                            <div className="mt-1 text-xs text-slate-500">
+                              {row.customer.mobilePhone ||
+                                row.customer.homePhone ||
+                                row.customer.email ||
+                                "No contact details"}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3 text-slate-700">
+                            {row.customer.address || "—"}
+                            <div className="mt-1 text-xs text-slate-500">
+                              {row.customer.postcode || "No postcode"}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {row.customer.status === "Inactive"
+                              ? "Cancelled"
+                              : row.customer.status}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            Van {row.customer.vanNumber} · Group{" "}
+                            {row.customer.groupNumber}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            £{row.customer.treatmentPrice.toFixed(2)}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {valid ? (
+                              <span className="inline-flex rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-800">
+                                Ready
+                              </span>
+                            ) : (
+                              <div>
+                                <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
+                                  Skip
+                                </span>
+
+                                <ul className="mt-2 max-w-md space-y-1 text-xs text-amber-900">
+                                  {reasons.map(
+                                    (reason) => (
+                                      <li
+                                        key={reason}
+                                      >
+                                        {reason}
+                                      </li>
+                                    ),
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    },
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 bg-white px-6 py-5">
+              <p className="max-w-3xl text-sm text-slate-500">
+                Customer numbers are preserved exactly. Existing numbers are never overwritten.
+                New customers created later will continue from the highest numeric customer number.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={
+                    closeImportPreview
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    importValidRows.length === 0 ||
+                    importingCustomers
+                  }
+                  onClick={
+                    confirmCustomerImport
+                  }
+                  className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {importingCustomers
+                    ? "Importing..."
+                    : `Import ${importValidRows.length} customer${
+                        importValidRows.length === 1
+                          ? ""
+                          : "s"
+                      }`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {addingCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <form
@@ -1447,6 +1997,660 @@ value={form.groupNumber}
         </div>
       )}
     </AppShell>
+  );
+}
+
+const CUSTOMER_IMPORT_HEADERS = {
+  customerNumber: [
+    "customer number",
+    "customer no",
+    "customer id",
+    "cust id",
+    "account number",
+    "account no",
+    "number",
+  ],
+  firstName: [
+    "first name",
+    "firstname",
+    "forename",
+  ],
+  surname: [
+    "surname",
+    "last name",
+    "lastname",
+  ],
+  fullName: [
+    "full name",
+    "customer name",
+    "name",
+  ],
+  address: [
+    "address",
+    "customer address",
+    "address 1",
+  ],
+  postcode: [
+    "postcode",
+    "post code",
+    "postal code",
+  ],
+  email: [
+    "email",
+    "email address",
+  ],
+  homePhone: [
+    "home phone",
+    "telephone",
+    "phone",
+    "landline",
+  ],
+  mobilePhone: [
+    "mobile",
+    "mobile phone",
+    "mobile number",
+    "cell",
+  ],
+  lawnSize: [
+    "lawn size",
+    "lawn size m2",
+    "lawn m2",
+    "area",
+    "area m2",
+  ],
+  groupNumber: [
+    "group",
+    "group number",
+    "route group",
+  ],
+  treatmentPrice: [
+    "treatment price",
+    "price",
+    "visit price",
+    "treatment charge",
+  ],
+  status: [
+    "status",
+    "customer status",
+  ],
+  vanNumber: [
+    "van",
+    "van number",
+    "vehicle",
+    "vehicle number",
+  ],
+  nextVisit: [
+    "next visit",
+    "next treatment",
+  ],
+  lastVisit: [
+    "last visit",
+    "last treatment",
+  ],
+  lockedGate: [
+    "locked gate",
+    "gate locked",
+  ],
+  dogOnProperty: [
+    "dog on property",
+    "dog",
+  ],
+  preferredContact: [
+    "preferred contact",
+    "contact preference",
+  ],
+  notes: [
+    "notes",
+    "customer notes",
+  ],
+} as const;
+
+function parseCsv(
+  contents: string,
+): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+
+  const input =
+    contents.replace(
+      /^\uFEFF/,
+      "",
+    );
+
+  for (
+    let index = 0;
+    index < input.length;
+    index += 1
+  ) {
+    const character =
+      input[index];
+
+    if (quoted) {
+      if (
+        character === '"' &&
+        input[index + 1] === '"'
+      ) {
+        field += '"';
+        index += 1;
+      } else if (
+        character === '"'
+      ) {
+        quoted = false;
+      } else {
+        field += character;
+      }
+
+      continue;
+    }
+
+    if (character === '"') {
+      quoted = true;
+      continue;
+    }
+
+    if (character === ",") {
+      row.push(field);
+      field = "";
+      continue;
+    }
+
+    if (
+      character === "\n" ||
+      character === "\r"
+    ) {
+      if (
+        character === "\r" &&
+        input[index + 1] === "\n"
+      ) {
+        index += 1;
+      }
+
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      continue;
+    }
+
+    field += character;
+  }
+
+  if (
+    field.length > 0 ||
+    row.length > 0
+  ) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function normaliseImportHeader(
+  value: string,
+) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[£()]/g, "")
+    .replace(/²/g, "2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function makeImportRecord(
+  headers: string[],
+  values: string[],
+) {
+  const record =
+    new Map<string, string>();
+
+  headers.forEach(
+    (header, index) => {
+      if (!header) {
+        return;
+      }
+
+      record.set(
+        header,
+        values[index]?.trim() ?? "",
+      );
+    },
+  );
+
+  return record;
+}
+
+function importValue(
+  record: Map<string, string>,
+  aliases: readonly string[],
+) {
+  for (
+    const alias of aliases
+  ) {
+    const value =
+      record.get(
+        normaliseImportHeader(
+          alias,
+        ),
+      );
+
+    if (
+      value !== undefined &&
+      value.trim() !== ""
+    ) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function importNumber(
+  value: string,
+  fallback: number,
+) {
+  if (!value.trim()) {
+    return fallback;
+  }
+
+  const cleaned =
+    value
+      .replace(/£/g, "")
+      .replace(/,/g, "")
+      .trim();
+
+  const number =
+    Number(cleaned);
+
+  return Number.isFinite(number)
+    ? number
+    : Number.NaN;
+}
+
+function importBoolean(
+  value: string,
+) {
+  return [
+    "yes",
+    "y",
+    "true",
+    "1",
+  ].includes(
+    value.trim().toLowerCase(),
+  );
+}
+
+function importStatus(
+  value: string,
+): CustomerStatus {
+  const normalised =
+    value.trim().toLowerCase();
+
+  if (
+    normalised === "paused" ||
+    normalised === "pause"
+  ) {
+    return "Paused";
+  }
+
+  if (
+    normalised === "inactive" ||
+    normalised === "cancelled" ||
+    normalised === "canceled" ||
+    normalised === "closed"
+  ) {
+    return "Inactive";
+  }
+
+  return "Active";
+}
+
+function importPreferredContact(
+  value: string,
+  email: string,
+  mobilePhone: string,
+  homePhone: string,
+): Customer["preferredContact"] {
+  const normalised =
+    value.trim().toLowerCase();
+
+  if (
+    normalised.includes(
+      "email",
+    )
+  ) {
+    return "Email";
+  }
+
+  if (
+    normalised.includes(
+      "tel",
+    ) ||
+    normalised.includes(
+      "phone",
+    )
+  ) {
+    return "Telephone";
+  }
+
+  if (
+    normalised.includes(
+      "sms",
+    ) ||
+    normalised.includes(
+      "text",
+    )
+  ) {
+    return "SMS";
+  }
+
+  if (mobilePhone) {
+    return "SMS";
+  }
+
+  if (email) {
+    return "Email";
+  }
+
+  if (homePhone) {
+    return "Telephone";
+  }
+
+  return "SMS";
+}
+
+function customerFromImportRecord(
+  record: Map<string, string>,
+): Customer {
+  const firstName =
+    importValue(
+      record,
+      CUSTOMER_IMPORT_HEADERS.firstName,
+    );
+
+  const surname =
+    importValue(
+      record,
+      CUSTOMER_IMPORT_HEADERS.surname,
+    );
+
+  const suppliedFullName =
+    importValue(
+      record,
+      CUSTOMER_IMPORT_HEADERS.fullName,
+    );
+
+  const fullName =
+    suppliedFullName ||
+    [firstName, surname]
+      .filter(Boolean)
+      .join(" ");
+
+  const email =
+    importValue(
+      record,
+      CUSTOMER_IMPORT_HEADERS.email,
+    );
+
+  const mobilePhone =
+    importValue(
+      record,
+      CUSTOMER_IMPORT_HEADERS.mobilePhone,
+    );
+
+  const homePhone =
+    importValue(
+      record,
+      CUSTOMER_IMPORT_HEADERS.homePhone,
+    );
+
+  const preferredContactValue =
+    importValue(
+      record,
+      CUSTOMER_IMPORT_HEADERS.preferredContact,
+    );
+
+  return {
+    customerNumber:
+      importValue(
+        record,
+        CUSTOMER_IMPORT_HEADERS.customerNumber,
+      ),
+    firstName,
+    surname,
+    fullName,
+    address:
+      importValue(
+        record,
+        CUSTOMER_IMPORT_HEADERS.address,
+      ),
+    postcode:
+      importValue(
+        record,
+        CUSTOMER_IMPORT_HEADERS.postcode,
+      ).toUpperCase(),
+    email,
+    homePhone,
+    mobilePhone,
+    lawnSize:
+      importNumber(
+        importValue(
+          record,
+          CUSTOMER_IMPORT_HEADERS.lawnSize,
+        ),
+        0,
+      ),
+    groupNumber:
+      importNumber(
+        importValue(
+          record,
+          CUSTOMER_IMPORT_HEADERS.groupNumber,
+        ),
+        1,
+      ),
+    treatmentPrice:
+      importNumber(
+        importValue(
+          record,
+          CUSTOMER_IMPORT_HEADERS.treatmentPrice,
+        ),
+        0,
+      ),
+    status:
+      importStatus(
+        importValue(
+          record,
+          CUSTOMER_IMPORT_HEADERS.status,
+        ),
+      ),
+    vanNumber:
+      importNumber(
+        importValue(
+          record,
+          CUSTOMER_IMPORT_HEADERS.vanNumber,
+        ),
+        1,
+      ),
+    nextVisit:
+      importValue(
+        record,
+        CUSTOMER_IMPORT_HEADERS.nextVisit,
+      ) || "Not yet scheduled",
+    lastVisit:
+      importValue(
+        record,
+        CUSTOMER_IMPORT_HEADERS.lastVisit,
+      ) || "No previous visit",
+    lockedGate:
+      importBoolean(
+        importValue(
+          record,
+          CUSTOMER_IMPORT_HEADERS.lockedGate,
+        ),
+      ),
+    dogOnProperty:
+      importBoolean(
+        importValue(
+          record,
+          CUSTOMER_IMPORT_HEADERS.dogOnProperty,
+        ),
+      ),
+    preferredContact:
+      importPreferredContact(
+        preferredContactValue,
+        email,
+        mobilePhone,
+        homePhone,
+      ),
+    notes:
+      importValue(
+        record,
+        CUSTOMER_IMPORT_HEADERS.notes,
+      ),
+  };
+}
+
+function validateImportedCustomer(
+  customer: Customer,
+) {
+  const errors: string[] = [];
+
+  if (
+    !customer.customerNumber.trim()
+  ) {
+    errors.push(
+      "Missing customer number.",
+    );
+  } else if (
+    !/^\d+$/.test(
+      customer.customerNumber.trim(),
+    )
+  ) {
+    errors.push(
+      "Customer number must be numeric.",
+    );
+  }
+
+  if (!customer.fullName.trim()) {
+    errors.push(
+      "Missing customer name.",
+    );
+  }
+
+  if (!customer.address.trim()) {
+    errors.push(
+      "Missing address.",
+    );
+  }
+
+  if (!customer.postcode.trim()) {
+    errors.push(
+      "Missing postcode.",
+    );
+  }
+
+  if (
+    !customer.email &&
+    !customer.mobilePhone &&
+    !customer.homePhone
+  ) {
+    errors.push(
+      "No email or phone number.",
+    );
+  }
+
+  if (
+    customer.email &&
+    !isValidEmailAddress(
+      customer.email,
+    )
+  ) {
+    errors.push(
+      "Invalid email address.",
+    );
+  }
+
+  if (
+    !Number.isFinite(
+      customer.lawnSize,
+    ) ||
+    customer.lawnSize < 0
+  ) {
+    errors.push(
+      "Invalid lawn size.",
+    );
+  }
+
+  if (
+    !Number.isInteger(
+      customer.groupNumber,
+    ) ||
+    customer.groupNumber < 1
+  ) {
+    errors.push(
+      "Invalid group number.",
+    );
+  }
+
+  if (
+    !Number.isInteger(
+      customer.vanNumber,
+    ) ||
+    customer.vanNumber < 1
+  ) {
+    errors.push(
+      "Invalid van number.",
+    );
+  }
+
+  if (
+    !Number.isFinite(
+      customer.treatmentPrice,
+    ) ||
+    customer.treatmentPrice < 0
+  ) {
+    errors.push(
+      "Invalid treatment price.",
+    );
+  }
+
+  return errors;
+}
+
+function ImportSummaryCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: number;
+  tone?:
+    | "neutral"
+    | "success"
+    | "warning";
+}) {
+  const className =
+    tone === "success"
+      ? "border-green-200 bg-green-50 text-green-900"
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-slate-200 bg-white text-slate-900";
+
+  return (
+    <div
+      className={`rounded-xl border px-4 py-3 ${className}`}
+    >
+      <div className="text-xs font-bold uppercase tracking-wide opacity-70">
+        {label}
+      </div>
+
+      <div className="mt-1 text-2xl font-bold">
+        {value}
+      </div>
+    </div>
   );
 }
 

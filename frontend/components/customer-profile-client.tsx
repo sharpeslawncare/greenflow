@@ -11,6 +11,7 @@ import {
 
 import { CustomerTreatmentHistory } from "@/components/customer-treatment-history";
 import {
+  type AdditionalCustomerJob,
   type StoredCustomer,
   useCustomerStore,
 } from "@/components/customer-store";
@@ -19,8 +20,11 @@ import {
   useProgrammeStore,
 } from "@/components/programme-store";
 import { useSeasonStore } from "@/components/season-store";
-import { useTreatmentStore } from "@/components/treatment-store";
-import { useFleetStore } from "@/components/fleet-store";
+import {
+  type TreatmentRecord,
+  useTreatmentStore,
+} from "@/components/treatment-store";
+import { useSettingsStore } from "@/components/settings-store";
 
 type CustomerProfileClientProps = {
   customerNumber: string;
@@ -29,15 +33,12 @@ type CustomerProfileClientProps = {
 type TabId =
   | "overview"
   | "programme"
+  | "additionalJobs"
   | "treatments"
   | "documents"
   | "communications"
   | "chemicals"
   | "notes";
-
-type ProfileMessageTone =
-  | "success"
-  | "error";
 
 const tabs: Array<{
   id: TabId;
@@ -50,6 +51,10 @@ const tabs: Array<{
   {
     id: "programme",
     label: "Programme",
+  },
+  {
+    id: "additionalJobs",
+    label: "Additional Jobs",
   },
   {
     id: "treatments",
@@ -115,10 +120,9 @@ export function CustomerProfileClient({
   } = useTreatmentStore();
 
   const {
-    vehicles,
-    activeVehicles,
-    ready: fleetReady,
-  } = useFleetStore();
+    settings,
+    ready: settingsReady,
+  } = useSettingsStore();
 
   const customer =
     getCustomer(customerNumber);
@@ -144,11 +148,29 @@ export function CustomerProfileClient({
   ] = useState("");
 
   const [
-    savedMessageTone,
-    setSavedMessageTone,
-  ] = useState<ProfileMessageTone>(
-    "success",
-  );
+    addingAdditionalJob,
+    setAddingAdditionalJob,
+  ] = useState(false);
+
+  const [
+    additionalJobTreatmentId,
+    setAdditionalJobTreatmentId,
+  ] = useState("");
+
+  const [
+    additionalJobDate,
+    setAdditionalJobDate,
+  ] = useState("");
+
+  const [
+    additionalJobPrice,
+    setAdditionalJobPrice,
+  ] = useState("");
+
+  const [
+    additionalJobNotes,
+    setAdditionalJobNotes,
+  ] = useState("");
 
   useEffect(() => {
     if (!customer) {
@@ -207,7 +229,13 @@ export function CustomerProfileClient({
                   visit.status ===
                     "Planned") &&
                 visit.scheduledDate >=
-                  today,
+                  today &&
+                !hasFinalTreatmentOutcomeForVisit(
+                  treatments,
+                  programme,
+                  visit,
+                  customerNumber,
+                ),
             ),
         );
 
@@ -216,7 +244,11 @@ export function CustomerProfileClient({
         customerProgrammes[0] ??
         null
       );
-    }, [customerProgrammes]);
+    }, [
+      customerProgrammes,
+      treatments,
+      customerNumber,
+    ]);
 
   const selectedSeason =
     selectedProgramme
@@ -291,7 +323,17 @@ export function CustomerProfileClient({
               visit.status ===
                 "Planned") &&
             visit.scheduledDate >=
-              today,
+              today &&
+            !hasFinalTreatmentOutcomeForVisit(
+              treatments,
+              customerProgrammes.find(
+                (programme) =>
+                  programme.year ===
+                    visit.programmeYear,
+              )!,
+              visit,
+              customerNumber,
+            ),
         )
         .sort(
           (first, second) =>
@@ -299,7 +341,11 @@ export function CustomerProfileClient({
               second.scheduledDate,
             ),
         )[0];
-    }, [customerProgrammes]);
+    }, [
+      customerProgrammes,
+      treatments,
+      customerNumber,
+    ]);
 
   const lastCompletedTreatment =
     customerTreatments.find(
@@ -308,12 +354,70 @@ export function CustomerProfileClient({
         "Completed",
     );
 
+  const activeTreatmentLibrary =
+    settings.treatmentLibrary.filter(
+      (treatment) =>
+        treatment.active,
+    );
+
+  const additionalJobs =
+    (customer?.additionalJobs ?? [])
+      .slice()
+      .sort(
+        (first, second) =>
+          first.scheduledDate.localeCompare(
+            second.scheduledDate,
+          ),
+      );
+
+  const nextAdditionalJob =
+    additionalJobs.find(
+      (job) =>
+        job.status === "Scheduled" &&
+        job.scheduledDate >=
+          toDateValue(new Date()),
+    );
+
+  const nextOverallVisit =
+    [
+      nextProgrammeVisit
+        ? {
+            date:
+              nextProgrammeVisit.scheduledDate,
+            label:
+              nextProgrammeVisit.treatmentName,
+          }
+        : null,
+      nextAdditionalJob
+        ? {
+            date:
+              nextAdditionalJob.scheduledDate,
+            label:
+              nextAdditionalJob.treatmentName,
+          }
+        : null,
+    ]
+      .filter(
+        (
+          item,
+        ): item is {
+          date: string;
+          label: string;
+        } => Boolean(item),
+      )
+      .sort(
+        (first, second) =>
+          first.date.localeCompare(
+            second.date,
+          ),
+      )[0] ?? null;
+
   const ready =
     customersReady &&
     programmesReady &&
     seasonsReady &&
     treatmentsReady &&
-    fleetReady;
+    settingsReady;
 
   if (!ready) {
     return (
@@ -332,26 +436,20 @@ export function CustomerProfileClient({
     );
   }
 
-  function showProfileMessage(
-    text: string,
-    tone: ProfileMessageTone = "success",
-  ) {
-    setSavedMessage(text);
-    setSavedMessageTone(tone);
-
-    window.setTimeout(() => {
-      setSavedMessage("");
-    }, 3500);
-  }
+  /*
+   * Keep a stable non-null customer reference for
+   * nested handlers. TypeScript does not preserve the
+   * earlier narrowing through every callback closure.
+   */
+  const currentCustomer = customer;
 
   function beginEditing() {
   const currentCustomer =
     getCustomer(customerNumber);
 
   if (!currentCustomer) {
-    showProfileMessage(
+    setSavedMessage(
       "The customer record could not be loaded.",
-      "error",
     );
     return;
   }
@@ -382,300 +480,271 @@ function cancelEditing() {
       return;
     }
 
-    const currentCustomer =
-      getCustomer(customerNumber);
-
-    if (!currentCustomer) {
-      showProfileMessage(
-        "The customer record could not be loaded.",
-        "error",
-      );
-      return;
-    }
-
-    const firstName =
-      draft.firstName.trim();
-
-    const surname =
-      draft.surname.trim();
-
-    const fullName =
-      draft.fullName.trim() ||
-      [firstName, surname]
-        .filter(Boolean)
-        .join(" ");
-
-    const address =
-      draft.address.trim();
-
-    const postcode =
-      draft.postcode
-        .trim()
-        .toUpperCase();
-
-    const email =
-      draft.email.trim();
-
-    const mobilePhone =
-      draft.mobilePhone.trim();
-
-    const homePhone =
-      draft.homePhone.trim();
-
-    if (!firstName && !surname) {
-      showProfileMessage(
-        "Enter at least a first name or surname.",
-        "error",
-      );
-      return;
-    }
-
-    if (!address) {
-      showProfileMessage(
-        "Enter the customer's address.",
-        "error",
-      );
-      return;
-    }
-
-    if (!postcode) {
-      showProfileMessage(
-        "Enter the customer's postcode.",
-        "error",
-      );
-      return;
-    }
-
     if (
-      email &&
-      !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(
-        email,
-      )
-    ) {
-      showProfileMessage(
-        "Enter a valid email address or leave the email field blank.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      !email &&
-      !mobilePhone &&
-      !homePhone
-    ) {
-      showProfileMessage(
-        "Enter at least one contact method: email, mobile phone or home phone.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      draft.preferredContact === "Email" &&
-      !email
-    ) {
-      showProfileMessage(
-        "Enter an email address when Email is the preferred contact method.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      draft.preferredContact === "SMS" &&
-      !mobilePhone
-    ) {
-      showProfileMessage(
-        "Enter a mobile phone number when SMS is the preferred contact method.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      draft.preferredContact === "Telephone" &&
-      !mobilePhone &&
-      !homePhone
-    ) {
-      showProfileMessage(
-        "Enter a mobile or home phone number when Telephone is the preferred contact method.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      !Number.isFinite(
-        draft.lawnSize,
-      ) ||
-      draft.lawnSize <= 0
-    ) {
-      showProfileMessage(
-        "Lawn size must be a valid number greater than 0 m².",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      !Number.isFinite(
-        draft.treatmentPrice,
-      ) ||
-      draft.treatmentPrice <= 0
-    ) {
-      showProfileMessage(
-        "Treatment price must be a valid amount greater than £0.00.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      !Number.isFinite(
-        draft.groupNumber,
-      ) ||
-      !Number.isInteger(
-        draft.groupNumber,
-      ) ||
       draft.groupNumber < 1
     ) {
-      showProfileMessage(
-        "Group number must be a positive whole number.",
-        "error",
-      );
-      return;
-    }
-
-    const selectedVehicle =
-      vehicles.find(
-        (vehicle) =>
-          vehicle.number ===
-          draft.vanNumber,
-      );
-
-    if (!selectedVehicle) {
-      showProfileMessage(
-        "Choose a van that exists in the fleet.",
-        "error",
-      );
-      return;
-    }
-
-    const currentVehicle =
-      vehicles.find(
-        (vehicle) =>
-          vehicle.number ===
-          currentCustomer.vanNumber,
-      );
-
-    const keepingCurrentInactiveVan =
-      currentVehicle &&
-      !currentVehicle.active &&
-      currentVehicle.number ===
-        draft.vanNumber;
-
-    if (
-      !selectedVehicle.active &&
-      !keepingCurrentInactiveVan
-    ) {
-      showProfileMessage(
-        "Choose an active van. Inactive vans cannot be newly assigned to a customer.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      draft.programmeStartDate &&
-      !isDateValue(
-        draft.programmeStartDate,
-      )
-    ) {
-      showProfileMessage(
-        "Enter a valid programme eligibility date or leave it blank.",
-        "error",
+      setSavedMessage(
+        "Group number must be at least 1.",
       );
       return;
     }
 
     updateCustomer({
       ...draft,
-      firstName,
-      surname,
-      fullName,
-      address,
-      postcode,
-      email,
-      mobilePhone,
-      homePhone,
-      lawnSize:
-        Number(
-          draft.lawnSize,
-        ),
-      treatmentPrice:
-        Number(
-          draft.treatmentPrice.toFixed(
-            2,
-          ),
-        ),
-      groupNumber:
-        Math.floor(
-          draft.groupNumber,
-        ),
-      vanNumber:
-        draft.vanNumber,
-      notes: draft.notes.trim(),
+
+      fullName:
+        draft.fullName.trim() ||
+        [
+          draft.firstName.trim(),
+          draft.surname.trim(),
+        ]
+          .filter(Boolean)
+          .join(" "),
     });
 
     setEditing(false);
 
-    showProfileMessage(
+    setSavedMessage(
       "Customer changes saved. Their programme will automatically follow the dates assigned to the selected group.",
     );
+
+    window.setTimeout(() => {
+      setSavedMessage("");
+    }, 3500);
   }
 
-  function vehiclesLabel(
-    vanNumber: number,
+  function openAdditionalJobModal() {
+    const firstTreatment =
+      activeTreatmentLibrary[0];
+
+    setAdditionalJobTreatmentId(
+      firstTreatment?.id ?? "",
+    );
+
+    setAdditionalJobDate("");
+
+    setAdditionalJobPrice(
+      firstTreatment
+        ? String(
+            suggestedAdditionalJobPrice(
+              firstTreatment.name,
+              currentCustomer.treatmentPrice,
+            ),
+          )
+        : String(
+            currentCustomer.treatmentPrice,
+          ),
+    );
+
+    setAdditionalJobNotes("");
+    setAddingAdditionalJob(true);
+  }
+
+  function selectAdditionalJobTreatment(
+    treatmentId: string,
   ) {
-    const vehicle =
-      vehicles.find(
+    setAdditionalJobTreatmentId(
+      treatmentId,
+    );
+
+    const treatment =
+      activeTreatmentLibrary.find(
         (item) =>
-          item.number ===
-          vanNumber,
+          item.id === treatmentId,
       );
 
-    if (!vehicle) {
-      return `Van ${vanNumber} — missing`;
+    if (treatment) {
+      setAdditionalJobPrice(
+        String(
+          suggestedAdditionalJobPrice(
+            treatment.name,
+            currentCustomer.treatmentPrice,
+          ),
+        ),
+      );
+    }
+  }
+
+  function saveAdditionalJob() {
+    const treatment =
+      activeTreatmentLibrary.find(
+        (item) =>
+          item.id ===
+          additionalJobTreatmentId,
+      );
+
+    if (!treatment) {
+      setSavedMessage(
+        "Choose a treatment before adding the job.",
+      );
+      return;
     }
 
-    return vehicle.active
-      ? vehicle.name
-      : `${vehicle.name} — inactive`;
+    if (
+      additionalJobDate &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        additionalJobDate,
+      )
+    ) {
+      setSavedMessage(
+        "Choose a valid date or leave the job unscheduled.",
+      );
+      return;
+    }
+
+    const price =
+      Number(
+        additionalJobPrice,
+      );
+
+    if (
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
+      setSavedMessage(
+        "Enter a valid price for the additional job.",
+      );
+      return;
+    }
+
+    const job: AdditionalCustomerJob = {
+      id:
+        `additional-job-${currentCustomer.customerNumber}-${Date.now()}`,
+      treatmentLibraryId:
+        treatment.id,
+      treatmentName:
+        treatment.name,
+      wordingSnapshot:
+        treatment.wording,
+      scheduledDate:
+        additionalJobDate,
+      price,
+      notes:
+        additionalJobNotes.trim(),
+      status:
+        additionalJobDate
+          ? "Scheduled"
+          : "Unscheduled",
+      createdAt:
+        new Date().toISOString(),
+    };
+
+    const result =
+      updateCustomer({
+        ...currentCustomer,
+        additionalJobs: [
+          ...currentCustomer.additionalJobs,
+          job,
+        ],
+      });
+
+    if (!result.success) {
+      setSavedMessage(
+        result.message,
+      );
+      return;
+    }
+
+    setAddingAdditionalJob(false);
+    setSavedMessage(
+      additionalJobDate
+        ? `${treatment.name} added for ${formatDate(
+            additionalJobDate,
+          )}.`
+        : `${treatment.name} added as an unscheduled additional job.`,
+    );
+
+    window.setTimeout(() => {
+      setSavedMessage("");
+    }, 4000);
+  }
+
+  function cancelAdditionalJob(
+    jobId: string,
+  ) {
+    const job =
+      currentCustomer.additionalJobs.find(
+        (item) =>
+          item.id === jobId,
+      );
+
+    if (!job) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Cancel ${job.treatmentName} scheduled for ${formatDate(
+          job.scheduledDate,
+        )}?`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    updateCustomer({
+      ...currentCustomer,
+      additionalJobs:
+        currentCustomer.additionalJobs.map(
+          (item) =>
+            item.id === jobId
+              ? {
+                  ...item,
+                  status:
+                    "Cancelled",
+                }
+              : item,
+        ),
+    });
+  }
+
+  function deleteAdditionalJob(
+    jobId: string,
+  ) {
+    const job =
+      currentCustomer.additionalJobs.find(
+        (item) =>
+          item.id === jobId,
+      );
+
+    if (
+      !job ||
+      job.status === "Completed"
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Delete ${job.treatmentName} from this customer?`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    updateCustomer({
+      ...currentCustomer,
+      additionalJobs:
+        currentCustomer.additionalJobs.filter(
+          (item) =>
+            item.id !== jobId,
+        ),
+    });
   }
 
   const aerationPrice =
-    customer.treatmentPrice * 2;
+    currentCustomer.treatmentPrice * 2;
 
   const scarificationPrice =
-    customer.treatmentPrice * 3;
+    currentCustomer.treatmentPrice * 3;
 
   return (
     <>
       <div className="flex h-[calc(100vh-9rem)] min-h-[590px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {savedMessage && (
-          <div
-            role={
-              savedMessageTone === "error"
-                ? "alert"
-                : "status"
-            }
-            className={`border-b px-5 py-3 text-sm font-semibold ${
-              savedMessageTone === "error"
-                ? "border-red-200 bg-red-50 text-red-800"
-                : "border-green-200 bg-green-50 text-green-800"
-            }`}
-          >
+          <div className="border-b border-green-200 bg-green-50 px-5 py-3 text-sm font-semibold text-green-800">
             {savedMessage}
           </div>
         )}
@@ -721,9 +790,9 @@ function cancelEditing() {
               <HeaderStat
                 label="Next visit"
                 value={
-                  nextProgrammeVisit
+                  nextOverallVisit
                     ? formatDate(
-                        nextProgrammeVisit.scheduledDate,
+                        nextOverallVisit.date,
                       )
                     : "None scheduled"
                 }
@@ -764,8 +833,8 @@ function cancelEditing() {
           <div className="flex flex-wrap gap-2">
             <Link
               href={
-                nextProgrammeVisit
-                  ? `/jobs?date=${nextProgrammeVisit.scheduledDate}`
+                nextOverallVisit
+                  ? `/jobs?date=${nextOverallVisit.date}`
                   : "/jobs"
               }
               className="rounded-lg bg-[#176b37] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#125b2f]"
@@ -839,9 +908,6 @@ function cancelEditing() {
               scarificationPrice={
                 scarificationPrice
               }
-              vehiclesLabel={
-                vehiclesLabel
-              }
             />
           )}
 
@@ -854,6 +920,27 @@ function cancelEditing() {
               }
               season={
                 selectedSeason
+              }
+              treatments={
+                customerTreatments
+              }
+            />
+          )}
+
+          {activeTab ===
+            "additionalJobs" && (
+            <AdditionalJobsTab
+              jobs={
+                additionalJobs
+              }
+              onAddJob={
+                openAdditionalJobModal
+              }
+              onCancelJob={
+                cancelAdditionalJob
+              }
+              onDeleteJob={
+                deleteAdditionalJob
               }
             />
           )}
@@ -905,6 +992,174 @@ function cancelEditing() {
           )}
         </section>
       </div>
+
+      {addingAdditionalJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-bold">
+                  Add additional job
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {currentCustomer.fullName} · Customer {currentCustomer.customerNumber}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setAddingAdditionalJob(
+                    false,
+                  )
+                }
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <FormField label="Treatment / service">
+                <select
+                  value={
+                    additionalJobTreatmentId
+                  }
+                  onChange={(event) =>
+                    selectAdditionalJobTreatment(
+                      event.target.value,
+                    )
+                  }
+                  className={inputClass}
+                >
+                  <option value="">
+                    Choose treatment
+                  </option>
+
+                  {activeTreatmentLibrary.map(
+                    (treatment) => (
+                      <option
+                        key={
+                          treatment.id
+                        }
+                        value={
+                          treatment.id
+                        }
+                      >
+                        {treatment.name}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </FormField>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Scheduled date (optional)">
+                  <input
+                    type="date"
+                    value={
+                      additionalJobDate
+                    }
+                    onChange={(event) =>
+                      setAdditionalJobDate(
+                        event.target.value,
+                      )
+                    }
+                    className={
+                      inputClass
+                    }
+                  />
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Leave blank to keep this job in the unscheduled additional-jobs queue.
+                  </p>
+                </FormField>
+
+                <FormField label="Agreed price including VAT">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-2.5 font-semibold text-slate-500">
+                      £
+                    </span>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        additionalJobPrice
+                      }
+                      onChange={(event) =>
+                        setAdditionalJobPrice(
+                          event.target.value,
+                        )
+                      }
+                      className={`${inputClass} pl-8`}
+                    />
+                  </div>
+                </FormField>
+              </div>
+
+              <FormField label="Job notes">
+                <textarea
+                  rows={4}
+                  value={
+                    additionalJobNotes
+                  }
+                  onChange={(event) =>
+                    setAdditionalJobNotes(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Access requirements, areas to concentrate on, customer request or other job-specific information."
+                  className={inputClass}
+                />
+              </FormField>
+
+              {additionalJobTreatmentId && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+                  <div className="font-bold">
+                    Customer wording snapshot
+                  </div>
+
+                  <p className="mt-1">
+                    {activeTreatmentLibrary.find(
+                      (treatment) =>
+                        treatment.id ===
+                        additionalJobTreatmentId,
+                    )?.wording ||
+                      "No customer wording has been entered for this treatment yet."}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() =>
+                  setAddingAdditionalJob(
+                    false,
+                  )
+                }
+                className="rounded-xl border border-slate-300 px-5 py-2.5 font-semibold hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  saveAdditionalJob
+                }
+                className="rounded-xl bg-[#176b37] px-5 py-2.5 font-semibold text-white hover:bg-[#125b2f]"
+              >
+                Add job
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editing && draft && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
@@ -1123,7 +1378,6 @@ function cancelEditing() {
                 <input
                   type="number"
                   min="1"
-                  step="1"
                   value={
                     draft.groupNumber
                   }
@@ -1132,9 +1386,12 @@ function cancelEditing() {
                       ...draft,
 
                       groupNumber:
-                        Number(
-                          event.target
-                            .value,
+                        Math.max(
+                          1,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 1,
                         ),
                     })
                   }
@@ -1178,16 +1435,18 @@ function cancelEditing() {
                 <input
                   type="number"
                   min="0"
-                  step="0.01"
                   value={draft.lawnSize}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
 
                       lawnSize:
-                        Number(
-                          event.target
-                            .value,
+                        Math.max(
+                          0,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 0,
                         ),
                     })
                   }
@@ -1208,9 +1467,12 @@ function cancelEditing() {
                       ...draft,
 
                       treatmentPrice:
-                        Number(
-                          event.target
-                            .value,
+                        Math.max(
+                          0,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 0,
                         ),
                     })
                   }
@@ -1218,79 +1480,27 @@ function cancelEditing() {
                 />
               </FormField>
 
-              <FormField label="Assigned van">
-                <select
+              <FormField label="Van number">
+                <input
+                  type="number"
+                  min="1"
                   value={draft.vanNumber}
                   onChange={(event) =>
                     setDraft({
                       ...draft,
 
                       vanNumber:
-                        Number(
-                          event.target
-                            .value,
+                        Math.max(
+                          1,
+                          Number(
+                            event.target
+                              .value,
+                          ) || 1,
                         ),
                     })
                   }
                   className={inputClass}
-                >
-                  {(() => {
-                    const currentVehicle =
-                      vehicles.find(
-                        (vehicle) =>
-                          vehicle.number ===
-                          draft.vanNumber,
-                      );
-
-                    const currentIsInactive =
-                      currentVehicle &&
-                      !currentVehicle.active;
-
-                    return (
-                      <>
-                        {currentIsInactive && (
-                          <option
-                            value={
-                              currentVehicle.number
-                            }
-                          >
-                            {currentVehicle.name} — inactive
-                          </option>
-                        )}
-
-                        {!currentVehicle &&
-                          draft.vanNumber > 0 && (
-                            <option
-                              value={
-                                draft.vanNumber
-                              }
-                            >
-                              Van {draft.vanNumber} — missing from fleet
-                            </option>
-                          )}
-
-                        {activeVehicles.map(
-                          (vehicle) => (
-                            <option
-                              key={
-                                vehicle.id
-                              }
-                              value={
-                                vehicle.number
-                              }
-                            >
-                              {vehicle.name}
-                            </option>
-                          ),
-                        )}
-                      </>
-                    );
-                  })()}
-                </select>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Only active fleet vehicles can be newly assigned. An existing inactive assignment remains visible until you deliberately change it.
-                </p>
+                />
               </FormField>
 
               <FormField label="Access and property alerts">
@@ -1370,6 +1580,215 @@ function cancelEditing() {
   );
 }
 
+function AdditionalJobsTab({
+  jobs,
+  onAddJob,
+  onCancelJob,
+  onDeleteJob,
+}: {
+  jobs: AdditionalCustomerJob[];
+  onAddJob: () => void;
+  onCancelJob: (
+    jobId: string,
+  ) => void;
+  onDeleteJob: (
+    jobId: string,
+  ) => void;
+}) {
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold">
+            Additional Jobs
+          </h2>
+
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+            One-off or extra services for this customer. Jobs can be saved without a date and scheduled later from the central Additional Jobs Planner. These sit alongside the normal seasonal programme and do not replace any of the five standard visits.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onAddJob}
+          className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+        >
+          + Add job
+        </button>
+      </div>
+
+      {jobs.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+          <div className="font-bold text-slate-800">
+            No additional jobs
+          </div>
+
+          <p className="mt-2 text-sm text-slate-500">
+            Add Scarification, Aeration, Overseeding or any other service from the Treatment Library.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 space-y-3">
+          {jobs.map((job) => (
+            <article
+              key={job.id}
+              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-bold">
+                      {job.treatmentName}
+                    </h3>
+
+                    <AdditionalJobStatusBadge
+                      status={job.status}
+                    />
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600">
+                    <span>
+                      <strong>Date:</strong>{" "}
+                      {job.scheduledDate
+                        ? formatDate(
+                            job.scheduledDate,
+                          )
+                        : "Unscheduled"}
+                    </span>
+
+                    <span>
+                      <strong>Price:</strong>{" "}
+                      £
+                      {job.price.toFixed(
+                        2,
+                      )}
+                    </span>
+                  </div>
+
+                  {job.notes && (
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                      {job.notes}
+                    </p>
+                  )}
+                </div>
+
+                {job.status !==
+                  "Completed" && (
+                  <div className="flex flex-wrap gap-2">
+                    {job.status ===
+                      "Scheduled" && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onCancelJob(
+                            job.id,
+                          )
+                        }
+                        className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-50"
+                      >
+                        Cancel job
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onDeleteJob(
+                          job.id,
+                        )
+                      }
+                      className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <summary className="cursor-pointer text-xs font-bold text-slate-600">
+                  Customer wording saved with this job
+                </summary>
+
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {job.wordingSnapshot ||
+                    "No wording snapshot was available when this job was created."}
+                </p>
+              </details>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdditionalJobStatusBadge({
+  status,
+}: {
+  status:
+    AdditionalCustomerJob["status"];
+}) {
+  const styles =
+    status === "Completed"
+      ? "bg-green-100 text-green-800"
+      : status === "Cancelled"
+        ? "bg-slate-200 text-slate-600"
+        : status === "Unscheduled"
+          ? "bg-amber-100 text-amber-800"
+          : "bg-blue-100 text-blue-800";
+
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-xs font-bold ${styles}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function suggestedAdditionalJobPrice(
+  treatmentName: string,
+  standardTreatmentPrice: number,
+) {
+  const name =
+    treatmentName
+      .trim()
+      .toLowerCase();
+
+  if (
+    name.includes(
+      "scarif",
+    )
+  ) {
+    return Number(
+      (
+        standardTreatmentPrice *
+        3
+      ).toFixed(2),
+    );
+  }
+
+  if (
+    name.includes(
+      "aerat",
+    )
+  ) {
+    return Number(
+      (
+        standardTreatmentPrice *
+        2
+      ).toFixed(2),
+    );
+  }
+
+  return Number(
+    standardTreatmentPrice.toFixed(
+      2,
+    ),
+  );
+}
+
 function OverviewTab({
   customer,
   nextVisit,
@@ -1378,7 +1797,6 @@ function OverviewTab({
   treatmentPrice,
   aerationPrice,
   scarificationPrice,
-  vehiclesLabel,
 }: {
   customer: StoredCustomer;
   nextVisit: string;
@@ -1387,9 +1805,6 @@ function OverviewTab({
   treatmentPrice: number;
   aerationPrice: number;
   scarificationPrice: number;
-  vehiclesLabel: (
-    vanNumber: number,
-  ) => string;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -1464,11 +1879,7 @@ function OverviewTab({
 
         <CompactRow
           label="Van"
-          value={
-            vehiclesLabel(
-              customer.vanNumber,
-            )
-          }
+          value={`Van ${customer.vanNumber}`}
         />
 
         <AlertRow
@@ -1517,10 +1928,119 @@ function OverviewTab({
   );
 }
 
+function treatmentMatchesProgrammeVisit(
+  treatment: TreatmentRecord,
+  programme: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number],
+  visit: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number]["visits"][number],
+  customerNumber: string,
+) {
+  const directlyLinked =
+    Boolean(
+      treatment.programmeId &&
+        treatment.programmeVisitId &&
+        treatment.programmeId ===
+          programme.id &&
+        treatment.programmeVisitId ===
+          visit.id,
+    );
+
+  if (directlyLinked) {
+    return true;
+  }
+
+  /*
+   * Older GreenFlow treatment records may pre-date
+   * programme/visit IDs. Match those records using the
+   * same safe fallback already used by Visits and Routes.
+   */
+  return (
+    !treatment.programmeVisitId &&
+    treatment.customerNumber ===
+      customerNumber &&
+    treatment.scheduledDate ===
+      visit.scheduledDate &&
+    treatment.treatmentName ===
+      visit.treatmentName
+  );
+}
+
+function getEffectiveProgrammeVisitStatus(
+  treatments: TreatmentRecord[],
+  programme: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number],
+  visit: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number]["visits"][number],
+  customerNumber: string,
+) {
+  const outcome =
+    treatments.find(
+      (treatment) =>
+        (
+          treatment.status ===
+            "Completed" ||
+          treatment.status ===
+            "Cancelled"
+        ) &&
+        treatmentMatchesProgrammeVisit(
+          treatment,
+          programme,
+          visit,
+          customerNumber,
+        ),
+    );
+
+  if (
+    outcome?.status ===
+    "Completed"
+  ) {
+    return "Completed" as const;
+  }
+
+  if (
+    outcome?.status ===
+    "Cancelled"
+  ) {
+    return "Skipped" as const;
+  }
+
+  return visit.status;
+}
+
+function hasFinalTreatmentOutcomeForVisit(
+  treatments: TreatmentRecord[],
+  programme: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number],
+  visit: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number]["visits"][number],
+  customerNumber: string,
+) {
+  const status =
+    getEffectiveProgrammeVisitStatus(
+      treatments,
+      programme,
+      visit,
+      customerNumber,
+    );
+
+  return (
+    status === "Completed" ||
+    status === "Skipped"
+  );
+}
+
 function ProgrammeTab({
   customer,
   programme,
   season,
+  treatments,
 }: {
   customer: StoredCustomer;
 
@@ -1535,6 +2055,9 @@ function ProgrammeTab({
         typeof useSeasonStore
       >["seasons"][number]
     | null;
+
+  treatments:
+    TreatmentRecord[];
 }) {
   if (!season) {
     return (
@@ -1615,6 +2138,16 @@ function ProgrammeTab({
                       groupDate,
                 );
 
+              const effectiveStatus =
+                visit && programme
+                  ? getEffectiveProgrammeVisitStatus(
+                      treatments,
+                      programme,
+                      visit,
+                      customer.customerNumber,
+                    )
+                  : null;
+
               return (
                 <div
                   key={
@@ -1680,6 +2213,7 @@ function ProgrammeTab({
                   {visit ? (
                     <ProgrammeStatus
                       status={
+                        effectiveStatus ??
                         visit.status
                       }
                     />

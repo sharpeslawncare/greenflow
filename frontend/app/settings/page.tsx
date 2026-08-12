@@ -14,6 +14,7 @@ import {
   type BrandingSettings,
   type BusinessSettings,
   type InvoiceSettings,
+  type TreatmentLibraryItem,
   type TreatmentWordingSettings,
   useSettingsStore,
 } from "@/components/settings-store";
@@ -37,10 +38,6 @@ type SettingsTab =
   | "advisories"
   | "branding"
   | "fleet";
-
-type SettingsMessageTone =
-  | "success"
-  | "error";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -91,6 +88,9 @@ export default function SettingsPage() {
     updateBusinessSettings,
     updateInvoiceSettings,
     updateTreatmentWording,
+    addTreatmentLibraryItem,
+    updateTreatmentLibraryItem,
+    deleteTreatmentLibraryItem,
     updateBrandingSettings,
     updateAdvisory,
     addAdvisory,
@@ -137,11 +137,6 @@ export default function SettingsPage() {
   const [message, setMessage] =
     useState("");
 
-  const [messageTone, setMessageTone] =
-    useState<SettingsMessageTone>(
-      "success",
-    );
-
   const [healthCheckRun, setHealthCheckRun] =
     useState(false);
 
@@ -161,12 +156,8 @@ export default function SettingsPage() {
     }
   }, []);
 
-  function showMessage(
-    text: string,
-    tone: SettingsMessageTone = "success",
-  ) {
+  function showMessage(text: string) {
     setMessage(text);
-    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -271,7 +262,6 @@ export default function SettingsPage() {
     } catch {
       showMessage(
         "The selected file is not valid JSON.",
-        "error",
       );
       return;
     }
@@ -281,7 +271,6 @@ export default function SettingsPage() {
     ) {
       showMessage(
         "The selected file is not a valid GreenFlow backup.",
-        "error",
       );
       return;
     }
@@ -297,6 +286,11 @@ export default function SettingsPage() {
     const currentSettingsJson =
       window.localStorage.getItem(
         "greenflow-business-settings-v1",
+      );
+
+    const currentCustomerSequence =
+      window.localStorage.getItem(
+        "greenflow-customer-sequence-v1",
       );
 
     const currentGreenFlowKeys: string[] =
@@ -349,6 +343,16 @@ export default function SettingsPage() {
       currentSettingsJson,
       window.localStorage.getItem(
         "greenflow-business-settings-v1",
+      ),
+    );
+
+    preserveHighestCustomerSequence(
+      currentCustomerSequence,
+      window.localStorage.getItem(
+        "greenflow-customer-sequence-v1",
+      ),
+      window.localStorage.getItem(
+        "greenflow-customers-v1",
       ),
     );
 
@@ -523,7 +527,6 @@ export default function SettingsPage() {
       if (phrase !== null) {
         showMessage(
           'Full demo reset cancelled. The phrase must be exactly "RESET DEMO".',
-          "error",
         );
       }
       return;
@@ -561,32 +564,6 @@ export default function SettingsPage() {
 
     window.location.reload();
   }
-
-  const minimumNextInvoiceNumber =
-    Math.max(
-      1,
-      ...treatments.map(
-        (treatment) => {
-          const match =
-            treatment.invoiceNumber
-              ?.trim()
-              .match(/(\d+)$/);
-
-          if (!match) {
-            return 0;
-          }
-
-          const assignedNumber =
-            Number(match[1]);
-
-          return Number.isFinite(
-            assignedNumber,
-          )
-            ? assignedNumber + 1
-            : 0;
-        },
-      ),
-    );
 
   function testInvoiceNumber() {
     const confirmed = window.confirm(
@@ -659,18 +636,7 @@ export default function SettingsPage() {
           </header>
 
           {message && (
-            <div
-              role={
-                messageTone === "error"
-                  ? "alert"
-                  : "status"
-              }
-              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
-                messageTone === "error"
-                  ? "border-red-200 bg-red-50 text-red-800"
-                  : "border-green-200 bg-green-50 text-green-800"
-              }`}
-            >
+            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
               {message}
             </div>
           )}
@@ -762,17 +728,11 @@ export default function SettingsPage() {
                 <InvoicesTab
                   settings={settings.invoices}
                   nextInvoiceNumber={getNextInvoiceNumber()}
-                  minimumNextInvoiceNumber={
-                    minimumNextInvoiceNumber
-                  }
                   updateSettings={
                     updateInvoiceSettings
                   }
                   onIncreaseInvoiceNumber={
                     testInvoiceNumber
-                  }
-                  showMessage={
-                    showMessage
                   }
                 />
               )}
@@ -782,8 +742,20 @@ export default function SettingsPage() {
                   settings={
                     settings.treatmentWording
                   }
+                  treatmentLibrary={
+                    settings.treatmentLibrary
+                  }
                   updateSettings={
                     updateTreatmentWording
+                  }
+                  addTreatment={
+                    addTreatmentLibraryItem
+                  }
+                  updateTreatment={
+                    updateTreatmentLibraryItem
+                  }
+                  deleteTreatment={
+                    deleteTreatmentLibraryItem
                   }
                 />
               )}
@@ -1064,6 +1036,134 @@ function preserveHighestInvoiceSequence(
     // If either settings record cannot be read,
     // leave the restored backup untouched.
   }
+}
+
+function preserveHighestCustomerSequence(
+  currentSequenceValue: string | null,
+  restoredSequenceValue: string | null,
+  restoredCustomersJson: string | null,
+) {
+  const currentSequence =
+    parsePositiveSafeInteger(
+      currentSequenceValue,
+    );
+
+  const restoredSequence =
+    parsePositiveSafeInteger(
+      restoredSequenceValue,
+    );
+
+  let highestRestoredCustomer = 0;
+
+  if (restoredCustomersJson) {
+    try {
+      const restoredCustomers =
+        JSON.parse(
+          restoredCustomersJson,
+        ) as unknown;
+
+      if (
+        Array.isArray(
+          restoredCustomers,
+        )
+      ) {
+        highestRestoredCustomer =
+          restoredCustomers.reduce(
+            (
+              highest,
+              customer,
+            ) => {
+              if (
+                !customer ||
+                typeof customer !==
+                  "object"
+              ) {
+                return highest;
+              }
+
+              const customerNumber =
+                "customerNumber" in
+                  customer
+                  ? String(
+                      (
+                        customer as {
+                          customerNumber?:
+                            unknown;
+                        }
+                      ).customerNumber ??
+                        "",
+                    ).trim()
+                  : "";
+
+              if (
+                !/^\d+$/.test(
+                  customerNumber,
+                )
+              ) {
+                return highest;
+              }
+
+              const numericValue =
+                Number(
+                  customerNumber,
+                );
+
+              return Number.isSafeInteger(
+                numericValue,
+              ) &&
+                numericValue > 0
+                ? Math.max(
+                    highest,
+                    numericValue,
+                  )
+                : highest;
+            },
+            0,
+          );
+      }
+    } catch {
+      /*
+       * Leave highestRestoredCustomer at zero.
+       * The current/restored sequence values can still
+       * protect the watermark even if customer JSON is
+       * unreadable.
+       */
+    }
+  }
+
+  const highestSequence =
+    Math.max(
+      currentSequence,
+      restoredSequence,
+      highestRestoredCustomer,
+    );
+
+  if (highestSequence <= 0) {
+    return;
+  }
+
+  window.localStorage.setItem(
+    "greenflow-customer-sequence-v1",
+    String(highestSequence),
+  );
+}
+
+function parsePositiveSafeInteger(
+  value: string | null,
+) {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed =
+    Number(value);
+
+  return Number.isSafeInteger(
+    parsed,
+  ) &&
+    parsed > 0
+    ? parsed
+    : 0;
 }
 
 function formatBackupDate(
@@ -1833,98 +1933,16 @@ function BusinessTab({
 function InvoicesTab({
   settings,
   nextInvoiceNumber,
-  minimumNextInvoiceNumber,
   updateSettings,
   onIncreaseInvoiceNumber,
-  showMessage,
 }: {
   settings: InvoiceSettings;
   nextInvoiceNumber: string;
-  minimumNextInvoiceNumber: number;
   updateSettings: (
     updates: Partial<InvoiceSettings>,
   ) => void;
   onIncreaseInvoiceNumber: () => void;
-  showMessage: (
-    text: string,
-    tone?: SettingsMessageTone,
-  ) => void;
 }) {
-  const [
-    invoiceNumberDraft,
-    setInvoiceNumberDraft,
-  ] = useState(
-    String(
-      settings.nextInvoiceNumber,
-    ),
-  );
-
-  useEffect(() => {
-    setInvoiceNumberDraft(
-      String(
-        settings.nextInvoiceNumber,
-      ),
-    );
-  }, [
-    settings.nextInvoiceNumber,
-  ]);
-
-  function saveInvoiceNumberDraft() {
-    const trimmed =
-      invoiceNumberDraft.trim();
-
-    const parsed =
-      Number(trimmed);
-
-    if (
-      !trimmed ||
-      !Number.isInteger(parsed) ||
-      parsed < 1
-    ) {
-      setInvoiceNumberDraft(
-        String(
-          settings.nextInvoiceNumber,
-        ),
-      );
-
-      showMessage(
-        "Next invoice number must be a whole number of at least 1.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      parsed <
-      minimumNextInvoiceNumber
-    ) {
-      setInvoiceNumberDraft(
-        String(
-          settings.nextInvoiceNumber,
-        ),
-      );
-
-      showMessage(
-        `Next invoice number cannot be lower than ${minimumNextInvoiceNumber} because a higher invoice number has already been assigned.`,
-        "error",
-      );
-      return;
-    }
-
-    updateSettings({
-      nextInvoiceNumber:
-        parsed,
-    });
-
-    setInvoiceNumberDraft(
-      String(parsed),
-    );
-
-    showMessage(
-      "Next invoice number updated.",
-    );
-  }
-
   return (
     <div>
       <SectionHeading
@@ -1951,37 +1969,20 @@ function InvoicesTab({
           <Field label="Next invoice number">
             <input
               type="number"
-              min={
-                minimumNextInvoiceNumber
-              }
-              step="1"
+              min="1"
               value={
-                invoiceNumberDraft
+                settings.nextInvoiceNumber
               }
               onChange={(event) =>
-                setInvoiceNumberDraft(
-                  event.target.value,
-                )
+                updateSettings({
+                  nextInvoiceNumber:
+                    Number(
+                      event.target.value,
+                    ) || 1,
+                })
               }
-              onBlur={
-                saveInvoiceNumberDraft
-              }
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter"
-                ) {
-                  event.preventDefault();
-                  saveInvoiceNumberDraft();
-                  event.currentTarget.blur();
-                }
-              }}
               className={inputClass}
             />
-
-            <div className="mt-1 text-xs text-slate-500">
-              Lowest safe next number:{" "}
-              {minimumNextInvoiceNumber}
-            </div>
           </Field>
 
           <Field label="Number padding">
@@ -2125,7 +2126,10 @@ function InvoicesTab({
             </div>
 
             <p className="mt-3 text-sm leading-6 text-green-800">
-              GreenFlow reserves invoice numbers during successful Visit Centre completion before stock is deducted. This preview shows the next number currently available for reservation.
+              This is a preview only. GreenFlow is
+              not yet reserving or permanently
+              assigning invoice numbers to individual
+              documents.
             </p>
 
             <button
@@ -2133,12 +2137,16 @@ function InvoicesTab({
               onClick={onIncreaseInvoiceNumber}
               className="mt-4 w-full rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
             >
-              Increase next number
+              Test next number
             </button>
           </div>
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-            The current browser-based sequence is protected against moving below invoice numbers already assigned to Treatment Records. A permanent database will still be required for fully transactional multi-user invoice numbering.
+            Sequential invoice numbering needs to be
+            finalised when GreenFlow is connected to
+            its permanent database. Until then,
+            QuickBooks remains the official invoice
+            and VAT record.
           </div>
         </aside>
       </div>
@@ -2148,142 +2156,445 @@ function InvoicesTab({
 
 function TreatmentWordingTab({
   settings,
+  treatmentLibrary,
   updateSettings,
+  addTreatment,
+  updateTreatment,
+  deleteTreatment,
 }: {
   settings: TreatmentWordingSettings;
+  treatmentLibrary: TreatmentLibraryItem[];
   updateSettings: (
     updates: Partial<TreatmentWordingSettings>,
   ) => void;
+  addTreatment: () => string;
+  updateTreatment: (
+    treatmentId: string,
+    updates: Partial<
+      Pick<
+        TreatmentLibraryItem,
+        "name" | "wording" | "active"
+      >
+    >,
+  ) => void;
+  deleteTreatment: (
+    treatmentId: string,
+  ) => void;
 }) {
+  const [newTreatmentId, setNewTreatmentId] =
+    useState("");
+
+  function handleAddTreatment() {
+    const treatmentId =
+      addTreatment();
+
+    setNewTreatmentId(
+      treatmentId,
+    );
+
+    window.setTimeout(() => {
+      document
+        .getElementById(
+          `treatment-library-${treatmentId}`,
+        )
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+    }, 0);
+  }
+
+  const annualTreatments =
+    treatmentLibrary.filter(
+      (treatment) =>
+        treatment.category ===
+        "Annual programme",
+    );
+
+  const specialistTreatments =
+    treatmentLibrary.filter(
+      (treatment) =>
+        treatment.category ===
+        "Specialist",
+    );
+
+  const additionalTreatments =
+    treatmentLibrary.filter(
+      (treatment) =>
+        treatment.category ===
+        "Additional",
+    );
+
   return (
     <div>
-      <SectionHeading
-        title="Treatment wording"
-        description="These messages can be used on customer treatment reports without displaying your internal product records."
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <SectionHeading
+          title="Treatment library"
+          description="Manage the treatments and customer-facing wording GreenFlow can use. Add new services here as the business grows; inactive treatments stay in the library for historical use but can be hidden from future job selection."
+        />
+
+        <button
+          type="button"
+          onClick={
+            handleAddTreatment
+          }
+          className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+        >
+          + Add treatment
+        </button>
+      </div>
+
+      <TreatmentLibrarySection
+        title="Annual programme"
+        description="Protected core treatments used by the standard yearly programme."
+        treatments={
+          annualTreatments
+        }
+        updateTreatment={
+          updateTreatment
+        }
+        deleteTreatment={
+          deleteTreatment
+        }
       />
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <TextSetting
-          label="Seasonal fertiliser visit"
-          value={
-            settings.seasonalFertiliserVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              seasonalFertiliserVisit:
-                value,
-            })
-          }
-        />
+      <TreatmentLibrarySection
+        title="Specialist treatments"
+        description="Existing specialist lawn-care services."
+        treatments={
+          specialistTreatments
+        }
+        updateTreatment={
+          updateTreatment
+        }
+        deleteTreatment={
+          deleteTreatment
+        }
+      />
 
-        <TextSetting
-          label="Selective herbicide visit"
-          value={settings.herbicideVisit}
-          onChange={(value) =>
-            updateSettings({
-              herbicideVisit: value,
-            })
-          }
-        />
+      <TreatmentLibrarySection
+        title="Additional treatments"
+        description="New and bespoke services you add yourself. These will become available for job selection in the next integration stage."
+        treatments={
+          additionalTreatments
+        }
+        updateTreatment={
+          updateTreatment
+        }
+        deleteTreatment={
+          deleteTreatment
+        }
+        emptyMessage="No additional treatments yet. Use “Add treatment” to create your first one."
+        highlightId={
+          newTreatmentId
+        }
+      />
 
-        <TextSetting
-          label="Combined fertiliser and herbicide"
-          value={
-            settings.combinedFertiliserAndHerbicideVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              combinedFertiliserAndHerbicideVisit:
-                value,
-            })
-          }
-        />
+      <details className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <summary className="cursor-pointer font-bold text-slate-800">
+          Existing compatibility wording
+        </summary>
 
-        <TextSetting
-          label="Moss-control visit"
-          value={
-            settings.mossControlVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              mossControlVisit: value,
-            })
-          }
-        />
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          GreenFlow still uses these fields in older customer-document logic. They are being retained while the new Treatment Library is connected across the rest of the system.
+        </p>
 
-        <TextSetting
-          label="Aeration"
-          value={settings.aerationVisit}
-          onChange={(value) =>
-            updateSettings({
-              aerationVisit: value,
-            })
-          }
-        />
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <TextSetting
+            label="Seasonal fertiliser visit"
+            value={
+              settings.seasonalFertiliserVisit
+            }
+            onChange={(value) =>
+              updateSettings({
+                seasonalFertiliserVisit:
+                  value,
+              })
+            }
+          />
 
-        <TextSetting
-          label="Scarification"
-          value={
-            settings.scarificationVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              scarificationVisit: value,
-            })
-          }
-        />
+          <TextSetting
+            label="Selective herbicide visit"
+            value={
+              settings.herbicideVisit
+            }
+            onChange={(value) =>
+              updateSettings({
+                herbicideVisit:
+                  value,
+              })
+            }
+          />
 
-        <TextSetting
-          label="Overseeding"
-          value={
-            settings.overseedingVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              overseedingVisit: value,
-            })
-          }
-        />
+          <TextSetting
+            label="Combined fertiliser and herbicide"
+            value={
+              settings.combinedFertiliserAndHerbicideVisit
+            }
+            onChange={(value) =>
+              updateSettings({
+                combinedFertiliserAndHerbicideVisit:
+                  value,
+              })
+            }
+          />
 
-        <TextSetting
-          label="Cancelled visit"
-          value={
-            settings.cancelledVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              cancelledVisit: value,
-            })
-          }
-        />
+          <TextSetting
+            label="Generic moss-control visit"
+            value={
+              settings.mossControlVisit
+            }
+            onChange={(value) =>
+              updateSettings({
+                mossControlVisit:
+                  value,
+              })
+            }
+          />
 
-        <TextSetting
-          label="Rescheduled visit"
-          value={
-            settings.rescheduledVisit
-          }
-          onChange={(value) =>
-            updateSettings({
-              rescheduledVisit: value,
-            })
-          }
-        />
+          <TextSetting
+            label="Cancelled visit"
+            value={
+              settings.cancelledVisit
+            }
+            onChange={(value) =>
+              updateSettings({
+                cancelledVisit:
+                  value,
+              })
+            }
+          />
 
-        <TextSetting
-          label="Preparing for the next visit"
-          value={
-            settings.nextVisitPreparation
-          }
-          onChange={(value) =>
-            updateSettings({
-              nextVisitPreparation:
-                value,
-            })
-          }
-          large
-        />
-      </div>
+          <TextSetting
+            label="Rescheduled visit"
+            value={
+              settings.rescheduledVisit
+            }
+            onChange={(value) =>
+              updateSettings({
+                rescheduledVisit:
+                  value,
+              })
+            }
+          />
+
+          <TextSetting
+            label="Preparing for the next visit"
+            value={
+              settings.nextVisitPreparation
+            }
+            onChange={(value) =>
+              updateSettings({
+                nextVisitPreparation:
+                  value,
+              })
+            }
+            large
+          />
+        </div>
+      </details>
     </div>
+  );
+}
+
+function TreatmentLibrarySection({
+  title,
+  description,
+  treatments,
+  updateTreatment,
+  deleteTreatment,
+  emptyMessage = "",
+  highlightId = "",
+}: {
+  title: string;
+  description: string;
+  treatments: TreatmentLibraryItem[];
+  updateTreatment: (
+    treatmentId: string,
+    updates: Partial<
+      Pick<
+        TreatmentLibraryItem,
+        "name" | "wording" | "active"
+      >
+    >,
+  ) => void;
+  deleteTreatment: (
+    treatmentId: string,
+  ) => void;
+  emptyMessage?: string;
+  highlightId?: string;
+}) {
+  return (
+    <section className="mt-7">
+      <div>
+        <h3 className="text-lg font-bold">
+          {title}
+        </h3>
+
+        <p className="mt-1 text-sm leading-6 text-slate-500">
+          {description}
+        </p>
+      </div>
+
+      {treatments.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-sm text-slate-500">
+          {emptyMessage ||
+            "No treatments in this section."}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4">
+          {treatments.map(
+            (treatment) => (
+              <article
+                id={`treatment-library-${treatment.id}`}
+                key={
+                  treatment.id
+                }
+                className={`rounded-2xl border bg-white p-5 shadow-sm transition ${
+                  highlightId ===
+                  treatment.id
+                    ? "border-green-400 ring-4 ring-green-100"
+                    : treatment.active
+                      ? "border-slate-200"
+                      : "border-slate-200 bg-slate-50 opacity-75"
+                }`}
+              >
+                <div className="grid gap-5 xl:grid-cols-[minmax(220px,0.8fr)_minmax(420px,2fr)_170px]">
+                  <div>
+                    <Field label="Treatment name">
+                      <input
+                        value={
+                          treatment.name
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateTreatment(
+                            treatment.id,
+                            {
+                              name: event
+                                .target
+                                .value,
+                            },
+                          )
+                        }
+                        className={
+                          inputClass
+                        }
+                      />
+                    </Field>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {treatment.builtIn && (
+                        <span className="rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-bold text-green-800">
+                          Built in
+                        </span>
+                      )}
+
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                          treatment.active
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-slate-200 text-slate-600"
+                        }`}
+                      >
+                        {treatment.active
+                          ? "Active"
+                          : "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Field label="Customer-facing wording">
+                    <textarea
+                      rows={6}
+                      value={
+                        treatment.wording
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        updateTreatment(
+                          treatment.id,
+                          {
+                            wording:
+                              event
+                                .target
+                                .value,
+                          },
+                        )
+                      }
+                      placeholder="Explain clearly what the treatment was for, what the customer should expect and any useful aftercare."
+                      className={
+                        inputClass
+                      }
+                    />
+                  </Field>
+
+                  <div className="flex flex-col gap-3">
+                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Available
+                      </span>
+
+                      <input
+                        type="checkbox"
+                        checked={
+                          treatment.active
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          updateTreatment(
+                            treatment.id,
+                            {
+                              active:
+                                event
+                                  .target
+                                  .checked,
+                            },
+                          )
+                        }
+                        className="h-4 w-4"
+                      />
+                    </label>
+
+                    {!treatment.builtIn && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const confirmed =
+                            window.confirm(
+                              `Delete "${treatment.name}" from the Treatment Library? This is safe only before the treatment is used on completed jobs.`,
+                            );
+
+                          if (
+                            confirmed
+                          ) {
+                            deleteTreatment(
+                              treatment.id,
+                            );
+                          }
+                        }}
+                        className="rounded-xl border border-red-300 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+                      >
+                        Delete treatment
+                      </button>
+                    )}
+
+                    {treatment.builtIn && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-500">
+                        Built-in treatments can be edited or made inactive, but not deleted.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ),
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2681,7 +2992,6 @@ function FleetTab({
   restoreDefaultFleet: () => void;
   showMessage: (
     text: string,
-    tone?: SettingsMessageTone,
   ) => void;
 }) {
   const [newVehicleName, setNewVehicleName] =
@@ -2710,7 +3020,6 @@ function FleetTab({
     ) {
       showMessage(
         "At least one vehicle must remain active.",
-        "error",
       );
       return;
     }

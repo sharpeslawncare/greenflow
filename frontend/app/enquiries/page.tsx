@@ -110,7 +110,9 @@ export default function EnquiriesPage() {
     addEnquiry,
     updateEnquiry,
     deleteEnquiry,
+    getEnquiryById,
     calculateQuote,
+    markConverted,
     restoreDemoEnquiries,
   } = useEnquiryStore();
 
@@ -538,7 +540,18 @@ export default function EnquiriesPage() {
         draft.extraWorkDescription.trim(),
     };
 
-    updateEnquiry(savedEnquiry);
+    const result =
+      updateEnquiry(
+        savedEnquiry,
+      );
+
+    if (!result.success) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
 
     setDraft(savedEnquiry);
 
@@ -998,6 +1011,29 @@ export default function EnquiriesPage() {
       return;
     }
 
+    const currentEnquiry =
+      getEnquiryById(
+        draft.id,
+      );
+
+    if (!currentEnquiry) {
+      showMessage(
+        "This enquiry is no longer available. No customer has been created.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      currentEnquiry.convertedCustomerNumber
+    ) {
+      showMessage(
+        `This enquiry has already been converted into customer ${currentEnquiry.convertedCustomerNumber}.`,
+        "error",
+      );
+      return;
+    }
+
     const customerNumber =
       getNextCustomerNumber();
 
@@ -1141,7 +1177,23 @@ export default function EnquiriesPage() {
           visits: programmeVisits,
         };
 
-      saveProgramme(programme);
+      const programmeResult =
+        saveProgramme(
+          programme,
+        );
+
+      if (!programmeResult.success) {
+        /*
+         * The customer already exists at this point.
+         * Continue marking the enquiry as converted so
+         * the same enquiry cannot create a second customer.
+         * Surface the programme problem after conversion.
+         */
+        showMessage(
+          `${programmeResult.message} Customer ${customerNumber} has still been created and the enquiry will be marked as converted.`,
+          "error",
+        );
+      }
     }
 
     const convertedDraft: EnquiryRecord =
@@ -1201,7 +1253,41 @@ export default function EnquiriesPage() {
           new Date().toISOString(),
       };
 
-    updateEnquiry(convertedDraft);
+    const conversionSaveResult =
+      updateEnquiry(
+        convertedDraft,
+      );
+
+    if (!conversionSaveResult.success) {
+      const fallbackResult =
+        markConverted(
+          draft.id,
+          customerNumber,
+        );
+
+      /*
+       * Keep the local draft converted even if the
+       * detailed enquiry update failed. The customer
+       * already exists, so presenting the conversion
+       * button again could create a duplicate customer.
+       */
+      setDraft(convertedDraft);
+
+      if (!fallbackResult.success) {
+        showMessage(
+          `Customer ${customerNumber} was created, but GreenFlow could not save the enquiry conversion status. Do not convert this enquiry again until the record is checked. ${conversionSaveResult.message}`,
+          "error",
+        );
+        return;
+      }
+
+      showMessage(
+        `Customer ${customerNumber} was created and the enquiry was marked as converted, but some latest enquiry edits could not be saved. ${conversionSaveResult.message}`,
+        "error",
+      );
+      return;
+    }
+
     setDraft(convertedDraft);
 
     if (

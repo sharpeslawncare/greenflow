@@ -37,6 +37,125 @@ const STORAGE_KEY =
 export const defaultTreatmentDocumentWording:
   TreatmentDocumentWordingSettings = {
     earlyWinterMossControl: {
+      title: "Early Winter Moss Treatment",
+      description:
+        "Today we carried out the early winter moss treatment. This application is designed to suppress moss activity as conditions become cooler and damper, while helping the lawn remain in good condition through the winter period. Moss may darken after treatment before gradually breaking down.",
+      mowingAdvice:
+        "Allow the treatment to dry fully before mowing. After that, continue mowing when conditions allow, keeping the mower slightly higher during cold or wet weather and avoiding cutting the lawn too short.",
+      wateringAdvice:
+        "No special watering is normally required at this time of year. Natural rainfall is usually sufficient unless your technician has advised otherwise.",
+      safetyAdvice:
+        "Please keep children and pets off the treated lawn until it is fully dry. Avoid walking over heavily treated areas while they are wet.",
+    },
+
+    springWeedAndFeed: {
+      title: "Spring Weed & Feed",
+      description:
+        "Today we carried out the spring weed-and-feed treatment. The feed supports fresh growth, colour and recovery after winter, while selective weed control may be used where required to reduce common broad-leaved lawn weeds. Results develop gradually as the grass responds to feeding and treated weeds begin to distort and decline.",
+      mowingAdvice:
+        "Where weed control has been applied, avoid mowing for around 4–5 days after treatment so the herbicide has time to move through the weeds. After this, resume regular mowing and avoid removing more than one third of the grass height at any one cut.",
+      wateringAdvice:
+        "If useful rainfall does not arrive within a few days, watering can help the fertiliser dissolve and move into the turf. Water thoroughly rather than little and often once the treatment is dry.",
+      safetyAdvice:
+        "Please keep children and pets off the lawn until the treatment is fully dry. Once dry, normal use of the lawn can resume.",
+    },
+
+    summerWeedAndFeed: {
+      title: "Summer Weed & Feed",
+      description:
+        "Today we carried out the summer weed-and-feed treatment. This treatment helps maintain lawn colour and density during the growing season and, where required, controls broad-leaved weeds that are actively growing. During hot or dry weather the lawn's response may be slower until moisture returns.",
+      mowingAdvice:
+        "Where weed control has been applied, avoid mowing for around 4–5 days after treatment. During hot or dry conditions, raise the mowing height slightly and avoid scalping the lawn.",
+      wateringAdvice:
+        "Watering is especially beneficial during prolonged dry weather. Once the treatment has dried, give the lawn a thorough watering if no meaningful rainfall is expected so the feed can move into the root zone.",
+      safetyAdvice:
+        "Please keep children and pets off the lawn until the treatment is fully dry. Once dry, normal access can resume.",
+    },
+
+    autumnWeedAndFeed: {
+      title: "Autumn Weed & Feed",
+      description:
+        "Today we carried out the autumn weed-and-feed treatment. The seasonal feed supports turf strength and colour as growth begins to slow, while selective weed control may be used where required to reduce broad-leaved weeds before winter. The aim is to leave the lawn in a stronger condition going into the colder months.",
+      mowingAdvice:
+        "Where weed control has been applied, avoid mowing for around 4–5 days after treatment. Continue mowing while the grass is still growing, gradually raising the cutting height as conditions cool.",
+      wateringAdvice:
+        "Natural autumn rainfall will often provide enough moisture for the treatment. If conditions remain unusually dry, water once the treatment has fully dried.",
+      safetyAdvice:
+        "Please keep children and pets off the lawn until the treatment is fully dry. Once dry, normal use of the lawn can resume.",
+    },
+
+    winterMossControl: {
+      title: "Winter Moss Treatment",
+      description:
+        "Today we carried out the winter moss treatment. Winter conditions often favour moss because grass growth is naturally slower and lawns remain wetter for longer. This treatment is intended to suppress moss activity and help prepare the lawn for stronger recovery when growth resumes.",
+      mowingAdvice:
+        "Allow the treatment to dry before mowing. Mow only when ground conditions are suitable and avoid cutting the lawn too short during winter.",
+      wateringAdvice:
+        "No additional watering is normally required. Winter rainfall and naturally damp conditions are usually sufficient.",
+      safetyAdvice:
+        "Please keep children and pets off the treated lawn until it is fully dry. Take care on wet or slippery lawn surfaces during winter.",
+    },
+
+    scarification: {
+      title: "Scarification",
+      description:
+        "Today the lawn was scarified to remove accumulated thatch, dead material and moss from around the base of the grass plants. Scarification can look quite severe immediately afterwards, but opening the turf in this way improves air movement and creates better conditions for healthy grass recovery.",
+      mowingAdvice:
+        "Do not mow immediately after scarification. Allow the lawn to recover and begin growing again before the next cut, then mow with a sharp blade and avoid cutting too short.",
+      wateringAdvice:
+        "Keep the lawn adequately moist while it recovers, especially during dry weather. If overseeding has also been carried out, regular light watering is particularly important during germination.",
+      safetyAdvice:
+        "The surface may be loose, uneven or contain exposed debris immediately after scarification. Minimise unnecessary traffic until the lawn has settled.",
+    },
+
+    aeration: {
+      title: "Lawn Aeration",
+      description:
+        "Today the lawn was aerated to relieve soil compaction and improve the movement of air, water and nutrients into the root zone. Aeration encourages healthier rooting and can improve drainage and the lawn's ability to cope with wear and dry conditions.",
+      mowingAdvice:
+        "Normal mowing can usually resume once the surface is suitable. If soil cores are visible, allow them to dry and naturally break down rather than trying to remove every core.",
+      wateringAdvice:
+        "Watering after aeration can be beneficial during dry periods because the newly created channels help moisture penetrate deeper into the soil.",
+      safetyAdvice:
+        "The lawn may be temporarily uneven immediately after aeration. Take extra care until the surface has settled.",
+    },
+
+    overseeding: {
+      title: "Lawn Overseeding",
+      description:
+        "Today we overseeded the lawn to introduce fresh grass seed into thin, worn or damaged areas. Successful establishment will improve turf density and help the lawn become more resilient, but germination and early growth depend heavily on moisture and suitable temperatures.",
+      mowingAdvice:
+        "Avoid mowing until the new grass is established and tall enough to cut safely. When mowing resumes, use a sharp blade, mow on a higher setting and remove only a small amount of growth at first.",
+      wateringAdvice:
+        "Keep the seeded surface consistently moist during germination. Light, frequent watering is usually best at first; do not allow the seedbed to dry out. Reduce watering frequency gradually once the new grass becomes established.",
+      safetyAdvice:
+        "Minimise foot traffic, pets and other activity over newly seeded areas until the young grass is established.",
+    },
+
+    fallback: {
+      title: "Lawn Treatment",
+      description:
+        "Today we completed the planned lawn-care treatment as part of your annual programme. The treatment has been selected to support the condition, appearance and seasonal needs of your lawn.",
+      mowingAdvice:
+        "Resume mowing when the lawn is dry and suitable to cut, unless your technician has given treatment-specific advice. Regular mowing with a sharp blade will help maintain healthy turf.",
+      wateringAdvice:
+        "Follow any treatment-specific watering advice left by your technician and adjust watering according to rainfall, temperature and the condition of the lawn.",
+      safetyAdvice:
+        "Please keep children and pets off treated areas until any applied treatment is fully dry.",
+    },
+  };
+
+/*
+ * These are the previous built-in defaults.
+ *
+ * When GreenFlow is upgraded, fields that still exactly match one
+ * of these old defaults can safely receive the improved wording
+ * above. Any wording the user has genuinely edited or imported is
+ * preserved.
+ */
+const legacyDefaultTreatmentDocumentWording:
+  TreatmentDocumentWordingSettings = {
+    earlyWinterMossControl: {
       title: "Early Winter Moss Control",
       description:
         "Today we treated the lawn as part of its early-winter programme, focusing on moss control and helping the turf remain in the best possible condition through the colder months.",
@@ -252,7 +371,10 @@ export function getTreatmentDocumentWordingKey(
   const name =
     treatmentName
       .trim()
-      .toLowerCase();
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[-_/]+/g, " ")
+      .replace(/\s+/g, " ");
 
   if (
     name.includes("scarif")
@@ -268,46 +390,59 @@ export function getTreatmentDocumentWordingKey(
 
   if (
     name.includes("overseed") ||
-    name.includes("seed")
+    (
+      name.includes("seed") &&
+      !name.includes("weed")
+    )
   ) {
     return "overseeding";
   }
 
+  const isMossTreatment =
+    name.includes("moss");
+
   if (
+    isMossTreatment &&
     name.includes("early") &&
-    name.includes("winter") &&
-    name.includes("moss")
+    name.includes("winter")
   ) {
     return "earlyWinterMossControl";
   }
 
+  const weedOrFeed =
+    name.includes("weed") ||
+    name.includes("feed") ||
+    name.includes("fertilis") ||
+    name.includes("fertiliz");
+
   if (
     name.includes("spring") &&
-    (name.includes("weed") ||
-      name.includes("feed"))
+    weedOrFeed
   ) {
     return "springWeedAndFeed";
   }
 
   if (
     name.includes("summer") &&
-    (name.includes("weed") ||
-      name.includes("feed"))
+    weedOrFeed
   ) {
     return "summerWeedAndFeed";
   }
 
   if (
     name.includes("autumn") &&
-    (name.includes("weed") ||
-      name.includes("feed"))
+    weedOrFeed
   ) {
     return "autumnWeedAndFeed";
   }
 
   if (
-    name.includes("winter") &&
-    name.includes("moss")
+    isMossTreatment &&
+    (
+      name.includes("winter") ||
+      name.includes("moss treatment") ||
+      name.includes("moss control")
+    )
   ) {
     return "winterMossControl";
   }
@@ -331,13 +466,67 @@ function mergeWithDefaults(
   const defaults =
     cloneDefaults();
 
-  for (const key of Object.keys(
-    defaults,
-  ) as TreatmentDocumentWordingKey[]) {
-    defaults[key] = {
+  const fields: Array<
+    keyof TreatmentDocumentWording
+  > = [
+    "title",
+    "description",
+    "mowingAdvice",
+    "wateringAdvice",
+    "safetyAdvice",
+  ];
+
+  for (
+    const key of Object.keys(
+      defaults,
+    ) as TreatmentDocumentWordingKey[]
+  ) {
+    const saved =
+      parsed[key];
+
+    if (!saved) {
+      continue;
+    }
+
+    const legacy =
+      legacyDefaultTreatmentDocumentWording[
+        key
+      ];
+
+    const upgraded = {
       ...defaults[key],
-      ...(parsed[key] ?? {}),
     };
+
+    for (
+      const field of fields
+    ) {
+      const savedValue =
+        saved[field];
+
+      if (
+        typeof savedValue !==
+          "string" ||
+        !savedValue.trim()
+      ) {
+        continue;
+      }
+
+      /*
+       * Preserve real user/imported wording.
+       * Only replace values that are still exactly
+       * equal to the old built-in wording.
+       */
+      if (
+        savedValue !==
+        legacy[field]
+      ) {
+        upgraded[field] =
+          savedValue;
+      }
+    }
+
+    defaults[key] =
+      upgraded;
   }
 
   return defaults;

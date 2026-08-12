@@ -28,6 +28,10 @@ import {
   getTodayDateValue,
 } from "@/lib/date-utils";
 
+import {
+  useRouteOrderStore,
+} from "@/components/route-order-store";
+
 type PrintJob = {
   id: string;
   programme: CustomerProgramme;
@@ -82,6 +86,11 @@ function DailyCustomerSheetsPageContent() {
     ready: documentWordingReady,
   } = useTreatmentDocumentWording();
 
+  const {
+    ready: routeOrderReady,
+    sortBySavedRoute,
+  } = useRouteOrderStore();
+
   const requestedDate =
     searchParams.get("date");
 
@@ -104,7 +113,7 @@ function DailyCustomerSheetsPageContent() {
 
   const jobs =
     useMemo<PrintJob[]>(() => {
-      return programmes
+      const items = programmes
         .flatMap((programme) => {
           const customer =
             customers.find(
@@ -147,54 +156,28 @@ function DailyCustomerSheetsPageContent() {
               job.customer.vanNumber ===
                 requestedVan),
         )
-        .sort(
-          (first, second) => {
-            if (
-              first.customer
-                .groupNumber !==
-              second.customer
-                .groupNumber
-            ) {
-              return (
-                first.customer
-                  .groupNumber -
-                second.customer
-                  .groupNumber
-              );
-            }
+        ;
 
-            if (
-              first.customer
-                .vanNumber !==
-              second.customer
-                .vanNumber
-            ) {
-              return (
-                first.customer
-                  .vanNumber -
-                second.customer
-                  .vanNumber
-              );
-            }
+      return sortBySavedRoute(
+        items,
+        selectedDate,
+      );
 
-            return first.customer.fullName.localeCompare(
-              second.customer.fullName,
-            );
-          },
-        );
     }, [
       programmes,
       customers,
       selectedDate,
       requestedGroup,
       requestedVan,
+      sortBySavedRoute,
     ]);
 
   const ready =
     customersReady &&
     programmesReady &&
     settingsReady &&
-    documentWordingReady;
+    documentWordingReady &&
+    routeOrderReady;
 
   if (!ready) {
     return (

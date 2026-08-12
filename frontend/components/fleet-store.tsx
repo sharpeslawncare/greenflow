@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -13,6 +14,11 @@ export type FleetVehicle = {
   name: string;
   active: boolean;
   createdAt: string;
+};
+
+export type FleetMutationResult = {
+  success: boolean;
+  message: string;
 };
 
 type FleetStore = {
@@ -53,24 +59,27 @@ function normaliseVehicles(
       const number =
         Number(item.number);
 
+      const safeNumber =
+        Number.isFinite(number) &&
+        number > 0
+          ? Math.floor(number)
+          : index + 1;
+
       return {
         id:
           typeof item.id === "string" &&
           item.id
             ? item.id
-            : `fleet-vehicle-${number || index + 1}`,
+            : `fleet-vehicle-${safeNumber}`,
 
         number:
-          Number.isFinite(number) &&
-          number > 0
-            ? Math.floor(number)
-            : index + 1,
+          safeNumber,
 
         name:
           typeof item.name === "string" &&
           item.name.trim()
             ? item.name.trim()
-            : `Van ${number || index + 1}`,
+            : `Van ${safeNumber}`,
 
         active:
           item.active !== false,
@@ -174,14 +183,23 @@ export function useFleetStore() {
       defaultVehicles,
     );
 
+  const vehiclesRef =
+    useRef<FleetVehicle[]>(
+      defaultVehicles,
+    );
+
   const [ready, setReady] =
     useState(false);
 
   const reload =
     useCallback(() => {
-      setVehicles(
-        readFleetStore().vehicles,
-      );
+      const next =
+        readFleetStore().vehicles;
+
+      vehiclesRef.current =
+        next;
+
+      setVehicles(next);
     }, []);
 
   useEffect(() => {
@@ -226,6 +244,11 @@ export function useFleetStore() {
     };
   }, [reload]);
 
+  useEffect(() => {
+    vehiclesRef.current =
+      vehicles;
+  }, [vehicles]);
+
   const activeVehicles =
     useMemo(
       () =>
@@ -253,7 +276,11 @@ export function useFleetStore() {
         nextVehicles,
       );
 
+    vehiclesRef.current =
+      normalised;
+
     setVehicles(normalised);
+
     writeFleetStore(
       normalised,
     );
@@ -262,8 +289,11 @@ export function useFleetStore() {
   function addVehicle(
     name?: string,
   ) {
+    const current =
+      vehiclesRef.current;
+
     const nextNumber =
-      vehicles.reduce(
+      current.reduce(
         (
           highest,
           vehicle,
@@ -280,20 +310,22 @@ export function useFleetStore() {
         .toString(36)
         .slice(2, 8)}`,
 
-      number: nextNumber,
+      number:
+        nextNumber,
 
       name:
         name?.trim() ||
         `Van ${nextNumber}`,
 
-      active: true,
+      active:
+        true,
 
       createdAt:
         new Date().toISOString(),
     };
 
     saveVehicles([
-      ...vehicles,
+      ...current,
       vehicle,
     ]);
 
@@ -308,58 +340,113 @@ export function useFleetStore() {
         "name" | "active"
       >
     >,
-  ) {
+  ): FleetMutationResult {
+    const current =
+      vehiclesRef.current;
+
+    const existing =
+      current.find(
+        (vehicle) =>
+          vehicle.id ===
+          vehicleId,
+      );
+
+    if (!existing) {
+      return {
+        success: false,
+        message:
+          "The fleet vehicle could not be found, so no changes were saved.",
+      };
+    }
+
+    const updated: FleetVehicle = {
+      ...existing,
+      ...updates,
+      name:
+        updates.name !==
+        undefined
+          ? updates.name.trim() ||
+            existing.name
+          : existing.name,
+    };
+
     saveVehicles(
-      vehicles.map(
+      current.map(
         (vehicle) =>
           vehicle.id ===
           vehicleId
-            ? {
-                ...vehicle,
-                ...updates,
-                name:
-                  updates.name !==
-                  undefined
-                    ? updates.name.trim() ||
-                      vehicle.name
-                    : vehicle.name,
-              }
+            ? updated
             : vehicle,
       ),
     );
+
+    return {
+      success: true,
+      message:
+        "Fleet vehicle updated successfully.",
+    };
   }
 
   function getVehicle(
     number: number,
   ) {
-    return vehicles.find(
+    if (
+      !Number.isFinite(number) ||
+      number <= 0
+    ) {
+      return undefined;
+    }
+
+    const safeNumber =
+      Math.floor(number);
+
+    return vehiclesRef.current.find(
       (vehicle) =>
         vehicle.number ===
-        number,
+        safeNumber,
     );
   }
 
   function ensureVehicle(
     number: number,
   ) {
+    if (
+      !Number.isFinite(number) ||
+      number <= 0
+    ) {
+      return undefined;
+    }
+
+    const safeNumber =
+      Math.floor(number);
+
     const existing =
-      getVehicle(number);
+      getVehicle(
+        safeNumber,
+      );
 
     if (existing) {
       return existing;
     }
 
+    const current =
+      vehiclesRef.current;
+
     const vehicle: FleetVehicle = {
-      id: `fleet-vehicle-${number}`,
-      number,
-      name: `Van ${number}`,
-      active: true,
+      id:
+        `fleet-vehicle-${safeNumber}`,
+      number:
+        safeNumber,
+      name:
+        `Van ${safeNumber}`,
+      active:
+        true,
       createdAt:
         new Date().toISOString(),
     };
 
     saveVehicles([
-      ...vehicles,
+      ...current,
       vehicle,
     ]);
 

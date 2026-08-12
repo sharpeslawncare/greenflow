@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -22,13 +23,37 @@ import {
  * automatically. This allows the Programme Store to
  * exclude treatment rounds that have already passed.
  */
+export type AdditionalCustomerJobStatus =
+  | "Unscheduled"
+  | "Scheduled"
+  | "Completed"
+  | "Cancelled";
+
+export type AdditionalCustomerJob = {
+  id: string;
+  treatmentLibraryId: string;
+  treatmentName: string;
+  wordingSnapshot: string;
+  scheduledDate: string;
+  price: number;
+  notes: string;
+  status: AdditionalCustomerJobStatus;
+  createdAt: string;
+};
+
 export type StoredCustomer = Customer & {
   programmeStartDate: string;
+  additionalJobs: AdditionalCustomerJob[];
 };
 
 type CustomerInput =
   | Customer
   | StoredCustomer;
+
+export type CustomerUpdateResult = {
+  success: boolean;
+  message: string;
+};
 
 type CustomerStoreValue = {
   customers: StoredCustomer[];
@@ -43,7 +68,7 @@ type CustomerStoreValue = {
 
   updateCustomer: (
     customer: CustomerInput,
-  ) => void;
+  ) => CustomerUpdateResult;
 
   getCustomer: (
     customerNumber: string,
@@ -71,11 +96,19 @@ export function CustomerStoreProvider({
 }: {
   children: ReactNode;
 }) {
+  const initialCustomers =
+    normaliseEstablishedCustomers(
+      demoCustomers,
+    );
+
   const [customers, setCustomers] =
     useState<StoredCustomer[]>(
-      normaliseEstablishedCustomers(
-        demoCustomers,
-      ),
+      initialCustomers,
+    );
+
+  const customersRef =
+    useRef<StoredCustomer[]>(
+      initialCustomers,
     );
 
   const [ready, setReady] =
@@ -110,14 +143,20 @@ export function CustomerStoreProvider({
            * their complete group programme remains
            * available.
            */
-          setCustomers(
+          const loadedCustomers =
             deduplicateCustomers(
               parsedCustomers.map(
                 normaliseStoredCustomer,
               ),
             ).sort(
               sortCustomers,
-            ),
+            );
+
+          customersRef.current =
+            loadedCustomers;
+
+          setCustomers(
+            loadedCustomers,
           );
         }
       } catch {
@@ -125,16 +164,27 @@ export function CustomerStoreProvider({
           STORAGE_KEY,
         );
 
-        setCustomers(
+        const demo =
           normaliseEstablishedCustomers(
             demoCustomers,
-          ),
+          );
+
+        customersRef.current =
+          demo;
+
+        setCustomers(
+          demo,
         );
       }
     }
 
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    customersRef.current =
+      customers;
+  }, [customers]);
 
   useEffect(() => {
     if (!ready) {
@@ -165,8 +215,11 @@ export function CustomerStoreProvider({
       };
     }
 
+    const currentCustomers =
+      customersRef.current;
+
     const duplicate =
-      customers.some(
+      currentCustomers.some(
         (existingCustomer) =>
           sameCustomerNumber(
             existingCustomer.customerNumber,
@@ -177,29 +230,27 @@ export function CustomerStoreProvider({
     if (duplicate) {
       return {
         success: false,
-
         message:
           `Customer number ${newCustomer.customerNumber} already exists.`,
       };
     }
 
-    /*
-     * New and imported customers start their
-     * programme from today unless a future start
-     * date has explicitly been supplied.
-     */
+    const nextCustomers = [
+      ...currentCustomers,
+      newCustomer,
+    ].sort(
+      sortCustomers,
+    );
+
+    customersRef.current =
+      nextCustomers;
 
     setCustomers(
-      (currentCustomers) =>
-        [
-          ...currentCustomers,
-          newCustomer,
-        ].sort(sortCustomers),
+      nextCustomers,
     );
 
     return {
       success: true,
-
       message:
         "Customer added successfully. Remaining treatment dates will be assigned automatically from their group.",
     };
@@ -207,33 +258,62 @@ export function CustomerStoreProvider({
 
   function updateCustomer(
     updatedCustomer: CustomerInput,
-  ) {
-    setCustomers(
-      (currentCustomers) =>
-        currentCustomers.map(
-          (customer) => {
-            if (
-              !sameCustomerNumber(
-                customer.customerNumber,
-                updatedCustomer.customerNumber,
-              )
-            ) {
-              return customer;
-            }
+  ): CustomerUpdateResult {
+    const currentCustomers =
+      customersRef.current;
 
-            return normaliseUpdatedCustomer(
-              updatedCustomer,
-              customer,
-            );
-          },
-        ),
+    const index =
+      currentCustomers.findIndex(
+        (customer) =>
+          sameCustomerNumber(
+            customer.customerNumber,
+            updatedCustomer.customerNumber,
+          ),
+      );
+
+    if (index < 0) {
+      return {
+        success: false,
+        message:
+          "The customer could not be found, so no changes were saved.",
+      };
+    }
+
+    const existingCustomer =
+      currentCustomers[index];
+
+    const normalised =
+      normaliseUpdatedCustomer(
+        updatedCustomer,
+        existingCustomer,
+      );
+
+    const nextCustomers =
+      currentCustomers.map(
+        (customer, itemIndex) =>
+          itemIndex === index
+            ? normalised
+            : customer,
+      );
+
+    customersRef.current =
+      nextCustomers;
+
+    setCustomers(
+      nextCustomers,
     );
+
+    return {
+      success: true,
+      message:
+        "Customer updated successfully.",
+    };
   }
 
   function getCustomer(
     customerNumber: string,
   ) {
-    return customers.find(
+    return customersRef.current.find(
       (customer) =>
         sameCustomerNumber(
           customer.customerNumber,
@@ -244,7 +324,7 @@ export function CustomerStoreProvider({
 
   function getNextCustomerNumber() {
     const highestNumber =
-      customers.reduce(
+      customersRef.current.reduce(
         (highest, customer) => {
           const customerNumber =
             Number(
@@ -275,10 +355,16 @@ export function CustomerStoreProvider({
      * deliberately blank. They receive all five
      * dates assigned to their group.
      */
-    setCustomers(
+    const demo =
       normaliseEstablishedCustomers(
         demoCustomers,
-      ),
+      );
+
+    customersRef.current =
+      demo;
+
+    setCustomers(
+      demo,
     );
 
     window.localStorage.removeItem(
@@ -298,15 +384,11 @@ export function CustomerStoreProvider({
         sortCustomers,
       );
 
+    customersRef.current =
+      normalisedCustomers;
+
     setCustomers(
       normalisedCustomers,
-    );
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(
-        normalisedCustomers,
-      ),
     );
   }
 
@@ -463,6 +545,11 @@ function normaliseStoredCustomer(
     notes:
       customer.notes?.trim() ?? "",
 
+    additionalJobs:
+      normaliseAdditionalJobs(
+        customer.additionalJobs,
+      ),
+
     /*
      * Missing values belong to records created
      * before this scheduling rule was introduced.
@@ -531,6 +618,98 @@ function normaliseUpdatedCustomer(
         ? suppliedStartDate!
         : existingCustomer.programmeStartDate,
   };
+}
+
+function normaliseAdditionalJobs(
+  value: unknown,
+): AdditionalCustomerJob[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(
+      (
+        item,
+      ): item is Partial<AdditionalCustomerJob> =>
+        Boolean(
+          item &&
+            typeof item === "object",
+        ),
+    )
+    .map((job) => ({
+      id:
+        typeof job.id === "string" &&
+        job.id.trim()
+          ? job.id
+          : `additional-job-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+
+      treatmentLibraryId:
+        typeof job.treatmentLibraryId ===
+        "string"
+          ? job.treatmentLibraryId
+          : "",
+
+      treatmentName:
+        typeof job.treatmentName ===
+        "string"
+          ? job.treatmentName.trim()
+          : "Additional treatment",
+
+      wordingSnapshot:
+        typeof job.wordingSnapshot ===
+        "string"
+          ? job.wordingSnapshot
+          : "",
+
+      scheduledDate:
+        isDateValue(
+          typeof job.scheduledDate ===
+            "string"
+            ? job.scheduledDate
+            : "",
+        )
+          ? job.scheduledDate!
+          : "",
+
+      price:
+        safeNumber(job.price),
+
+      notes:
+        typeof job.notes === "string"
+          ? job.notes.trim()
+          : "",
+
+      status:
+        (
+          job.status === "Completed" ||
+          job.status === "Cancelled"
+            ? job.status
+            : isDateValue(
+                typeof job.scheduledDate ===
+                  "string"
+                  ? job.scheduledDate
+                  : "",
+              )
+              ? "Scheduled"
+              : "Unscheduled"
+        ) as AdditionalCustomerJobStatus,
+
+      createdAt:
+        typeof job.createdAt ===
+          "string" &&
+        job.createdAt.trim()
+          ? job.createdAt
+          : new Date().toISOString(),
+    }))
+    .sort(
+      (first, second) =>
+        first.scheduledDate.localeCompare(
+          second.scheduledDate,
+        ),
+    );
 }
 
 function normaliseCustomerStatus(

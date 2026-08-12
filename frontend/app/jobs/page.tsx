@@ -9,7 +9,11 @@ import {
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { useCustomerStore } from "@/components/customer-store";
+import {
+  type AdditionalCustomerJob,
+  type StoredCustomer,
+  useCustomerStore,
+} from "@/components/customer-store";
 import {
   type CustomerProgramme,
   type ProgrammeVisit,
@@ -23,6 +27,10 @@ import {
   formatDateWithDay,
   getTodayDateValue,
 } from "@/lib/date-utils";
+
+import {
+  useRouteOrderStore,
+} from "@/components/route-order-store";
 
 export default function JobsPage() {
   return (
@@ -61,6 +69,11 @@ function JobsPageContent() {
     ready: treatmentsReady,
   } = useTreatmentStore();
 
+  const {
+    ready: routeOrderReady,
+    sortBySavedRoute,
+  } = useRouteOrderStore();
+
   const requestedDate =
     searchParams.get("date");
 
@@ -87,99 +100,120 @@ function JobsPageContent() {
 
   const scheduledJobs =
     useMemo(() => {
-      return programmes
-        .flatMap((programme) => {
-          const customer =
-            customers.find(
-              (item) =>
-                item.customerNumber ===
-                programme.customerNumber,
-            );
-
-          if (
-            !customer ||
-            customer.status !== "Active"
-          ) {
-            return [];
-          }
-
-          return programme.visits
-            .filter(
-              (visit) =>
-                visit.scheduledDate ===
-                  selectedDate &&
-                (visit.status ===
-                  "Scheduled" ||
-                  visit.status ===
-                    "Planned"),
-            )
-            .filter(
-              (visit) =>
-                !hasRecordedOutcome(
-                  treatments,
-                  programme,
-                  visit,
-                  customer.customerNumber,
-                ),
-            )
-            .map((visit) => ({
-              id: `${programme.id}-${visit.id}`,
-              programme,
-              visit,
-              customer,
-            }));
-        })
-        .filter(
-          (job) =>
-            (requestedGroup <= 0 ||
-              job.customer
-                .groupNumber ===
-                requestedGroup) &&
-            (requestedVan <= 0 ||
-              job.customer.vanNumber ===
-                requestedVan),
-        )
-        .sort(
-          (first, second) => {
-            if (
-              first.customer
-                .groupNumber !==
-              second.customer
-                .groupNumber
-            ) {
-              return (
-                first.customer
-                  .groupNumber -
-                second.customer
-                  .groupNumber
+      const seasonalItems =
+        programmes.flatMap(
+          (programme) => {
+            const customer =
+              customers.find(
+                (item) =>
+                  item.customerNumber ===
+                  programme.customerNumber,
               );
-            }
 
             if (
-              first.customer
-                .vanNumber !==
-              second.customer
-                .vanNumber
+              !customer ||
+              customer.status !== "Active"
             ) {
-              return (
-                first.customer
-                  .vanNumber -
-                second.customer
-                  .vanNumber
-              );
+              return [];
             }
 
-            return first.customer.fullName.localeCompare(
-              second.customer.fullName,
-            );
+            return programme.visits
+              .filter(
+                (visit) =>
+                  visit.scheduledDate ===
+                    selectedDate &&
+                  (visit.status ===
+                    "Scheduled" ||
+                    visit.status ===
+                      "Planned"),
+              )
+              .filter(
+                (visit) =>
+                  !hasRecordedOutcome(
+                    treatments,
+                    programme,
+                    visit,
+                    customer.customerNumber,
+                  ),
+              )
+              .map((visit) => ({
+                id: `${programme.id}-${visit.id}`,
+                source:
+                  "programme" as const,
+                programme,
+                visit,
+                customer,
+                price:
+                  customer.treatmentPrice,
+              }));
           },
         );
+
+      const additionalItems =
+        customers.flatMap(
+          (customer) => {
+            if (
+              customer.status !== "Active"
+            ) {
+              return [];
+            }
+
+            return customer.additionalJobs
+              .filter(
+                (job) =>
+                  job.status ===
+                    "Scheduled" &&
+                  job.scheduledDate ===
+                    selectedDate,
+              )
+              .map((job) => {
+                const programme =
+                  createAdditionalJobProgramme(
+                    customer,
+                    job,
+                  );
+
+                return {
+                  id: `additional-${job.id}`,
+                  source:
+                    "additional" as const,
+                  programme,
+                  visit:
+                    programme.visits[0],
+                  customer,
+                  price: job.price,
+                  additionalJob: job,
+                };
+              });
+          },
+        );
+
+      const items = [
+        ...seasonalItems,
+        ...additionalItems,
+      ].filter(
+        (job) =>
+          (requestedGroup <= 0 ||
+            job.customer
+              .groupNumber ===
+              requestedGroup) &&
+          (requestedVan <= 0 ||
+            job.customer.vanNumber ===
+              requestedVan),
+      );
+
+      return sortBySavedRoute(
+        items,
+        selectedDate,
+      );
     }, [
       programmes,
       customers,
+      treatments,
       selectedDate,
       requestedGroup,
       requestedVan,
+      sortBySavedRoute,
     ]);
 
   const completedTreatments =
@@ -208,9 +242,7 @@ function JobsPageContent() {
   const expectedRevenue =
     scheduledJobs.reduce(
       (total, job) =>
-        total +
-        job.customer
-          .treatmentPrice,
+        total + job.price,
       0,
     );
 
@@ -231,7 +263,8 @@ function JobsPageContent() {
   const ready =
     customersReady &&
     programmesReady &&
-    treatmentsReady;
+    treatmentsReady &&
+    routeOrderReady;
 
   if (!ready) {
     return (
@@ -419,6 +452,13 @@ function JobsPageContent() {
               </Link>
 
               <Link
+                href={`/routes?date=${selectedDate}`}
+                className="rounded-xl border border-blue-300 bg-blue-50 px-5 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100"
+              >
+                Manage Route Order
+              </Link>
+
+              <Link
                 href={`/visit-centre?date=${selectedDate}${
                   requestedGroup > 0
                     ? `&group=${requestedGroup}`
@@ -452,6 +492,41 @@ function JobsPageContent() {
               >
                 Clear filter
               </Link>
+            </section>
+          )}
+
+          {scheduledJobs.length > 0 && (
+            <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+                    Route order
+                  </div>
+
+                  <h2 className="mt-1 text-lg font-bold text-blue-950">
+                    Set the working order for this day
+                  </h2>
+
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-blue-900">
+                    Use Groups &amp; Routes to arrange customers in the order you
+                    want to visit them. Your saved order for{" "}
+                    <strong>
+                      {formatDateWithDay(
+                        selectedDate,
+                      )}
+                    </strong>{" "}
+                    is then used when the day&apos;s work is opened in the Visit
+                    Centre.
+                  </p>
+                </div>
+
+                <Link
+                  href={`/routes?date=${selectedDate}`}
+                  className="inline-flex rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800"
+                >
+                  Manage route order
+                </Link>
+              </div>
             </section>
           )}
 
@@ -499,9 +574,9 @@ function JobsPageContent() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Jobs are grouped by
-                  customer group and then
-                  listed by customer name.
+                  Jobs follow the saved
+                  van route order for this
+                  working date.
                 </p>
               </div>
 
@@ -609,7 +684,7 @@ function JobsPageContent() {
 
                         <span className="font-bold">
                           £
-                          {job.customer.treatmentPrice.toFixed(
+                          {job.price.toFixed(
                             2,
                           )}
                         </span>
@@ -767,7 +842,7 @@ function JobsPageContent() {
 
                   <td className="font-bold">
                     £
-                    {job.customer.treatmentPrice.toFixed(
+                    {job.price.toFixed(
                       2,
                     )}
                   </td>
@@ -842,6 +917,45 @@ function PrintStat({
       </div>
     </div>
   );
+}
+
+function createAdditionalJobProgramme(
+  customer: StoredCustomer,
+  job: AdditionalCustomerJob,
+): CustomerProgramme {
+  return {
+    id: `additional-jobs-${customer.customerNumber}`,
+    customerNumber:
+      customer.customerNumber,
+    year:
+      Number(
+        job.scheduledDate.slice(
+          0,
+          4,
+        ),
+      ) ||
+      new Date().getFullYear(),
+    createdAt: job.createdAt,
+    programmeName:
+      "Additional Jobs",
+    startDate:
+      job.scheduledDate,
+    avoidWednesdays: false,
+    avoidWeekends: false,
+    visits: [
+      {
+        id: job.id,
+        visitNumber: 0,
+        treatmentName:
+          job.treatmentName,
+        scheduledDate:
+          job.scheduledDate,
+        gapAfterPreviousDays: 0,
+        status: "Scheduled",
+        notes: job.notes,
+      },
+    ],
+  };
 }
 
 function hasRecordedOutcome(

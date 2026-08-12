@@ -51,11 +51,38 @@ export type InvoiceSettings = {
   showAmountIncludingVat: boolean;
 };
 
+export type TreatmentLibraryItem = {
+  id: string;
+  name: string;
+  wording: string;
+  active: boolean;
+  builtIn: boolean;
+  category:
+    | "Annual programme"
+    | "Specialist"
+    | "Additional";
+};
+
 export type TreatmentWordingSettings = {
+  /*
+   * Named annual programme treatments.
+   * These mirror the treatment names used throughout GreenFlow.
+   */
+  earlyWinterMossTreatment: string;
+  springWeedAndFeed: string;
+  summerWeedAndFeed: string;
+  autumnWeedAndFeed: string;
+  winterMossTreatment: string;
+
+  /*
+   * Generic/fallback wording retained for compatibility
+   * with existing customer-document logic.
+   */
   seasonalFertiliserVisit: string;
   herbicideVisit: string;
   combinedFertiliserAndHerbicideVisit: string;
   mossControlVisit: string;
+
   aerationVisit: string;
   scarificationVisit: string;
   overseedingVisit: string;
@@ -76,6 +103,7 @@ export type GreenFlowSettings = {
   business: BusinessSettings;
   invoices: InvoiceSettings;
   treatmentWording: TreatmentWordingSettings;
+  treatmentLibrary: TreatmentLibraryItem[];
   advisories: AdvisorySetting[];
   branding: BrandingSettings;
 };
@@ -94,6 +122,22 @@ type SettingsStoreValue = {
 
   updateTreatmentWording: (
     updates: Partial<TreatmentWordingSettings>,
+  ) => void;
+
+  addTreatmentLibraryItem: () => string;
+
+  updateTreatmentLibraryItem: (
+    treatmentId: string,
+    updates: Partial<
+      Pick<
+        TreatmentLibraryItem,
+        "name" | "wording" | "active"
+      >
+    >,
+  ) => void;
+
+  deleteTreatmentLibraryItem: (
+    treatmentId: string,
   ) => void;
 
   updateBrandingSettings: (
@@ -118,6 +162,10 @@ type SettingsStoreValue = {
   reserveInvoiceNumbers: (
     quantity: number,
   ) => string[];
+
+  reconcileInvoiceSequence: (
+    issuedInvoiceNumbers: string[],
+  ) => void;
 
   restoreDefaultSettings: () => void;
 };
@@ -164,6 +212,21 @@ export const defaultSettings: GreenFlowSettings = {
   },
 
   treatmentWording: {
+    earlyWinterMossTreatment:
+      "Your Early Winter Moss Treatment has been completed. This treatment helps suppress moss as cooler, damper conditions arrive and supports the lawn through the winter period. Moss may darken after treatment before gradually breaking down. Continue mowing when conditions allow, but avoid cutting the lawn too short during cold or wet weather.",
+
+    springWeedAndFeed:
+      "Your Spring Weed and Feed treatment has been completed. The feed supports fresh spring growth, improved colour and recovery after winter, while selective weed control helps reduce broad-leaved lawn weeds where required. Treated weeds usually respond gradually rather than disappearing immediately. Where weed control has been applied, avoid mowing for around 4–5 days.",
+
+    summerWeedAndFeed:
+      "Your Summer Weed and Feed treatment has been completed. This treatment helps maintain lawn colour, density and healthy growth during the main growing season while controlling broad-leaved weeds where required. During prolonged hot or dry weather, the lawn may respond more slowly until moisture returns. Watering can be beneficial once the treatment is fully dry if useful rainfall is not expected.",
+
+    autumnWeedAndFeed:
+      "Your Autumn Weed and Feed treatment has been completed. The seasonal feed helps strengthen the turf as growth begins to slow, while selective weed control may be used to reduce broad-leaved weeds before winter. Continue mowing while the grass is actively growing, gradually raising the cutting height as conditions become cooler.",
+
+    winterMossTreatment:
+      "Your Winter Moss Treatment has been completed. Winter conditions often favour moss because grass growth is slower and lawns remain wet for longer. This treatment helps suppress moss activity and prepares the lawn for stronger recovery when growth resumes. No additional watering is normally required during typical winter conditions.",
+
     seasonalFertiliserVisit:
       "A seasonal lawn treatment was completed to support healthy grass growth, colour and overall lawn condition.",
 
@@ -177,13 +240,13 @@ export const defaultSettings: GreenFlowSettings = {
       "A seasonal moss-control treatment was completed to help reduce moss and improve the condition of the lawn.",
 
     aerationVisit:
-      "The lawn was aerated to relieve soil compaction and improve the movement of air, water and nutrients into the root zone.",
+      "Your lawn has been aerated to relieve soil compaction and improve the movement of air, water and nutrients into the root zone. The small holes created by aeration encourage healthier rooting and can improve drainage and the lawn's ability to cope with wear and dry conditions. Normal mowing can resume once the surface is suitable.",
 
     scarificationVisit:
-      "The lawn was scarified to remove excess thatch, moss and organic material from the surface of the lawn.",
+      "Your lawn has been scarified to remove excess thatch, dead material and moss from around the base of the grass plants. The lawn can look untidy immediately afterwards, but opening the turf in this way creates better conditions for healthy recovery. Allow the grass to recover before mowing and keep the lawn adequately moist if conditions are dry.",
 
     overseedingVisit:
-      "The lawn was overseeded to introduce new grass plants and help improve density, appearance and recovery.",
+      "Your lawn has been overseeded to introduce fresh grass seed into thin, worn or damaged areas. Successful establishment will improve turf density and resilience. Keep the seeded surface consistently moist during germination and minimise foot traffic until the young grass is established. Delay mowing until the new grass is tall enough to cut safely.",
 
     cancelledVisit:
       "The scheduled lawn treatment was cancelled and no treatment was applied during this visit.",
@@ -194,6 +257,82 @@ export const defaultSettings: GreenFlowSettings = {
     nextVisitPreparation:
       "Please keep the lawn accessible for the next scheduled visit. If you have a locked gate, leave it unlocked after receiving your reminder. Where possible, avoid mowing immediately before the visit and remove toys, furniture or other items from the lawn.",
   },
+
+  treatmentLibrary: [
+    {
+      id: "treatment-early-winter-moss",
+      name: "Early Winter Moss Treatment",
+      wording:
+        "Your Early Winter Moss Treatment has been completed. This treatment helps suppress moss as cooler, damper conditions arrive and supports the lawn through the winter period. Moss may darken after treatment before gradually breaking down. Continue mowing when conditions allow, but avoid cutting the lawn too short during cold or wet weather.",
+      active: true,
+      builtIn: true,
+      category: "Annual programme",
+    },
+    {
+      id: "treatment-spring-weed-feed",
+      name: "Spring Weed and Feed",
+      wording:
+        "Your Spring Weed and Feed treatment has been completed. The feed supports fresh spring growth, improved colour and recovery after winter, while selective weed control helps reduce broad-leaved lawn weeds where required. Treated weeds usually respond gradually rather than disappearing immediately. Where weed control has been applied, avoid mowing for around 4–5 days.",
+      active: true,
+      builtIn: true,
+      category: "Annual programme",
+    },
+    {
+      id: "treatment-summer-weed-feed",
+      name: "Summer Weed and Feed",
+      wording:
+        "Your Summer Weed and Feed treatment has been completed. This treatment helps maintain lawn colour, density and healthy growth during the main growing season while controlling broad-leaved weeds where required. During prolonged hot or dry weather, the lawn may respond more slowly until moisture returns. Watering can be beneficial once the treatment is fully dry if useful rainfall is not expected.",
+      active: true,
+      builtIn: true,
+      category: "Annual programme",
+    },
+    {
+      id: "treatment-autumn-weed-feed",
+      name: "Autumn Weed and Feed",
+      wording:
+        "Your Autumn Weed and Feed treatment has been completed. The seasonal feed helps strengthen the turf as growth begins to slow, while selective weed control may be used to reduce broad-leaved weeds before winter. Continue mowing while the grass is actively growing, gradually raising the cutting height as conditions become cooler.",
+      active: true,
+      builtIn: true,
+      category: "Annual programme",
+    },
+    {
+      id: "treatment-winter-moss",
+      name: "Winter Moss Treatment",
+      wording:
+        "Your Winter Moss Treatment has been completed. Winter conditions often favour moss because grass growth is slower and lawns remain wet for longer. This treatment helps suppress moss activity and prepares the lawn for stronger recovery when growth resumes. No additional watering is normally required during typical winter conditions.",
+      active: true,
+      builtIn: true,
+      category: "Annual programme",
+    },
+    {
+      id: "treatment-aeration",
+      name: "Aeration",
+      wording:
+        "Your lawn has been aerated to relieve soil compaction and improve the movement of air, water and nutrients into the root zone. The small holes created by aeration encourage healthier rooting and can improve drainage and the lawn's ability to cope with wear and dry conditions. Normal mowing can resume once the surface is suitable.",
+      active: true,
+      builtIn: true,
+      category: "Specialist",
+    },
+    {
+      id: "treatment-scarification",
+      name: "Scarification",
+      wording:
+        "Your lawn has been scarified to remove excess thatch, dead material and moss from around the base of the grass plants. The lawn can look untidy immediately afterwards, but opening the turf in this way creates better conditions for healthy recovery. Allow the grass to recover before mowing and keep the lawn adequately moist if conditions are dry.",
+      active: true,
+      builtIn: true,
+      category: "Specialist",
+    },
+    {
+      id: "treatment-overseeding",
+      name: "Overseeding",
+      wording:
+        "Your lawn has been overseeded to introduce fresh grass seed into thin, worn or damaged areas. Successful establishment will improve turf density and resilience. Keep the seeded surface consistently moist during germination and minimise foot traffic until the young grass is established. Delay mowing until the new grass is tall enough to cut safely.",
+      active: true,
+      builtIn: true,
+      category: "Specialist",
+    },
+  ],
+
 
   advisories: [
     {
@@ -258,6 +397,11 @@ export function SettingsStoreProvider({
         .nextInvoiceNumber,
     );
 
+  const invoiceSettingsRef =
+    useRef<InvoiceSettings>({
+      ...defaultSettings.invoices,
+    });
+
   useEffect(() => {
     const savedSettings =
       window.localStorage.getItem(
@@ -280,6 +424,10 @@ export function SettingsStoreProvider({
           mergedSettings.invoices
             .nextInvoiceNumber;
 
+        invoiceSettingsRef.current = {
+          ...mergedSettings.invoices,
+        };
+
         setSettings(
           mergedSettings,
         );
@@ -297,10 +445,11 @@ export function SettingsStoreProvider({
     invoiceSequenceRef.current =
       settings.invoices
         .nextInvoiceNumber;
-  }, [
-    settings.invoices
-      .nextInvoiceNumber,
-  ]);
+
+    invoiceSettingsRef.current = {
+      ...settings.invoices,
+    };
+  }, [settings.invoices]);
 
   useEffect(() => {
     if (!ready) return;
@@ -343,16 +492,22 @@ export function SettingsStoreProvider({
           invoiceSequenceRef.current,
         );
 
+      const nextInvoiceSettings = {
+        ...normalisedUpdates,
+        nextInvoiceNumber,
+      };
+
       invoiceSequenceRef.current =
         nextInvoiceNumber;
 
+      invoiceSettingsRef.current = {
+        ...nextInvoiceSettings,
+      };
+
       return {
         ...current,
-
-        invoices: {
-          ...normalisedUpdates,
-          nextInvoiceNumber,
-        },
+        invoices:
+          nextInvoiceSettings,
       };
     });
   }
@@ -367,6 +522,68 @@ export function SettingsStoreProvider({
         ...current.treatmentWording,
         ...updates,
       },
+    }));
+  }
+
+  function addTreatmentLibraryItem() {
+    const id =
+      `treatment-custom-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+
+    setSettings((current) => ({
+      ...current,
+      treatmentLibrary: [
+        ...current.treatmentLibrary,
+        {
+          id,
+          name: "New treatment",
+          wording: "",
+          active: true,
+          builtIn: false,
+          category: "Additional",
+        },
+      ],
+    }));
+
+    return id;
+  }
+
+  function updateTreatmentLibraryItem(
+    treatmentId: string,
+    updates: Partial<
+      Pick<
+        TreatmentLibraryItem,
+        "name" | "wording" | "active"
+      >
+    >,
+  ) {
+    setSettings((current) => ({
+      ...current,
+      treatmentLibrary:
+        current.treatmentLibrary.map(
+          (treatment) =>
+            treatment.id === treatmentId
+              ? {
+                  ...treatment,
+                  ...updates,
+                }
+              : treatment,
+        ),
+    }));
+  }
+
+  function deleteTreatmentLibraryItem(
+    treatmentId: string,
+  ) {
+    setSettings((current) => ({
+      ...current,
+      treatmentLibrary:
+        current.treatmentLibrary.filter(
+          (treatment) =>
+            treatment.id !== treatmentId ||
+            treatment.builtIn,
+        ),
     }));
   }
 
@@ -445,11 +662,15 @@ export function SettingsStoreProvider({
       invoicePrefix,
       nextInvoiceNumber,
       invoiceNumberPadding,
-    } = settings.invoices;
+    } =
+      invoiceSettingsRef.current;
 
     return formatInvoiceNumber(
       invoicePrefix,
-      nextInvoiceNumber,
+      Math.max(
+        nextInvoiceNumber,
+        invoiceSequenceRef.current,
+      ),
       invoiceNumberPadding,
     );
   }
@@ -463,17 +684,24 @@ export function SettingsStoreProvider({
         ),
       ) + 1;
 
+    const nextInvoiceSettings = {
+      ...invoiceSettingsRef.current,
+      nextInvoiceNumber:
+        nextNumber,
+    };
+
     invoiceSequenceRef.current =
       nextNumber;
 
+    invoiceSettingsRef.current = {
+      ...nextInvoiceSettings,
+    };
+
     setSettings((current) => ({
       ...current,
-
       invoices: {
         ...current.invoices,
-
-        nextInvoiceNumber:
-          nextNumber,
+        ...nextInvoiceSettings,
       },
     }));
   }
@@ -490,13 +718,16 @@ export function SettingsStoreProvider({
       return [];
     }
 
+    const currentInvoiceSettings =
+      normaliseInvoiceSettings(
+        invoiceSettingsRef.current,
+      );
+
     const {
       invoicePrefix,
       invoiceNumberPadding,
     } =
-      normaliseInvoiceSettings(
-        settings.invoices,
-      );
+      currentInvoiceSettings;
 
     const startNumber =
       Math.max(
@@ -523,20 +754,117 @@ export function SettingsStoreProvider({
       startNumber +
       safeQuantity;
 
+    const nextInvoiceSettings = {
+      ...currentInvoiceSettings,
+      nextInvoiceNumber:
+        nextNumber,
+    };
+
+    /*
+     * Reservations permanently consume sequence numbers.
+     * If a later workflow step fails, GreenFlow keeps the
+     * resulting gap rather than reusing an allocated number.
+     */
     invoiceSequenceRef.current =
       nextNumber;
 
+    invoiceSettingsRef.current = {
+      ...nextInvoiceSettings,
+    };
+
     setSettings((current) => ({
       ...current,
-
       invoices: {
         ...current.invoices,
-        nextInvoiceNumber:
-          nextNumber,
+        ...nextInvoiceSettings,
       },
     }));
 
     return invoiceNumbers;
+  }
+
+  function reconcileInvoiceSequence(
+    issuedInvoiceNumbers: string[],
+  ) {
+    const currentInvoiceSettings =
+      normaliseInvoiceSettings(
+        invoiceSettingsRef.current,
+      );
+
+    const highestIssued =
+      issuedInvoiceNumbers.reduce(
+        (
+          highest,
+          invoiceNumber,
+        ) => {
+          const numericSequence =
+            parseCompatibleInvoiceSequence(
+              invoiceNumber,
+              currentInvoiceSettings
+                .invoicePrefix,
+            );
+
+          return numericSequence ===
+            null
+            ? highest
+            : Math.max(
+                highest,
+                numericSequence,
+              );
+        },
+        0,
+      );
+
+    if (highestIssued <= 0) {
+      return;
+    }
+
+    const reconciledNextNumber =
+      Math.max(
+        invoiceSequenceRef.current,
+        currentInvoiceSettings
+          .nextInvoiceNumber,
+        highestIssued + 1,
+      );
+
+    if (
+      reconciledNextNumber <=
+      invoiceSequenceRef.current
+    ) {
+      return;
+    }
+
+    const nextInvoiceSettings = {
+      ...currentInvoiceSettings,
+      nextInvoiceNumber:
+        reconciledNextNumber,
+    };
+
+    invoiceSequenceRef.current =
+      reconciledNextNumber;
+
+    invoiceSettingsRef.current = {
+      ...nextInvoiceSettings,
+    };
+
+    setSettings((current) => {
+      if (
+        current.invoices
+          .nextInvoiceNumber >=
+        reconciledNextNumber
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        invoices: {
+          ...current.invoices,
+          nextInvoiceNumber:
+            reconciledNextNumber,
+        },
+      };
+    });
   }
 
   function restoreDefaultSettings() {
@@ -549,15 +877,22 @@ export function SettingsStoreProvider({
           1,
         );
 
+      const nextInvoiceSettings = {
+        ...defaultSettings.invoices,
+        nextInvoiceNumber,
+      };
+
       invoiceSequenceRef.current =
         nextInvoiceNumber;
 
+      invoiceSettingsRef.current = {
+        ...nextInvoiceSettings,
+      };
+
       return {
         ...defaultSettings,
-        invoices: {
-          ...defaultSettings.invoices,
-          nextInvoiceNumber,
-        },
+        invoices:
+          nextInvoiceSettings,
       };
     });
   }
@@ -570,6 +905,9 @@ export function SettingsStoreProvider({
         updateBusinessSettings,
         updateInvoiceSettings,
         updateTreatmentWording,
+        addTreatmentLibraryItem,
+        updateTreatmentLibraryItem,
+        deleteTreatmentLibraryItem,
         updateBrandingSettings,
         updateAdvisory,
         addAdvisory,
@@ -577,6 +915,7 @@ export function SettingsStoreProvider({
         getNextInvoiceNumber,
         incrementInvoiceNumber,
         reserveInvoiceNumbers,
+        reconcileInvoiceSequence,
         restoreDefaultSettings,
       }),
       [settings, ready],
@@ -625,6 +964,19 @@ function mergeSettingsWithDefaults(
       ...defaultSettings.treatmentWording,
       ...savedSettings.treatmentWording,
     },
+
+    treatmentLibrary:
+      Array.isArray(
+        savedSettings.treatmentLibrary,
+      )
+        ? mergeTreatmentLibrary(
+            savedSettings.treatmentLibrary,
+          )
+        : defaultSettings.treatmentLibrary.map(
+            (treatment) => ({
+              ...treatment,
+            }),
+          ),
 
     advisories:
       normaliseAdvisories(
@@ -837,6 +1189,150 @@ function safePositiveIntegerOrZero(
     0,
     Math.floor(value),
   );
+}
+
+function escapeRegExp(
+  value: string,
+) {
+  return value.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&",
+  );
+}
+
+function parseCompatibleInvoiceSequence(
+  invoiceNumber: string,
+  prefix: string,
+) {
+  const cleanInvoiceNumber =
+    invoiceNumber
+      .trim()
+      .toUpperCase();
+
+  if (!cleanInvoiceNumber) {
+    return null;
+  }
+
+  const cleanPrefix =
+    prefix
+      .trim()
+      .toUpperCase();
+
+  const pattern =
+    cleanPrefix
+      ? new RegExp(
+          `^${escapeRegExp(
+            cleanPrefix,
+          )}-(\\d+)$`,
+        )
+      : /^\d+$/;
+
+  const match =
+    cleanInvoiceNumber.match(
+      pattern,
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  const numericPart =
+    cleanPrefix
+      ? match[1]
+      : match[0];
+
+  const numericSequence =
+    Number(numericPart);
+
+  if (
+    !Number.isSafeInteger(
+      numericSequence,
+    ) ||
+    numericSequence <= 0
+  ) {
+    return null;
+  }
+
+  return numericSequence;
+}
+
+function mergeTreatmentLibrary(
+  saved: unknown[],
+): TreatmentLibraryItem[] {
+  const builtIns =
+    defaultSettings.treatmentLibrary
+      .filter(
+        (treatment) =>
+          treatment.builtIn,
+      )
+      .map((treatment) => {
+        const savedTreatment =
+          saved.find(
+            (item) =>
+              Boolean(
+                item &&
+                  typeof item ===
+                    "object" &&
+                  "id" in item &&
+                  item.id ===
+                    treatment.id,
+              ),
+          ) as
+          | Partial<TreatmentLibraryItem>
+          | undefined;
+
+        return {
+          ...treatment,
+          ...(savedTreatment ?? {}),
+          id: treatment.id,
+          builtIn: true,
+          category:
+            treatment.category,
+        };
+      });
+
+  const custom =
+    saved
+      .filter(
+        (
+          item,
+        ): item is Partial<TreatmentLibraryItem> =>
+          Boolean(
+            item &&
+              typeof item === "object" &&
+              "id" in item &&
+              typeof item.id ===
+                "string" &&
+              !defaultSettings.treatmentLibrary.some(
+                (defaultTreatment) =>
+                  defaultTreatment.id ===
+                  item.id,
+              ),
+          ),
+      )
+      .map((item) => ({
+        id:
+          item.id ??
+          `treatment-custom-${Date.now()}`,
+        name:
+          typeof item.name === "string"
+            ? item.name
+            : "New treatment",
+        wording:
+          typeof item.wording ===
+          "string"
+            ? item.wording
+            : "",
+        active:
+          item.active !== false,
+        builtIn: false,
+        category: "Additional" as const,
+      }));
+
+  return [
+    ...builtIns,
+    ...custom,
+  ];
 }
 
 function formatInvoiceNumber(

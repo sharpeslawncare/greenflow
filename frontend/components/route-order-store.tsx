@@ -33,6 +33,24 @@ function makeKey(
   return `${date}::${vanNumber}`;
 }
 
+function normaliseCustomerNumbers(
+  value: unknown,
+): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) =>
+          String(item ?? "").trim(),
+        )
+        .filter(Boolean),
+    ),
+  );
+}
+
 function readOrders(): RouteOrder[] {
   if (typeof window === "undefined") {
     return [];
@@ -48,39 +66,57 @@ function readOrders(): RouteOrder[] {
   }
 
   try {
-    const parsed = JSON.parse(saved) as {
-      orders?: unknown;
-    };
+    const parsed =
+      JSON.parse(saved) as {
+        orders?: unknown;
+      };
 
     if (!Array.isArray(parsed.orders)) {
       return [];
     }
 
-    return parsed.orders.filter(
-      (
-        order,
-      ): order is RouteOrder => {
-        if (
-          !order ||
-          typeof order !== "object"
-        ) {
-          return false;
-        }
-
-        const candidate =
-          order as Partial<RouteOrder>;
-
-        return (
-          typeof candidate.date ===
-            "string" &&
-          typeof candidate.vanNumber ===
-            "number" &&
-          Array.isArray(
-            candidate.customerNumbers,
-          )
-        );
-      },
-    );
+    return parsed.orders
+      .filter(
+        (
+          order,
+        ): order is Record<
+          string,
+          unknown
+        > =>
+          Boolean(
+            order &&
+              typeof order ===
+                "object",
+          ),
+      )
+      .map((order) => ({
+        date:
+          typeof order.date ===
+          "string"
+            ? order.date
+            : "",
+        vanNumber:
+          Number(order.vanNumber),
+        customerNumbers:
+          normaliseCustomerNumbers(
+            order.customerNumbers,
+          ),
+        updatedAt:
+          typeof order.updatedAt ===
+          "string"
+            ? order.updatedAt
+            : new Date(
+                0,
+              ).toISOString(),
+      }))
+      .filter(
+        (order) =>
+          Boolean(order.date) &&
+          Number.isFinite(
+            order.vanNumber,
+          ) &&
+          order.vanNumber > 0,
+      );
   } catch {
     window.localStorage.removeItem(
       STORAGE_KEY,
@@ -235,6 +271,66 @@ export function useRouteOrderStore() {
       [ordersByKey],
     );
 
+  /*
+   * This is the single authoritative route-order rule.
+   *
+   * Saved customers appear first in exactly the order
+   * chosen by the user. Any new jobs that were not in
+   * the saved route are appended afterwards without
+   * disturbing the saved sequence.
+   */
+  const getOrderedCustomerNumbers =
+    useCallback(
+      (
+        date: string,
+        vanNumber: number,
+        availableCustomerNumbers:
+          string[],
+      ): string[] => {
+        const available =
+          normaliseCustomerNumbers(
+            availableCustomerNumbers,
+          );
+
+        const availableSet =
+          new Set(available);
+
+        const saved =
+          getRouteOrder(
+            date,
+            vanNumber,
+          ).filter(
+            (customerNumber) =>
+              availableSet.has(
+                String(
+                  customerNumber,
+                ),
+              ),
+          );
+
+        const savedNormalised =
+          normaliseCustomerNumbers(
+            saved,
+          );
+
+        const savedSet =
+          new Set(
+            savedNormalised,
+          );
+
+        return [
+          ...savedNormalised,
+          ...available.filter(
+            (customerNumber) =>
+              !savedSet.has(
+                customerNumber,
+              ),
+          ),
+        ];
+      },
+      [getRouteOrder],
+    );
+
   const saveRouteOrder =
     useCallback(
       (
@@ -246,12 +342,8 @@ export function useRouteOrderStore() {
           date,
           vanNumber,
           customerNumbers:
-            Array.from(
-              new Set(
-                customerNumbers.filter(
-                  Boolean,
-                ),
-              ),
+            normaliseCustomerNumbers(
+              customerNumbers,
             ),
           updatedAt:
             new Date().toISOString(),
@@ -346,7 +438,9 @@ export function useRouteOrderStore() {
           )
           .map(
             (customer) =>
-              customer.customerNumber,
+              String(
+                customer.customerNumber,
+              ),
           ),
       [],
     );
@@ -359,85 +453,82 @@ export function useRouteOrderStore() {
         items: T[],
         date: string,
       ): T[] {
-        return items
-          .slice()
-          .sort(
-            (first, second) => {
-              if (
-                first.customer.vanNumber !==
-                second.customer.vanNumber
-              ) {
-                return (
-                  first.customer.vanNumber -
-                  second.customer.vanNumber
-                );
-              }
-
-              const order =
-                getRouteOrder(
-                  date,
-                  first.customer.vanNumber,
-                );
-
-              const firstIndex =
-                order.indexOf(
-                  first.customer.customerNumber,
-                );
-
-              const secondIndex =
-                order.indexOf(
-                  second.customer.customerNumber,
-                );
-
-              if (
-                firstIndex >= 0 ||
-                secondIndex >= 0
-              ) {
-                if (
-                  firstIndex < 0
-                ) {
-                  return 1;
-                }
-
-                if (
-                  secondIndex < 0
-                ) {
-                  return -1;
-                }
-
-                return (
-                  firstIndex -
-                  secondIndex
-                );
-              }
-
-              const postcodeResult =
-                postcodeSortKey(
-                  first.customer.postcode,
-                ).localeCompare(
-                  postcodeSortKey(
-                    second.customer.postcode,
-                  ),
-                );
-
-              if (
-                postcodeResult !== 0
-              ) {
-                return postcodeResult;
-              }
-
-              return first.customer.fullName.localeCompare(
-                second.customer.fullName,
-              );
-            },
+        const vanNumbers =
+          Array.from(
+            new Set(
+              items.map(
+                (item) =>
+                  item.customer
+                    .vanNumber,
+              ),
+            ),
+          ).sort(
+            (first, second) =>
+              first - second,
           );
+
+        return vanNumbers.flatMap(
+          (vanNumber) => {
+            const vanItems =
+              items.filter(
+                (item) =>
+                  item.customer
+                    .vanNumber ===
+                  vanNumber,
+              );
+
+            const orderedNumbers =
+              getOrderedCustomerNumbers(
+                date,
+                vanNumber,
+                vanItems.map(
+                  (item) =>
+                    item.customer
+                      .customerNumber,
+                ),
+              );
+
+            const orderIndex =
+              new Map(
+                orderedNumbers.map(
+                  (
+                    customerNumber,
+                    index,
+                  ) => [
+                    customerNumber,
+                    index,
+                  ],
+                ),
+              );
+
+            return vanItems
+              .slice()
+              .sort(
+                (
+                  first,
+                  second,
+                ) =>
+                  (orderIndex.get(
+                    first.customer
+                      .customerNumber,
+                  ) ??
+                    Number.MAX_SAFE_INTEGER) -
+                  (orderIndex.get(
+                    second.customer
+                      .customerNumber,
+                  ) ??
+                    Number.MAX_SAFE_INTEGER),
+              );
+          },
+        );
       },
-      [getRouteOrder],
+      [getOrderedCustomerNumbers],
     );
 
   return {
     ready,
     getRouteOrder,
+    getOrderedCustomerNumbers,
     saveRouteOrder,
     clearRouteOrder,
     createPostcodeOrder,

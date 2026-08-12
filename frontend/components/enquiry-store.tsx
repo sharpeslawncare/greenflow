@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -99,6 +100,11 @@ type NewEnquiryInput = {
   initialMessage?: string;
 };
 
+export type EnquiryMutationResult = {
+  success: boolean;
+  message: string;
+};
+
 type EnquiryStoreValue = {
   enquiries: EnquiryRecord[];
   ready: boolean;
@@ -109,7 +115,7 @@ type EnquiryStoreValue = {
 
   updateEnquiry: (
     updatedEnquiry: EnquiryRecord,
-  ) => void;
+  ) => EnquiryMutationResult;
 
   deleteEnquiry: (
     enquiryId: string,
@@ -132,7 +138,7 @@ type EnquiryStoreValue = {
   markConverted: (
     enquiryId: string,
     customerNumber: string,
-  ) => void;
+  ) => EnquiryMutationResult;
 
   restoreDemoEnquiries: () => void;
   clearEnquiries: () => void;
@@ -156,6 +162,9 @@ export function EnquiryStoreProvider({
   const [enquiries, setEnquiries] =
     useState<EnquiryRecord[]>([]);
 
+  const enquiriesRef =
+    useRef<EnquiryRecord[]>([]);
+
   const [ready, setReady] =
     useState(false);
 
@@ -174,12 +183,18 @@ export function EnquiryStoreProvider({
         >;
 
         if (Array.isArray(parsed)) {
-          setEnquiries(
+          const loadedEnquiries =
             deduplicateEnquiries(
               parsed.map(
                 normaliseEnquiryRecord,
               ),
-            ),
+            );
+
+          enquiriesRef.current =
+            loadedEnquiries;
+
+          setEnquiries(
+            loadedEnquiries,
           );
         }
       } catch {
@@ -188,17 +203,28 @@ export function EnquiryStoreProvider({
         );
       }
     } else {
-      setEnquiries(
+      const demo =
         defaultDemoEnquiries.map(
           (enquiry) => ({
             ...enquiry,
           }),
-        ),
+        );
+
+      enquiriesRef.current =
+        demo;
+
+      setEnquiries(
+        demo,
       );
     }
 
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    enquiriesRef.current =
+      enquiries;
+  }, [enquiries]);
 
   useEffect(() => {
     if (!ready) return;
@@ -228,7 +254,7 @@ export function EnquiryStoreProvider({
 
       enquiryNumber:
         createNextEnquiryNumber(
-          enquiries,
+          enquiriesRef.current,
         ),
 
       createdAt: now,
@@ -301,54 +327,126 @@ export function EnquiryStoreProvider({
       convertedAt: "",
     };
 
-    setEnquiries((current) => [
+    const current =
+      enquiriesRef.current;
+
+    const duplicateNumber =
+      current.some(
+        (enquiry) =>
+          enquiry.enquiryNumber ===
+          newEnquiry.enquiryNumber,
+      );
+
+    if (duplicateNumber) {
+      newEnquiry.enquiryNumber =
+        createNextEnquiryNumber(
+          current,
+        );
+    }
+
+    const next = [
       newEnquiry,
       ...current,
-    ]);
+    ];
+
+    enquiriesRef.current =
+      next;
+
+    setEnquiries(next);
 
     return newEnquiry;
   }
 
   function updateEnquiry(
     updatedEnquiry: EnquiryRecord,
-  ) {
+  ): EnquiryMutationResult {
+    const current =
+      enquiriesRef.current;
+
+    const existingIndex =
+      current.findIndex(
+        (enquiry) =>
+          enquiry.id ===
+          updatedEnquiry.id,
+      );
+
+    if (existingIndex < 0) {
+      return {
+        success: false,
+        message:
+          "The enquiry could not be found, so no changes were saved.",
+      };
+    }
+
     const normalised =
       normaliseEnquiryRecord({
         ...updatedEnquiry,
-
-        fullName: createFullName(
-          updatedEnquiry.firstName,
-          updatedEnquiry.surname,
-        ),
-
+        fullName:
+          createFullName(
+            updatedEnquiry.firstName,
+            updatedEnquiry.surname,
+          ),
         updatedAt:
           new Date().toISOString(),
       });
 
-    setEnquiries((current) =>
-      current.map((enquiry) =>
-        enquiry.id === normalised.id
-          ? normalised
-          : enquiry,
-      ),
-    );
+    const numberCollision =
+      current.some(
+        (enquiry) =>
+          enquiry.id !==
+            normalised.id &&
+          enquiry.enquiryNumber ===
+            normalised.enquiryNumber,
+      );
+
+    if (numberCollision) {
+      return {
+        success: false,
+        message:
+          `Enquiry number ${normalised.enquiryNumber} is already in use.`,
+      };
+    }
+
+    const next =
+      current.map(
+        (enquiry, index) =>
+          index ===
+          existingIndex
+            ? normalised
+            : enquiry,
+      );
+
+    enquiriesRef.current =
+      next;
+
+    setEnquiries(next);
+
+    return {
+      success: true,
+      message:
+        "Enquiry updated successfully.",
+    };
   }
 
   function deleteEnquiry(
     enquiryId: string,
   ) {
-    setEnquiries((current) =>
-      current.filter(
+    const next =
+      enquiriesRef.current.filter(
         (enquiry) =>
           enquiry.id !== enquiryId,
-      ),
-    );
+      );
+
+    enquiriesRef.current =
+      next;
+
+    setEnquiries(next);
   }
 
   function getEnquiryById(
     enquiryId: string,
   ) {
-    return enquiries.find(
+    return enquiriesRef.current.find(
       (enquiry) =>
         enquiry.id === enquiryId,
     );
@@ -359,20 +457,35 @@ export function EnquiryStoreProvider({
     pricePerSquareMetre: number,
     minimumPrice: number,
   ) {
-    const safeArea = Math.max(
-      0,
-      lawnSizeSquareMetres,
-    );
+    const safeArea =
+      Number.isFinite(
+        lawnSizeSquareMetres,
+      )
+        ? Math.max(
+            0,
+            lawnSizeSquareMetres,
+          )
+        : 0;
 
-    const safeRate = Math.max(
-      0,
-      pricePerSquareMetre,
-    );
+    const safeRate =
+      Number.isFinite(
+        pricePerSquareMetre,
+      )
+        ? Math.max(
+            0,
+            pricePerSquareMetre,
+          )
+        : 0;
 
-    const safeMinimum = Math.max(
-      0,
-      minimumPrice,
-    );
+    const safeMinimum =
+      Number.isFinite(
+        minimumPrice,
+      )
+        ? Math.max(
+            0,
+            minimumPrice,
+          )
+        : 0;
 
     const calculatedPrice =
       safeArea * safeRate;
@@ -397,41 +510,83 @@ export function EnquiryStoreProvider({
   function markConverted(
     enquiryId: string,
     customerNumber: string,
-  ) {
-    setEnquiries((current) =>
-      current.map((enquiry) =>
-        enquiry.id === enquiryId
-          ? {
-              ...enquiry,
-              status:
-                "Converted to Customer",
-              quoteStatus: "Accepted",
-              convertedCustomerNumber:
-                customerNumber.trim(),
-              convertedAt:
-                new Date().toISOString(),
-              updatedAt:
-                new Date().toISOString(),
-            }
-          : enquiry,
-      ),
-    );
+  ): EnquiryMutationResult {
+    const trimmedCustomerNumber =
+      customerNumber.trim();
+
+    if (!trimmedCustomerNumber) {
+      return {
+        success: false,
+        message:
+          "A customer number is required before an enquiry can be marked as converted.",
+      };
+    }
+
+    const current =
+      enquiriesRef.current;
+
+    const existingIndex =
+      current.findIndex(
+        (enquiry) =>
+          enquiry.id === enquiryId,
+      );
+
+    if (existingIndex < 0) {
+      return {
+        success: false,
+        message:
+          "The enquiry could not be found, so it was not marked as converted.",
+      };
+    }
+
+    const now =
+      new Date().toISOString();
+
+    const updated = {
+      ...current[existingIndex],
+      status:
+        "Converted to Customer" as const,
+      quoteStatus:
+        "Accepted" as const,
+      convertedCustomerNumber:
+        trimmedCustomerNumber,
+      convertedAt: now,
+      updatedAt: now,
+    };
+
+    const next =
+      current.map(
+        (enquiry, index) =>
+          index ===
+          existingIndex
+            ? updated
+            : enquiry,
+      );
+
+    enquiriesRef.current =
+      next;
+
+    setEnquiries(next);
+
+    return {
+      success: true,
+      message:
+        "Enquiry marked as converted.",
+    };
   }
 
   function restoreDemoEnquiries() {
+    enquiriesRef.current =
+      [];
+
     setEnquiries([]);
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([]),
-    );
   }
 
   function clearEnquiries() {
+    enquiriesRef.current =
+      [];
+
     setEnquiries([]);
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([]),
-    );
   }
 
   const value =
@@ -970,7 +1125,9 @@ function createNextEnquiryNumber(
         );
 
         if (
-          Number.isNaN(numericPart)
+          !Number.isFinite(
+            numericPart,
+          )
         ) {
           return highest;
         }

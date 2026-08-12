@@ -19,6 +19,7 @@ import {
   useChemicalStore,
 } from "@/components/chemical-store";
 import {
+  type AdditionalCustomerJob,
   type StoredCustomer,
   useCustomerStore,
 } from "@/components/customer-store";
@@ -42,11 +43,14 @@ import {
 
 type VisitJob = {
   id: string;
+  source: "programme" | "additional";
   customer: StoredCustomer;
   programme: CustomerProgramme;
   visit: ProgrammeVisit;
   standardGroupDate: string;
   overridden: boolean;
+  price: number;
+  additionalJob?: AdditionalCustomerJob;
 };
 
 type VisitOutcome =
@@ -100,6 +104,8 @@ type ProductRequirement = {
 type CompletionResult = {
   outcome: VisitOutcome;
   completedAt: string;
+  selectedCount: number;
+  programmeUpdatesCount: number;
   treatmentRecords: Array<{
     treatmentId: string;
     customerNumber: string;
@@ -192,6 +198,7 @@ function VisitCentrePageContent() {
   const {
     customers,
     ready: customersReady,
+    updateCustomer,
   } = useCustomerStore();
 
   const {
@@ -208,8 +215,9 @@ function VisitCentrePageContent() {
   const {
     treatments,
     ready: treatmentsReady,
-    addTreatments,
+    addTreatment,
     updateTreatment,
+    deleteTreatment,
     hasFinalOutcomeForProgrammeVisit,
   } = useTreatmentStore();
 
@@ -221,12 +229,13 @@ function VisitCentrePageContent() {
 
   const {
     ready: routeOrderReady,
-    sortBySavedRoute,
+    getOrderedCustomerNumbers,
   } = useRouteOrderStore();
 
   const {
     ready: settingsReady,
     reserveInvoiceNumbers,
+    reconcileInvoiceSequence,
   } = useSettingsStore();
 
   const [selectedDate, setSelectedDate] = useState(
@@ -274,6 +283,29 @@ function VisitCentrePageContent() {
   ] = useState<CompletionResult | null>(null);
 
   useEffect(() => {
+    if (
+      !settingsReady ||
+      !treatmentsReady
+    ) {
+      return;
+    }
+
+    reconcileInvoiceSequence(
+      treatments
+        .map(
+          (treatment) =>
+            treatment.invoiceNumber,
+        )
+        .filter(Boolean),
+    );
+  }, [
+    settingsReady,
+    treatmentsReady,
+    treatments,
+    reconcileInvoiceSequence,
+  ]);
+
+  useEffect(() => {
     if (isDateValue(requestedDate ?? "")) {
       setSelectedDate(requestedDate!);
     }
@@ -287,81 +319,282 @@ function VisitCentrePageContent() {
     setStandardMixReady(true);
   }, [selectedDate]);
 
-  const jobs = useMemo<VisitJob[]>(() => {
-    const items = programmes
-      .flatMap((programme) => {
-        const customer = customers.find(
-          (item) => item.customerNumber === programme.customerNumber,
+  const jobs =
+    useMemo<VisitJob[]>(() => {
+      const seasonalItems =
+        programmes.flatMap(
+          (programme) => {
+            const customer =
+              customers.find(
+                (item) =>
+                  item.customerNumber ===
+                  programme.customerNumber,
+              );
+
+            if (
+              !customer ||
+              customer.status !== "Active"
+            ) {
+              return [];
+            }
+
+            const season =
+              seasons.find(
+                (item) =>
+                  item.year ===
+                  programme.year,
+              );
+
+            const groupDates =
+              season?.groupDates.find(
+                (group) =>
+                  group.groupNumber ===
+                  customer.groupNumber,
+              );
+
+            return programme.visits
+              .filter(
+                (visit) =>
+                  visit.scheduledDate ===
+                    selectedDate &&
+                  (visit.status ===
+                    "Scheduled" ||
+                    visit.status ===
+                      "Planned"),
+              )
+              .filter(
+                (visit) =>
+                  !hasRecordedOutcome(
+                    treatments,
+                    programme,
+                    visit,
+                    customer.customerNumber,
+                  ),
+              )
+              .filter(
+                () =>
+                  (
+                    requestedGroup === 0 ||
+                    customer.groupNumber ===
+                      requestedGroup
+                  ) &&
+                  (
+                    requestedVan === 0 ||
+                    customer.vanNumber ===
+                      requestedVan
+                  ),
+              )
+              .map((visit) => {
+                const standardGroupDate =
+                  groupDates
+                    ?.treatmentDates[
+                      visit.visitNumber -
+                        1
+                    ] ??
+                  visit.scheduledDate;
+
+                return {
+                  id: `${programme.id}-${visit.id}`,
+                  source:
+                    "programme" as const,
+                  customer,
+                  programme,
+                  visit,
+                  standardGroupDate,
+                  overridden:
+                    standardGroupDate !==
+                    visit.scheduledDate,
+                  price:
+                    customer.treatmentPrice,
+                };
+              });
+          },
         );
 
-        if (!customer || customer.status !== "Active") {
-          return [];
-        }
-
-        const season = seasons.find((item) => item.year === programme.year);
-        const groupDates = season?.groupDates.find(
-          (group) => group.groupNumber === customer.groupNumber,
-        );
-
-        return programme.visits
-          .filter(
-            (visit) =>
-              visit.scheduledDate === selectedDate &&
-              (visit.status === "Scheduled" || visit.status === "Planned"),
-          )
-          .filter(
-            (visit) =>
-              !hasRecordedOutcome(
-                treatments,
-                programme,
-                visit,
-                customer.customerNumber,
-              ),
-          )
-          .filter(
-            () =>
+      const additionalItems =
+        customers.flatMap(
+          (customer) => {
+            if (
+              customer.status !== "Active" ||
               (
-                requestedGroup === 0 ||
-                customer.groupNumber ===
+                requestedGroup !== 0 &&
+                customer.groupNumber !==
                   requestedGroup
-              ) &&
+              ) ||
               (
-                requestedVan === 0 ||
-                customer.vanNumber ===
+                requestedVan !== 0 &&
+                customer.vanNumber !==
                   requestedVan
+              )
+            ) {
+              return [];
+            }
+
+            return customer.additionalJobs
+              .filter(
+                (job) =>
+                  job.status ===
+                    "Scheduled" &&
+                  job.scheduledDate ===
+                    selectedDate,
+              )
+              .map((additionalJob) => {
+                const programme =
+                  createAdditionalJobProgramme(
+                    customer,
+                    additionalJob,
+                  );
+
+                return {
+                  id: `additional-${additionalJob.id}`,
+                  source:
+                    "additional" as const,
+                  customer,
+                  programme,
+                  visit:
+                    programme.visits[0],
+                  standardGroupDate:
+                    additionalJob.scheduledDate,
+                  overridden: false,
+                  price:
+                    additionalJob.price,
+                  additionalJob,
+                };
+              });
+          },
+        );
+
+      const items = [
+        ...seasonalItems,
+        ...additionalItems,
+      ];
+
+      const vanNumbers =
+        Array.from(
+          new Set(
+            items.map(
+              (item) =>
+                item.customer.vanNumber,
+            ),
+          ),
+        ).sort(
+          (first, second) =>
+            first - second,
+        );
+
+      return vanNumbers.flatMap(
+        (vanNumber) => {
+          const vanItems =
+            items.filter(
+              (item) =>
+                item.customer.vanNumber ===
+                vanNumber,
+            );
+
+          const orderedNumbers =
+            getOrderedCustomerNumbers(
+              selectedDate,
+              vanNumber,
+              vanItems.map(
+                (item) =>
+                  item.customer
+                    .customerNumber,
               ),
-          )
-          .map((visit) => {
-            const standardGroupDate =
-              groupDates?.treatmentDates[visit.visitNumber - 1] ??
-              visit.scheduledDate;
+            );
 
-            return {
-              id: `${programme.id}-${visit.id}`,
-              customer,
-              programme,
-              visit,
-              standardGroupDate,
-              overridden: standardGroupDate !== visit.scheduledDate,
-            };
-          });
-      })
-      ;
+          const itemGroups =
+            new Map<
+              string,
+              VisitJob[]
+            >();
 
-    return sortBySavedRoute(
-      items,
+          for (
+            const item of vanItems
+          ) {
+            const customerNumber =
+              item.customer
+                .customerNumber;
+
+            const existing =
+              itemGroups.get(
+                customerNumber,
+              ) ?? [];
+
+            existing.push(item);
+
+            itemGroups.set(
+              customerNumber,
+              existing,
+            );
+          }
+
+          return orderedNumbers.flatMap(
+            (customerNumber) =>
+              itemGroups.get(
+                customerNumber,
+              ) ?? [],
+          );
+        },
+      );
+    }, [
+      programmes,
+      customers,
+      seasons,
+      treatments,
       selectedDate,
-    );
-  }, [
-    programmes,
-    customers,
-    seasons,
-    treatments,
-    selectedDate,
-    requestedGroup,
-    requestedVan,
-    sortBySavedRoute,
-  ]);
+      requestedGroup,
+      requestedVan,
+      getOrderedCustomerNumbers,
+    ]);
+
+  const seasonRolloverWarning =
+    useMemo(() => {
+      const treatmentFiveYears =
+        Array.from(
+          new Set(
+            jobs
+              .filter(
+                (job) =>
+                  job.source ===
+                    "programme" &&
+                  job.visit.visitNumber === 5,
+              )
+              .map(
+                (job) =>
+                  job.programme.year,
+              ),
+          ),
+        ).sort(
+          (first, second) =>
+            first - second,
+        );
+
+      const missingNextSeasonYears =
+        treatmentFiveYears.filter(
+          (year) =>
+            !seasons.some(
+              (season) =>
+                season.year ===
+                year + 1,
+            ),
+        );
+
+      if (
+        missingNextSeasonYears.length ===
+        0
+      ) {
+        return null;
+      }
+
+      return {
+        currentYears:
+          missingNextSeasonYears,
+        nextYears:
+          missingNextSeasonYears.map(
+            (year) => year + 1,
+          ),
+      };
+    }, [jobs, seasons]);
 
   useEffect(() => {
     if (jobs.length === 0) {
@@ -850,7 +1083,7 @@ function VisitCentrePageContent() {
     if (needsReplacement) {
       const job = selectedJobs[0];
 
-      const conflictingVisit =
+      const conflictingProgrammeVisit =
         programmes
           .filter(
             (programme) =>
@@ -863,16 +1096,44 @@ function VisitCentrePageContent() {
           )
           .find(
             (visit) =>
-              visit.id !== job.visit.id &&
-              (visit.status === "Scheduled" ||
-                visit.status === "Planned") &&
+              (
+                job.source !==
+                  "programme" ||
+                visit.id !==
+                  job.visit.id
+              ) &&
+              (visit.status ===
+                "Scheduled" ||
+                visit.status ===
+                  "Planned") &&
               visit.scheduledDate ===
                 replacementDate,
           );
 
-      if (conflictingVisit) {
+      const conflictingAdditionalJob =
+        job.customer.additionalJobs.find(
+          (additionalJob) =>
+            additionalJob.id !==
+              job.additionalJob?.id &&
+            additionalJob.status ===
+              "Scheduled" &&
+            additionalJob.scheduledDate ===
+              replacementDate,
+        );
+
+      if (
+        conflictingProgrammeVisit ||
+        conflictingAdditionalJob
+      ) {
+        const treatmentName =
+          conflictingProgrammeVisit
+            ?.treatmentName ??
+          conflictingAdditionalJob
+            ?.treatmentName ??
+          "another job";
+
         const error =
-          `${job.customer.fullName} already has ${conflictingVisit.treatmentName} scheduled on ${formatDate(
+          `${job.customer.fullName} already has ${treatmentName} scheduled on ${formatDate(
             replacementDate,
           )}. Choose a different replacement date.`;
 
@@ -906,16 +1167,35 @@ function VisitCentrePageContent() {
 
     if (outcome === "Completed" && stockProblem) {
       setReviewError(stockProblem);
-      showMessage(stockProblem);
+      showMessage(
+        stockProblem,
+        "error",
+      );
       return;
     }
 
     const alreadyFinalJobs =
-      selectedJobs.filter((job) =>
-        hasFinalOutcomeForProgrammeVisit(
-          job.programme.id,
-          job.visit.id,
-        ),
+      selectedJobs.filter(
+        (job) =>
+          job.source ===
+            "programme"
+            ? hasFinalOutcomeForProgrammeVisit(
+                job.programme.id,
+                job.visit.id,
+              )
+            : treatments.some(
+                (treatment) =>
+                  treatment.programmeId ===
+                    job.programme.id &&
+                  treatment.programmeVisitId ===
+                    job.visit.id &&
+                  (
+                    treatment.status ===
+                      "Completed" ||
+                    treatment.status ===
+                      "Cancelled"
+                  ),
+              ),
       );
 
     if (alreadyFinalJobs.length > 0) {
@@ -972,46 +1252,8 @@ function VisitCentrePageContent() {
           "GreenFlow could not reserve the required invoice numbers. The visit has not been recorded.";
 
         setReviewError(error);
-        showMessage(error);
-        return;
-      }
-    }
-
-    if (outcome === "Completed") {
-      const stockResult =
-        deductChemicalStockBatch(
-          requirements.map(
-            (requirement) => ({
-              chemicalId:
-                requirement.chemical.id,
-              productAmount:
-                requirement.requiredAmount,
-              productUnit:
-                requirement.requiredUnit,
-            }),
-          ),
-          {
-            date:
-              selectedDate,
-            reference:
-              selectedJobs.length === 1
-                ? `Visit completion · ${selectedJobs[0].customer.customerNumber}`
-                : `Bulk visit completion · ${selectedJobs.length} customers`,
-            notes:
-              selectedJobs.length === 1
-                ? `${selectedJobs[0].customer.fullName} · ${selectedJobs[0].visit.treatmentName}`
-                : `${selectedJobs.length} completed visits · ${totalSelectedArea.toLocaleString(
-                    "en-GB",
-                  )} m² combined area`,
-          },
-        );
-
-      if (!stockResult.success) {
-        setReviewError(
-          stockResult.message,
-        );
         showMessage(
-          stockResult.message,
+          error,
           "error",
         );
         return;
@@ -1020,10 +1262,21 @@ function VisitCentrePageContent() {
 
     const treatmentRecords:
       TreatmentRecord[] = [];
-    const newTreatmentRecords:
-      TreatmentRecord[] = [];
-    const updatedTreatmentRecords:
-      TreatmentRecord[] = [];
+
+    const treatmentWrites: Array<{
+      treatment: TreatmentRecord;
+      previousTreatment?: TreatmentRecord;
+    }> = [];
+
+    const programmeWrites: Array<{
+      previousProgramme: CustomerProgramme;
+      nextProgramme: CustomerProgramme;
+    }> = [];
+
+    const customerWrites: Array<{
+      previousCustomer: StoredCustomer;
+      nextCustomer: StoredCustomer;
+    }> = [];
 
     for (const [index, job] of selectedJobs.entries()) {
       const applications =
@@ -1050,7 +1303,10 @@ function VisitCentrePageContent() {
         );
 
       const outcomeNotes = appendNote(
-        notesWithObservations,
+        appendNote(
+          job.additionalJob?.notes ?? "",
+          notesWithObservations,
+        ),
         createOutcomeNote(
           outcome,
           replacementDate,
@@ -1082,11 +1338,14 @@ function VisitCentrePageContent() {
         applications,
         nextVisitDate: needsReplacement
           ? replacementDate
-          : findNextProgrammeVisitDate(
-              programmes,
-              job.customer.customerNumber,
-              job.visit.scheduledDate,
-            ),
+          : job.source ===
+              "programme"
+            ? findNextProgrammeVisitDate(
+                programmes,
+                job.customer.customerNumber,
+                job.visit.scheduledDate,
+              )
+            : "",
       } as const;
 
       if (existingPendingTreatment) {
@@ -1106,9 +1365,14 @@ function VisitCentrePageContent() {
         treatmentRecords.push(
           updatedTreatment,
         );
-        updatedTreatmentRecords.push(
-          updatedTreatment,
-        );
+
+        treatmentWrites.push({
+          treatment:
+            updatedTreatment,
+          previousTreatment:
+            existingPendingTreatment,
+        });
+
         continue;
       }
 
@@ -1124,13 +1388,72 @@ function VisitCentrePageContent() {
       treatmentRecords.push(
         newTreatment,
       );
-      newTreatmentRecords.push(
-        newTreatment,
-      );
+
+      treatmentWrites.push({
+        treatment:
+          newTreatment,
+      });
     }
 
     for (const job of selectedJobs) {
-      saveProgramme({
+      if (
+        job.source ===
+          "additional" &&
+        job.additionalJob
+      ) {
+        const nextAdditionalJobs =
+          job.customer.additionalJobs.map(
+            (additionalJob) => {
+              if (
+                additionalJob.id !==
+                job.additionalJob?.id
+              ) {
+                return additionalJob;
+              }
+
+              if (
+                outcome ===
+                  "Completed"
+              ) {
+                return {
+                  ...additionalJob,
+                  status:
+                    "Completed" as const,
+                };
+              }
+
+              if (needsReplacement) {
+                return {
+                  ...additionalJob,
+                  scheduledDate:
+                    replacementDate,
+                  status:
+                    "Scheduled" as const,
+                };
+              }
+
+              return {
+                ...additionalJob,
+                status:
+                  "Cancelled" as const,
+              };
+            },
+          );
+
+        customerWrites.push({
+          previousCustomer:
+            job.customer,
+          nextCustomer: {
+            ...job.customer,
+            additionalJobs:
+              nextAdditionalJobs,
+          },
+        });
+
+        continue;
+      }
+
+      const nextProgramme: CustomerProgramme = {
         ...job.programme,
         visits: job.programme.visits.map((visit) => {
           if (visit.id !== job.visit.id) {
@@ -1180,25 +1503,271 @@ function VisitCentrePageContent() {
             ),
           };
         }),
+      };
+
+      programmeWrites.push({
+        previousProgramme:
+          job.programme,
+        nextProgramme,
       });
     }
 
-    if (newTreatmentRecords.length > 0) {
-      addTreatments(
-        newTreatmentRecords,
+    const savedTreatmentWrites: Array<{
+      treatment: TreatmentRecord;
+      previousTreatment?: TreatmentRecord;
+    }> = [];
+
+    const savedProgrammeWrites: Array<{
+      previousProgramme: CustomerProgramme;
+      nextProgramme: CustomerProgramme;
+    }> = [];
+
+    const savedCustomerWrites: Array<{
+      previousCustomer: StoredCustomer;
+      nextCustomer: StoredCustomer;
+    }> = [];
+
+    function rollbackTreatmentWrites() {
+      const failures: string[] = [];
+
+      for (
+        const write of
+        [...savedTreatmentWrites].reverse()
+      ) {
+        const result =
+          write.previousTreatment
+            ? updateTreatment(
+                write.previousTreatment,
+              )
+            : deleteTreatment(
+                write.treatment.id,
+              );
+
+        if (!result.success) {
+          failures.push(
+            result.message,
+          );
+        }
+      }
+
+      return failures;
+    }
+
+    function rollbackProgrammeWrites() {
+      const failures: string[] = [];
+
+      for (
+        const write of
+        [...savedProgrammeWrites].reverse()
+      ) {
+        const result =
+          saveProgramme(
+            write.previousProgramme,
+          );
+
+        if (!result.success) {
+          failures.push(
+            result.message,
+          );
+        }
+      }
+
+      return failures;
+    }
+
+    function rollbackCustomerWrites() {
+      const failures: string[] = [];
+
+      for (
+        const write of
+        [...savedCustomerWrites].reverse()
+      ) {
+        const result =
+          updateCustomer(
+            write.previousCustomer,
+          );
+
+        if (!result.success) {
+          failures.push(
+            result.message,
+          );
+        }
+      }
+
+      return failures;
+    }
+
+    function rollbackFailureMessage(
+      failures: string[],
+    ) {
+      if (failures.length === 0) {
+        return "";
+      }
+
+      return ` Rollback also reported ${failures.length} problem${
+        failures.length === 1
+          ? ""
+          : "s"
+      }. Refresh the Visit Centre and review the affected records before retrying.`;
+    }
+
+    /*
+     * Programme writes are now validated and committed
+     * before stock is deducted. If one fails, previously
+     * saved programme changes are restored immediately.
+     */
+    for (const write of programmeWrites) {
+      const result =
+        saveProgramme(
+          write.nextProgramme,
+        );
+
+      if (!result.success) {
+        const rollbackFailures =
+          rollbackProgrammeWrites();
+
+        const error =
+          `${result.message} No stock has been deducted and no treatment record has been saved.${rollbackFailureMessage(
+            rollbackFailures,
+          )}`;
+
+        setReviewError(error);
+        showMessage(
+          error,
+          "error",
+        );
+        return;
+      }
+
+      savedProgrammeWrites.push(
+        write,
       );
     }
 
-    updatedTreatmentRecords.forEach(
-      (treatment) =>
-        updateTreatment(treatment),
-    );
+    for (const write of customerWrites) {
+      const result =
+        updateCustomer(
+          write.nextCustomer,
+        );
+
+      if (!result.success) {
+        const rollbackFailures = [
+          ...rollbackCustomerWrites(),
+          ...rollbackProgrammeWrites(),
+        ];
+
+        const error =
+          `${result.message} No stock has been deducted and no treatment record has been saved.${rollbackFailureMessage(
+            rollbackFailures,
+          )}`;
+
+        setReviewError(error);
+        showMessage(
+          error,
+          "error",
+        );
+        return;
+      }
+
+      savedCustomerWrites.push(
+        write,
+      );
+    }
+
+    for (const write of treatmentWrites) {
+      const result =
+        write.previousTreatment
+          ? updateTreatment(
+              write.treatment,
+            )
+          : addTreatment(
+              write.treatment,
+            );
+
+      if (!result.success) {
+        const rollbackFailures = [
+          ...rollbackTreatmentWrites(),
+          ...rollbackCustomerWrites(),
+          ...rollbackProgrammeWrites(),
+        ];
+
+        const error =
+          `${result.message} The completed treatment/programme changes were rolled back and no stock has been deducted.${rollbackFailureMessage(
+            rollbackFailures,
+          )}`;
+
+        setReviewError(error);
+        showMessage(
+          error,
+          "error",
+        );
+        return;
+      }
+
+      savedTreatmentWrites.push(
+        write,
+      );
+    }
+
+    if (outcome === "Completed") {
+      const stockResult =
+        deductChemicalStockBatch(
+          requirements.map(
+            (requirement) => ({
+              chemicalId:
+                requirement.chemical.id,
+              productAmount:
+                requirement.requiredAmount,
+              productUnit:
+                requirement.requiredUnit,
+            }),
+          ),
+          {
+            date:
+              selectedDate,
+            reference:
+              selectedJobs.length === 1
+                ? `Visit completion · ${selectedJobs[0].customer.customerNumber}`
+                : `Bulk visit completion · ${selectedJobs.length} customers`,
+            notes:
+              selectedJobs.length === 1
+                ? `${selectedJobs[0].customer.fullName} · ${selectedJobs[0].visit.treatmentName}`
+                : `${selectedJobs.length} completed visits · ${totalSelectedArea.toLocaleString(
+                    "en-GB",
+                  )} m² combined area`,
+          },
+        );
+
+      if (!stockResult.success) {
+        const rollbackFailures = [
+          ...rollbackTreatmentWrites(),
+          ...rollbackCustomerWrites(),
+          ...rollbackProgrammeWrites(),
+        ];
+
+        const error =
+          `${stockResult.message} Treatment and programme changes were rolled back.${rollbackFailureMessage(
+            rollbackFailures,
+          )}`;
+
+        setReviewError(error);
+        showMessage(
+          error,
+          "error",
+        );
+        return;
+      }
+    }
 
     const completedCount = selectedJobs.length;
 
     setCompletionResult({
       outcome,
       completedAt: new Date().toISOString(),
+      selectedCount:
+        selectedJobs.length,
+      programmeUpdatesCount:
+        programmeWrites.length,
       treatmentRecords: treatmentRecords.map(
         (treatment) => {
           const customer = selectedJobs.find(
@@ -1333,6 +1902,46 @@ function VisitCentrePageContent() {
             </Field>
           </header>
 
+          {seasonRolloverWarning && (
+            <section
+              role="alert"
+              className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="max-w-4xl">
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                    Season rollover reminder
+                  </div>
+
+                  <h2 className="mt-1 text-xl font-bold text-amber-950">
+                    Next season has not yet been generated
+                  </h2>
+
+                  <p className="mt-2 text-sm leading-6 text-amber-900">
+                    Treatment 5 visits are now appearing for{" "}
+                    {seasonRolloverWarning.currentYears.join(
+                      ", ",
+                    )}
+                    , but the{" "}
+                    {seasonRolloverWarning.nextYears.join(
+                      ", ",
+                    )}{" "}
+                    season calendar does not yet exist. Create the next season
+                    before completing the final treatment round so customers
+                    have their following season&apos;s bookings ready.
+                  </p>
+                </div>
+
+                <Link
+                  href="/season-planner"
+                  className="inline-flex rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-800"
+                >
+                  Open Season Planner
+                </Link>
+              </div>
+            </section>
+          )}
+
           {(requestedGroup > 0 ||
             requestedVan > 0) && (
             <section className="mb-4 rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
@@ -1421,23 +2030,72 @@ function VisitCentrePageContent() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-                    Visit processing complete
+                    All selected jobs processed
                   </div>
 
                   <h2 className="mt-2 text-xl font-bold text-green-950">
-                    {completionResult.treatmentRecords.length} visit
-                    {completionResult.treatmentRecords.length === 1
+                    ✓ {completionResult.selectedCount} job
+                    {completionResult.selectedCount === 1
                       ? ""
                       : "s"}{" "}
-                    saved successfully
+                    processed successfully
                   </h2>
 
                   <p className="mt-1 text-sm text-green-800">
-                    Treatment records, programme updates and internal product usage have been saved.
+                    GreenFlow finished processing every selected job in this batch.
                     {completionResult.outcome === "Completed"
-                      ? " Customer documents are now available from each treatment record."
+                      ? " The completed visits are now recorded and their customer documents are available."
                       : ""}
                   </p>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-xl border border-green-200 bg-white px-3 py-2">
+                      <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Jobs
+                      </div>
+                      <div className="mt-1 font-bold text-green-950">
+                        ✓ {completionResult.selectedCount} processed
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-green-200 bg-white px-3 py-2">
+                      <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Treatment records
+                      </div>
+                      <div className="mt-1 font-bold text-green-950">
+                        ✓ {completionResult.treatmentRecords.length} saved
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-green-200 bg-white px-3 py-2">
+                      <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Programme visits
+                      </div>
+                      <div className="mt-1 font-bold text-green-950">
+                        ✓ {completionResult.programmeUpdatesCount} updated
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-green-200 bg-white px-3 py-2">
+                      <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        {completionResult.outcome === "Completed"
+                          ? "Invoices"
+                          : "Outcome"}
+                      </div>
+                      <div className="mt-1 font-bold text-green-950">
+                        {completionResult.outcome === "Completed"
+                          ? `✓ ${
+                              completionResult.treatmentRecords.filter(
+                                (record) =>
+                                  Boolean(
+                                    record.invoiceNumber,
+                                  ),
+                              ).length
+                            } assigned`
+                          : `✓ ${completionResult.outcome}`}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <button
@@ -1451,28 +2109,40 @@ function VisitCentrePageContent() {
                 </button>
               </div>
 
-              {completionResult.stockDeductions.length > 0 && (
+              {completionResult.outcome === "Completed" && (
                 <div className="mt-4">
                   <div className="text-sm font-bold text-green-950">
-                    Stock deducted
+                    Product stock
                   </div>
 
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {completionResult.stockDeductions.map(
-                      (item) => (
-                        <span
-                          key={`${item.productName}-${item.unit}`}
-                          className="rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-semibold text-green-800"
-                        >
-                          {item.productName}:{" "}
-                          {formatApplicationAmount(
-                            item.amount,
-                            item.unit,
-                          )}
-                        </span>
-                      ),
-                    )}
-                  </div>
+                  {completionResult.stockDeductions.length > 0 ? (
+                    <>
+                      <div className="mt-1 text-xs font-semibold text-green-800">
+                        ✓ Stock deductions processed successfully
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {completionResult.stockDeductions.map(
+                          (item) => (
+                            <span
+                              key={`${item.productName}-${item.unit}`}
+                              className="rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-semibold text-green-800"
+                            >
+                              {item.productName}:{" "}
+                              {formatApplicationAmount(
+                                item.amount,
+                                item.unit,
+                              )}
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-1 text-xs font-semibold text-green-800">
+                      ✓ No product deductions were required for this batch
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1607,7 +2277,7 @@ function VisitCentrePageContent() {
                       No visits remain on this date.
                     </div>
                   ) : (
-                    jobs.map((job) => {
+                    jobs.map((job, index) => {
                       const selected = selectedJobIds.includes(job.id);
 
                       return (
@@ -1629,44 +2299,80 @@ function VisitCentrePageContent() {
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-3">
-                                <div className="font-bold">
-                                  {job.customer.fullName}
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-slate-900 px-2 text-xs font-bold text-white">
+                                      {index + 1}
+                                    </span>
+
+                                    <div className="truncate font-bold">
+                                      {job.customer.fullName}
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-1 text-xs font-semibold text-slate-500">
+                                    Customer {job.customer.customerNumber}
+                                  </div>
                                 </div>
 
                                 {job.overridden && (
-                                  <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">
+                                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">
                                     Override
                                   </span>
                                 )}
                               </div>
 
-                              <div className="mt-1 text-xs text-slate-500">
+                              <div className="mt-2 text-xs text-slate-500">
                                 Group {job.customer.groupNumber} · Van{" "}
                                 {job.customer.vanNumber} ·{" "}
                                 {job.customer.lawnSize.toLocaleString("en-GB")} m²
                               </div>
 
-                              <div className="mt-2 text-sm text-slate-600">
+                              <div className="mt-2 text-sm text-slate-700">
                                 {job.customer.address}, {job.customer.postcode}
                               </div>
 
-                              <div className="mt-2 text-sm font-semibold text-[#176b37]">
-                                {job.visit.treatmentName}
-                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#176b37]">
+                                <span>
+                                  {job.visit.treatmentName}
+                                </span>
 
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {job.customer.lockedGate && (
-                                  <WarningPill tone="red">
-                                    Locked gate
-                                  </WarningPill>
-                                )}
-
-                                {job.customer.dogOnProperty && (
-                                  <WarningPill tone="amber">
-                                    Dog
-                                  </WarningPill>
+                                {job.source ===
+                                  "additional" && (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                                    Additional job
+                                  </span>
                                 )}
                               </div>
+
+                              {(job.customer.lockedGate ||
+                                job.customer.dogOnProperty) && (
+                                <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+                                  {job.customer.lockedGate && (
+                                    <WarningPill tone="red">
+                                      ⚠ Locked gate
+                                    </WarningPill>
+                                  )}
+
+                                  {job.customer.dogOnProperty && (
+                                    <WarningPill tone="amber">
+                                      ⚠ Dog on property
+                                    </WarningPill>
+                                  )}
+                                </div>
+                              )}
+
+                              {job.customer.notes.trim() && (
+                                <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+                                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">
+                                    Customer note
+                                  </div>
+
+                                  <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-blue-950">
+                                    {job.customer.notes}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </label>
@@ -3006,6 +3712,45 @@ function formatApplicationAmount(
   }
 
   return `${amount.toFixed(3)} ${unit}`;
+}
+
+function createAdditionalJobProgramme(
+  customer: StoredCustomer,
+  job: AdditionalCustomerJob,
+): CustomerProgramme {
+  return {
+    id: `additional-jobs-${customer.customerNumber}`,
+    customerNumber:
+      customer.customerNumber,
+    year:
+      Number(
+        job.scheduledDate.slice(
+          0,
+          4,
+        ),
+      ) ||
+      new Date().getFullYear(),
+    createdAt: job.createdAt,
+    programmeName:
+      "Additional Jobs",
+    startDate:
+      job.scheduledDate,
+    avoidWednesdays: false,
+    avoidWeekends: false,
+    visits: [
+      {
+        id: job.id,
+        visitNumber: 0,
+        treatmentName:
+          job.treatmentName,
+        scheduledDate:
+          job.scheduledDate,
+        gapAfterPreviousDays: 0,
+        status: "Scheduled",
+        notes: job.notes,
+      },
+    ],
+  };
 }
 
 function createTreatmentId(index: number) {

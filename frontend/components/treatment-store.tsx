@@ -147,7 +147,9 @@ type TreatmentStoreValue = {
   updateTreatment: (
     treatment: TreatmentRecord,
   ) => TreatmentSaveResult;
-  deleteTreatment: (treatmentId: string) => void;
+  deleteTreatment: (
+    treatmentId: string,
+  ) => TreatmentSaveResult;
   getTreatmentById: (
     treatmentId: string,
   ) => TreatmentRecord | undefined;
@@ -290,8 +292,10 @@ export function TreatmentStoreProvider({
 
       const loadedTreatments =
         Array.isArray(parsed)
-          ? parsed.map(
-              normaliseTreatmentRecord,
+          ? deduplicateTreatmentRecords(
+              parsed.map(
+                normaliseTreatmentRecord,
+              ),
             )
           : cloneDemoTreatments();
 
@@ -585,23 +589,52 @@ export function TreatmentStoreProvider({
 
   function deleteTreatment(
     treatmentId: string,
-  ) {
-    const next =
-      treatmentsRef.current.filter(
+  ): TreatmentSaveResult {
+    const cleanId =
+      treatmentId.trim();
+
+    const current =
+      treatmentsRef.current;
+
+    const exists =
+      current.some(
         (item) =>
-          item.id !== treatmentId,
+          item.id === cleanId,
+      );
+
+    if (!cleanId || !exists) {
+      return {
+        success: false,
+        reason: "not-found",
+        message:
+          "The treatment record could not be found, so nothing was deleted.",
+      };
+    }
+
+    const next =
+      current.filter(
+        (item) =>
+          item.id !== cleanId,
       );
 
     treatmentsRef.current =
       next;
     setTreatments(next);
+
+    return {
+      success: true,
+      reason: "saved",
+      message:
+        "Treatment record deleted.",
+    };
   }
 
   function getTreatmentById(
     treatmentId: string,
   ) {
-    return treatments.find(
-      (item) => item.id === treatmentId,
+    return treatmentsRef.current.find(
+      (item) =>
+        item.id === treatmentId,
     );
   }
 
@@ -616,7 +649,7 @@ export function TreatmentStoreProvider({
       return false;
     }
 
-    return treatments.some(
+    return treatmentsRef.current.some(
       (item) =>
         item.programmeId === programmeId &&
         item.programmeVisitId ===
@@ -635,7 +668,7 @@ export function TreatmentStoreProvider({
       return false;
     }
 
-    return treatments.some(
+    return treatmentsRef.current.some(
       (item) =>
         item.programmeId === programmeId &&
         item.programmeVisitId ===
@@ -649,7 +682,7 @@ export function TreatmentStoreProvider({
   function getTreatmentsForCustomer(
     customerNumber: string,
   ) {
-    return treatments
+    return treatmentsRef.current
       .filter(
         (item) =>
           item.customerNumber === customerNumber,
@@ -756,15 +789,25 @@ function normaliseTreatmentRecord(
     treatment,
   );
 
+  const treatmentId =
+    typeof treatment.id === "string" &&
+    treatment.id.trim()
+      ? treatment.id.trim()
+      : createTreatmentId();
+
   return {
-    id: treatment.id ?? createTreatmentId(),
-    programmeId: treatment.programmeId ?? "",
+    id: treatmentId,
+    programmeId:
+      treatment.programmeId?.trim() ??
+      "",
     programmeVisitId:
-      treatment.programmeVisitId ?? "",
+      treatment.programmeVisitId?.trim() ??
+      "",
     invoiceNumber:
       treatment.invoiceNumber?.trim() ?? "",
     customerNumber:
-      treatment.customerNumber ?? "",
+      treatment.customerNumber?.trim() ??
+      "",
     scheduledDate:
       treatment.scheduledDate ?? "",
     recordedDate:
@@ -778,7 +821,8 @@ function normaliseTreatmentRecord(
         treatment.invoiceNumber,
       ),
     treatmentName:
-      treatment.treatmentName ?? "",
+      treatment.treatmentName?.trim() ??
+      "",
     treatmentAreaSquareMetres: safeNumber(
       treatment.treatmentAreaSquareMetres,
     ),
@@ -954,12 +998,21 @@ function normaliseApplication(
       applicationMethod,
     );
 
+  const applicationId =
+    typeof application.id === "string" &&
+    application.id.trim()
+      ? application.id.trim()
+      : createApplicationId();
+
   return {
     id:
-      application.id ?? createApplicationId(),
-    productId: application.productId ?? "",
+      applicationId,
+    productId:
+      application.productId?.trim() ??
+      "",
     productName:
-      application.productName ?? "",
+      application.productName?.trim() ??
+      "",
     productType,
     activeIngredients:
       application.activeIngredients ?? "",
@@ -1385,6 +1438,182 @@ function hasSameInvoiceNumber(
     Boolean(secondInvoice) &&
     firstInvoice === secondInvoice
   );
+}
+
+function treatmentRecordPriority(
+  treatment: TreatmentRecord,
+) {
+  return (
+    Number(
+      treatment.status ===
+        "Completed",
+    ) *
+      1000 +
+    Number(
+      Boolean(
+        treatment.invoiceNumber,
+      ),
+    ) *
+      500 +
+    Number(
+      Boolean(
+        treatment.programmeId &&
+          treatment.programmeVisitId,
+      ),
+    ) *
+      250 +
+    Number(
+      treatment.applications.length >
+        0,
+    ) *
+      100 +
+    Number(
+      treatment.treatmentAreaSquareMetres >
+        0,
+    ) *
+      50 +
+    Number(
+      Boolean(
+        treatment.notes,
+      ),
+    ) *
+      10
+  );
+}
+
+function choosePreferredTreatment(
+  first: TreatmentRecord,
+  second: TreatmentRecord,
+) {
+  const firstPriority =
+    treatmentRecordPriority(
+      first,
+    );
+
+  const secondPriority =
+    treatmentRecordPriority(
+      second,
+    );
+
+  if (
+    secondPriority >
+    firstPriority
+  ) {
+    return second;
+  }
+
+  if (
+    firstPriority >
+    secondPriority
+  ) {
+    return first;
+  }
+
+  const firstDate =
+    Date.parse(
+      first.recordedDate,
+    );
+
+  const secondDate =
+    Date.parse(
+      second.recordedDate,
+    );
+
+  if (
+    Number.isFinite(
+      secondDate,
+    ) &&
+    (
+      !Number.isFinite(
+        firstDate,
+      ) ||
+      secondDate >
+        firstDate
+    )
+  ) {
+    return second;
+  }
+
+  return first;
+}
+
+function deduplicateTreatmentRecords(
+  treatments: TreatmentRecord[],
+) {
+  const byIdentity =
+    new Map<
+      string,
+      TreatmentRecord
+    >();
+
+  for (const treatment of treatments) {
+    const identityKey =
+      treatment.programmeId &&
+      treatment.programmeVisitId
+        ? `programme:${treatment.programmeId}::${treatment.programmeVisitId}`
+        : `id:${treatment.id}`;
+
+    const existing =
+      byIdentity.get(
+        identityKey,
+      );
+
+    byIdentity.set(
+      identityKey,
+      existing
+        ? choosePreferredTreatment(
+            existing,
+            treatment,
+          )
+        : treatment,
+    );
+  }
+
+  const byInvoice =
+    new Map<
+      string,
+      TreatmentRecord
+    >();
+
+  const withoutInvoice:
+    TreatmentRecord[] = [];
+
+  for (
+    const treatment of
+    byIdentity.values()
+  ) {
+    const invoice =
+      normaliseInvoiceNumber(
+        treatment.invoiceNumber,
+      );
+
+    if (!invoice) {
+      withoutInvoice.push(
+        treatment,
+      );
+      continue;
+    }
+
+    const existing =
+      byInvoice.get(
+        invoice,
+      );
+
+    byInvoice.set(
+      invoice,
+      existing
+        ? choosePreferredTreatment(
+            existing,
+            treatment,
+          )
+        : treatment,
+    );
+  }
+
+  return [
+    ...byInvoice.values(),
+    ...withoutInvoice,
+  ];
 }
 
 function createTreatmentId() {

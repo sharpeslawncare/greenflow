@@ -78,6 +78,13 @@ function TreatmentsPageContent() {
   const [message, setMessage] =
     useState("");
 
+  const [
+    messageTone,
+    setMessageTone,
+  ] = useState<
+    "success" | "error"
+  >("success");
+
   const contextCustomer =
     customerNumber
       ? customers.find(
@@ -245,6 +252,19 @@ function TreatmentsPageContent() {
       return;
     }
 
+    if (
+      selectedTreatment.status ===
+      "Completed"
+    ) {
+      showMessage(
+        selectedTreatment.invoiceNumber
+          ? `Completed treatment ${selectedTreatment.invoiceNumber} is protected from ordinary deletion. Use a future reversal workflow if this completed visit genuinely needs to be corrected.`
+          : "Completed treatment records are protected from ordinary deletion. Use a future reversal workflow if this completed visit genuinely needs to be corrected.",
+        "error",
+      );
+      return;
+    }
+
     const confirmed =
       window.confirm(
         `Delete this ${selectedTreatment.status.toLowerCase()} treatment record? This does not restore or alter the linked programme visit.`,
@@ -254,21 +274,35 @@ function TreatmentsPageContent() {
       return;
     }
 
-    deleteTreatment(
-      selectedTreatment.id,
-    );
+    const result =
+      deleteTreatment(
+        selectedTreatment.id,
+      );
+
+    if (!result.success) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
 
     setSelectedId("");
 
     showMessage(
-      "Treatment record deleted.",
+      result.message,
     );
   }
 
   function showMessage(
     text: string,
+    tone:
+      | "success"
+      | "error" =
+      "success",
   ) {
     setMessage(text);
+    setMessageTone(tone);
 
     window.setTimeout(() => {
       setMessage("");
@@ -322,7 +356,20 @@ function TreatmentsPageContent() {
           </header>
 
           {message && (
-            <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            <div
+              role={
+                messageTone ===
+                "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                messageTone ===
+                "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-green-200 bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </div>
           )}
@@ -592,7 +639,9 @@ function TreatmentsPageContent() {
                       <p className="mt-1 text-sm text-slate-500">
                         Immutable operational facts
                         recorded when the job outcome
-                        was saved.
+                        was saved. Completed records
+                        cannot be deleted from this
+                        screen.
                       </p>
                     </div>
 
@@ -740,15 +789,22 @@ function TreatmentsPageContent() {
                         </>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={
-                          removeSelectedRecord
-                        }
-                        className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-                      >
-                        Delete record
-                      </button>
+                      {selectedTreatment.status ===
+                      "Completed" ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900">
+                          Completed record protected
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={
+                            removeSelectedRecord
+                          }
+                          className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                        >
+                          Delete record
+                        </button>
+                      )}
                     </div>
                   </div>
                 </>

@@ -26,7 +26,9 @@ import {
 
 type RouteCustomer = {
   customer: StoredCustomer;
+  source: "programme" | "additional";
   treatmentName: string;
+  price: number;
   scheduledDate: string;
   visitNumber: number;
   programmeId: string;
@@ -277,92 +279,136 @@ export default function RoutesPage() {
         return [];
       }
 
-      const items = programmes
-        .flatMap((programme) => {
-          const customer =
-            activeCustomers.find(
-              (item) =>
-                item.customerNumber ===
-                programme.customerNumber,
-            );
+      const seasonalItems =
+        programmes.flatMap(
+          (programme) => {
+            const customer =
+              activeCustomers.find(
+                (item) =>
+                  item.customerNumber ===
+                  programme.customerNumber,
+              );
 
-          if (!customer) {
-            return [];
-          }
+            if (!customer) {
+              return [];
+            }
 
-          return programme.visits
-            .filter(
-              (visit) =>
-                visit.scheduledDate ===
-                  selectedDate &&
-                (visit.status ===
-                  "Scheduled" ||
-                  visit.status ===
-                    "Planned" ||
-                  visit.status ===
-                    "Completed"),
-            )
-            .map((visit) => {
-              const standardDate =
-                selectedSeason
-                  ?.groupDates.find(
-                    (group) =>
-                      group.groupNumber ===
-                      customer.groupNumber,
-                  )
-                  ?.treatmentDates[
-                    visit.visitNumber -
-                      1
-                  ] ??
-                visit.scheduledDate;
+            return programme.visits
+              .filter(
+                (visit) =>
+                  visit.scheduledDate ===
+                    selectedDate &&
+                  (visit.status ===
+                    "Scheduled" ||
+                    visit.status ===
+                      "Planned" ||
+                    visit.status ===
+                      "Completed"),
+              )
+              .map((visit) => {
+                const standardDate =
+                  selectedSeason
+                    ?.groupDates.find(
+                      (group) =>
+                        group.groupNumber ===
+                        customer.groupNumber,
+                    )
+                    ?.treatmentDates[
+                      visit.visitNumber -
+                        1
+                    ] ??
+                  visit.scheduledDate;
 
-              const completed =
-                treatments.some(
-                  (treatment) =>
-                    treatment.status ===
-                      "Completed" &&
-                    (
+                const completed =
+                  treatments.some(
+                    (treatment) =>
+                      treatment.status ===
+                        "Completed" &&
                       (
-                        treatment.programmeId ===
-                          programme.id &&
-                        treatment.programmeVisitId ===
-                          visit.id
-                      ) ||
-                      (
-                        !treatment.programmeVisitId &&
-                        treatment.customerNumber ===
-                          customer.customerNumber &&
-                        treatment.scheduledDate ===
-                          visit.scheduledDate &&
-                        treatment.treatmentName ===
-                          visit.treatmentName
-                      )
-                    ),
-                );
+                        (
+                          treatment.programmeId ===
+                            programme.id &&
+                          treatment.programmeVisitId ===
+                            visit.id
+                        ) ||
+                        (
+                          !treatment.programmeVisitId &&
+                          treatment.customerNumber ===
+                            customer.customerNumber &&
+                          treatment.scheduledDate ===
+                            visit.scheduledDate &&
+                          treatment.treatmentName ===
+                            visit.treatmentName
+                        )
+                      ),
+                  );
 
-              return {
+                return {
+                  customer,
+                  source:
+                    "programme" as const,
+                  treatmentName:
+                    visit.treatmentName,
+                  price:
+                    customer.treatmentPrice,
+                  scheduledDate:
+                    visit.scheduledDate,
+                  visitNumber:
+                    visit.visitNumber,
+                  programmeId:
+                    programme.id,
+                  programmeVisitId:
+                    visit.id,
+                  overridden:
+                    standardDate !==
+                    visit.scheduledDate,
+                  completed,
+                };
+              });
+          },
+        );
+
+      const additionalItems =
+        activeCustomers.flatMap(
+          (customer) =>
+            customer.additionalJobs
+              .filter(
+                (job) =>
+                  job.scheduledDate ===
+                    selectedDate &&
+                  (
+                    job.status ===
+                      "Scheduled" ||
+                    job.status ===
+                      "Completed"
+                  ),
+              )
+              .map((job) => ({
                 customer,
+                source:
+                  "additional" as const,
                 treatmentName:
-                  visit.treatmentName,
+                  job.treatmentName,
+                price: job.price,
                 scheduledDate:
-                  visit.scheduledDate,
-                visitNumber:
-                  visit.visitNumber,
+                  job.scheduledDate,
+                visitNumber: 0,
                 programmeId:
-                  programme.id,
+                  `additional-jobs-${customer.customerNumber}`,
                 programmeVisitId:
-                  visit.id,
-                overridden:
-                  standardDate !==
-                  visit.scheduledDate,
-                completed,
-              };
-            });
-        })
-        ;
+                  job.id,
+                overridden: false,
+                completed:
+                  job.status ===
+                  "Completed",
+              })),
+        );
 
       return sortBySavedRoute(
-        items,
+        [
+          ...seasonalItems,
+          ...additionalItems,
+        ],
         selectedDate,
       );
     }, [
@@ -607,7 +653,7 @@ export default function RoutesPage() {
             remainingJobs.reduce(
               (total, item) =>
                 total +
-                item.customer.treatmentPrice,
+                item.price,
               0,
             );
 
@@ -1290,7 +1336,7 @@ export default function RoutesPage() {
                         value={`£${van.remainingValue.toFixed(
                           2,
                         )}`}
-                        detail="Standard prices"
+                        detail="Scheduled job values"
                       />
 
                       <InfoBox
@@ -1528,7 +1574,11 @@ export default function RoutesPage() {
                     <p className="mt-1 text-sm text-slate-500">
                       {selectedRouteCustomers.length >
                       0
-                        ? `${selectedRouteCustomers[0].treatmentName} is due for this group on ${formatDate(
+                        ? `${selectedRouteCustomers.length} job${
+                            selectedRouteCustomers.length === 1
+                              ? ""
+                              : "s"
+                          } are due for this group on ${formatDate(
                             selectedDate,
                           )}.`
                         : `No standard or overridden visits from this group are due on ${formatDate(
@@ -1596,12 +1646,11 @@ export default function RoutesPage() {
                         .reduce(
                           (total, item) =>
                             total +
-                            item.customer
-                              .treatmentPrice,
+                            item.price,
                           0,
                         )
                         .toFixed(2)}`}
-                      detail="Standard prices"
+                      detail="Scheduled job values"
                     />
                   </div>
                 )}
