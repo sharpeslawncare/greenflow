@@ -907,6 +907,70 @@ export default function RoutesPage() {
     );
   }
 
+  function moveRouteCustomer(
+    vanNumber: number,
+    customerNumber: string,
+    direction: "up" | "down",
+  ) {
+    const remainingNumbers = routeCustomers
+      .filter(
+        (item) =>
+          item.customer.vanNumber === vanNumber &&
+          !item.completed,
+      )
+      .map(
+        (item) =>
+          item.customer.customerNumber,
+      );
+
+    const currentIndex =
+      remainingNumbers.indexOf(
+        customerNumber,
+      );
+
+    if (currentIndex < 0) {
+      showMessage(
+        "That customer is no longer available in the remaining route.",
+        "error",
+      );
+      return;
+    }
+
+    const targetIndex =
+      direction === "up"
+        ? currentIndex - 1
+        : currentIndex + 1;
+
+    if (
+      targetIndex < 0 ||
+      targetIndex >= remainingNumbers.length
+    ) {
+      return;
+    }
+
+    const nextOrder = [
+      ...remainingNumbers,
+    ];
+
+    [
+      nextOrder[currentIndex],
+      nextOrder[targetIndex],
+    ] = [
+      nextOrder[targetIndex],
+      nextOrder[currentIndex],
+    ];
+
+    saveRouteOrder(
+      selectedDate,
+      vanNumber,
+      nextOrder,
+    );
+
+    showMessage(
+      "Route order updated. Jobs and Visit Centre will use the saved order.",
+    );
+  }
+
   function optimiseVanRoute(
     vanNumber: number,
   ) {
@@ -1385,16 +1449,24 @@ export default function RoutesPage() {
                       )}
                     </div>
 
-                    {getRouteOrder(
-                      selectedDate,
-                      van.vanNumber,
-                    ).length > 0 && (
+                    {van.remainingJobs > 0 && (
                       <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3">
-                        <div className="text-xs font-bold uppercase tracking-wide text-blue-800">
-                          Saved route order
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-bold uppercase tracking-wide text-blue-800">
+                              Today&apos;s route order
+                            </div>
+                            <div className="mt-1 text-xs text-blue-800">
+                              Use the arrows to put the remaining customers in the order you want to visit them. The saved order is shared with Jobs and Visit Centre.
+                            </div>
+                          </div>
+
+                          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-blue-800">
+                            {van.remainingJobs} remaining
+                          </span>
                         </div>
 
-                        <div className="mt-2 text-sm leading-6 text-blue-950">
+                        <div className="mt-3 space-y-2">
                           {routeCustomers
                             .filter(
                               (item) =>
@@ -1402,12 +1474,70 @@ export default function RoutesPage() {
                                   van.vanNumber &&
                                 !item.completed,
                             )
-                            .slice(0, 5)
-                            .map(
-                              (item, index) =>
-                                `${index + 1}. ${item.customer.fullName}`,
-                            )
-                            .join(" · ")}
+                            .map((item, index, items) => (
+                              <div
+                                key={`${item.source}-${item.programmeVisitId}`}
+                                className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2"
+                              >
+                                <span className="w-7 shrink-0 text-center text-sm font-bold text-blue-900">
+                                  {index + 1}
+                                </span>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-sm font-semibold text-slate-900">
+                                    {item.customer.fullName}
+                                  </div>
+                                  <div className="truncate text-xs text-slate-500">
+                                    {item.customer.postcode} · {item.treatmentName}
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    moveRouteCustomer(
+                                      van.vanNumber,
+                                      item.customer.customerNumber,
+                                      "up",
+                                    )
+                                  }
+                                  disabled={index === 0}
+                                  aria-label={`Move ${item.customer.fullName} up`}
+                                  title="Move up"
+                                  className={`h-9 w-9 rounded-lg border text-base font-bold ${
+                                    index === 0
+                                      ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
+                                      : "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+                                  }`}
+                                >
+                                  ↑
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    moveRouteCustomer(
+                                      van.vanNumber,
+                                      item.customer.customerNumber,
+                                      "down",
+                                    )
+                                  }
+                                  disabled={
+                                    index ===
+                                    items.length - 1
+                                  }
+                                  aria-label={`Move ${item.customer.fullName} down`}
+                                  title="Move down"
+                                  className={`h-9 w-9 rounded-lg border text-base font-bold ${
+                                    index === items.length - 1
+                                      ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
+                                      : "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+                                  }`}
+                                >
+                                  ↓
+                                </button>
+                              </div>
+                            ))}
                         </div>
                       </div>
                     )}

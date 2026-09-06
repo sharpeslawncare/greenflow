@@ -1326,7 +1326,7 @@ function VisitCentrePageContent() {
           job.visit.scheduledDate,
         completedDate:
           outcome === "Completed"
-            ? getTodayDateValue()
+            ? selectedDate
             : "",
         status: treatmentStatus,
         treatmentName:

@@ -527,7 +527,7 @@ export default function SettingsPage() {
   function fullDemoReset() {
     const phrase =
       window.prompt(
-        'This resets ALL GreenFlow browser data to the demonstration defaults. Create a backup first if needed. Type RESET DEMO to continue.',
+        'This resets GreenFlow operational/demo data to the demonstration defaults. Your business identity, business settings and invoice numbering are preserved. Create a backup first if needed. Type RESET DEMO to continue.',
       );
 
     if (phrase !== "RESET DEMO") {
@@ -538,6 +538,33 @@ export default function SettingsPage() {
       }
       return;
     }
+
+    /*
+     * Business/settings data is real configuration, not demo data.
+     * Preserve the complete Settings Store plus its dedicated
+     * business-details backup before clearing operational stores.
+     */
+    const preservedKeys = new Set([
+      "greenflow-business-settings-v1",
+      "greenflow-business-details-backup-v1",
+      "greenflow-customer-sequence-v1",
+      "greenflow-last-backup-at",
+    ]);
+
+    const preservedValues =
+      new Map<string, string>();
+
+    preservedKeys.forEach((key) => {
+      const value =
+        window.localStorage.getItem(key);
+
+      if (value !== null) {
+        preservedValues.set(
+          key,
+          value,
+        );
+      }
+    });
 
     const greenFlowKeys: string[] = [];
 
@@ -552,7 +579,8 @@ export default function SettingsPage() {
       if (
         key?.startsWith(
           "greenflow-",
-        )
+        ) &&
+        !preservedKeys.has(key)
       ) {
         greenFlowKeys.push(key);
       }
@@ -565,8 +593,21 @@ export default function SettingsPage() {
         ),
     );
 
+    /*
+     * Re-write preserved values as an extra safeguard in case
+     * browser/storage behaviour changes while the reset is running.
+     */
+    preservedValues.forEach(
+      (value, key) => {
+        window.localStorage.setItem(
+          key,
+          value,
+        );
+      },
+    );
+
     window.alert(
-      "Full GreenFlow demo reset complete. Customers, programmes, treatments, chemicals, inventory, movement history, fleet and settings will reload from their current demo defaults.",
+      "Full GreenFlow demo reset complete. Operational/demo data will reload from its current defaults. Business details, GreenFlow settings, invoice numbering and the customer-number watermark were preserved.",
     );
 
     window.location.reload();
@@ -1672,11 +1713,23 @@ function OperationalMaintenanceTab({
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-red-900">
-            Remove all GreenFlow browser data and reload every store from its current demonstration defaults. This is the only reset intended to wipe the whole demo environment.
+            Clear GreenFlow operational/demo data and reload those stores from their current demonstration defaults. Real business configuration is protected and is not treated as demo data.
           </p>
 
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-red-200 bg-white p-4 text-sm leading-6 text-red-900">
+              <strong>Reset:</strong>{" "}
+              customers, programmes, treatments, chemicals, stock history, routes, communications, actions and other operational/demo records.
+            </div>
+
+            <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-900">
+              <strong>Preserved:</strong>{" "}
+              business details, GreenFlow settings, treatment wording/library, communication template, invoice settings/numbering and the customer-number watermark.
+            </div>
+          </div>
+
           <div className="mt-4 rounded-xl border border-red-200 bg-white p-4 text-sm leading-6 text-red-900">
-            <strong>Create a backup first if anything matters.</strong>{" "}
+            <strong>A backup is still recommended before a full reset.</strong>{" "}
             You will be required to type <strong>RESET DEMO</strong> exactly before this runs.
           </div>
 
