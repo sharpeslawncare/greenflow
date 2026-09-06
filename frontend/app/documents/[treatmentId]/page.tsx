@@ -144,6 +144,24 @@ export default function TreatmentDocumentPage() {
       treatment,
     );
 
+  /*
+   * New treatment records carry their own invoiceAmount snapshot.
+   * Older programme records pre-date that field, so they safely
+   * fall back to the customer's normal seasonal treatment price.
+   */
+  const invoiceAmount =
+    treatment.invoiceAmount > 0
+      ? Number(
+          treatment.invoiceAmount.toFixed(
+            2,
+          ),
+        )
+      : Number(
+          customer.treatmentPrice.toFixed(
+            2,
+          ),
+        );
+
   const invoiceProblems: string[] = [];
 
   if (completed) {
@@ -155,12 +173,15 @@ export default function TreatmentDocumentPage() {
 
     if (
       !Number.isFinite(
-        customer.treatmentPrice,
+        invoiceAmount,
       ) ||
-      customer.treatmentPrice <= 0
+      invoiceAmount <= 0
     ) {
       invoiceProblems.push(
-        "The customer treatment price must be greater than £0.00.",
+        treatment.jobType ===
+          "additional"
+          ? "The additional job invoice amount must be greater than £0.00."
+          : "The treatment invoice amount must be greater than £0.00.",
       );
     }
 
@@ -193,7 +214,11 @@ export default function TreatmentDocumentPage() {
 
   const visitInformation =
     completed
-      ? treatmentWording.description
+      ? treatment.jobType ===
+          "additional" &&
+        treatment.customerWording.trim()
+        ? treatment.customerWording
+        : treatmentWording.description
       : createCustomerSafeVisitInformation(
           treatment,
           settings.treatmentWording,
@@ -452,7 +477,10 @@ export default function TreatmentDocumentPage() {
           }
           treatmentTitle={
             completed
-              ? treatmentWording.title
+              ? treatment.jobType ===
+                  "additional"
+                ? treatment.treatmentName
+                : treatmentWording.title
               : treatment.treatmentName
           }
           invoiceLabel="Invoice"
@@ -482,11 +510,7 @@ export default function TreatmentDocumentPage() {
           }
           treatmentPrice={
             completed
-              ? Number(
-                  customer.treatmentPrice.toFixed(
-                    2,
-                  ),
-                )
+              ? invoiceAmount
               : undefined
           }
           nextVisit={

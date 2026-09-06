@@ -44,6 +44,14 @@ const navigationSections: NavigationSection[] = [
         href: "/routes",
       },
       {
+        label: "Additional Jobs",
+        href: "/additional-jobs",
+      },
+      {
+        label: "Working Day Capacity",
+        href: "/capacity",
+      },
+      {
         label: "Treatment Records",
         href: "/treatments",
       },

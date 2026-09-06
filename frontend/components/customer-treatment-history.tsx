@@ -7,424 +7,553 @@ import {
 } from "react";
 
 import {
-  type TreatmentApplication,
+  useCustomerStore,
+} from "@/components/customer-store";
+import {
   type TreatmentRecord,
-  type TreatmentStatus,
-  getTreatmentApplications,
-  getTreatmentProductNames,
-  getTreatmentTotalProductCost,
   useTreatmentStore,
 } from "@/components/treatment-store";
 
+type CustomerTreatmentHistoryProps = {
+  customerNumber: string;
+};
+
+type HistoryFilter =
+  | "All"
+  | "Programme"
+  | "Additional";
+
 export function CustomerTreatmentHistory({
   customerNumber,
-}: {
-  customerNumber: string;
-}) {
+}: CustomerTreatmentHistoryProps) {
   const {
-    getTreatmentsForCustomer,
-    ready,
+    treatments,
+    ready: treatmentsReady,
   } = useTreatmentStore();
 
-  const [expandedId, setExpandedId] =
-    useState("");
+  const {
+    getCustomer,
+    ready: customersReady,
+  } = useCustomerStore();
 
-  const treatments =
-    getTreatmentsForCustomer(
-      customerNumber,
+  const [
+    filter,
+    setFilter,
+  ] = useState<HistoryFilter>("All");
+
+  const customer =
+    getCustomer(customerNumber);
+
+  const customerTreatments =
+    useMemo(
+      () =>
+        treatments
+          .filter(
+            (treatment) =>
+              treatment.customerNumber ===
+              customerNumber,
+          )
+          .sort(
+            (first, second) =>
+              getRecordDate(
+                second,
+              ).localeCompare(
+                getRecordDate(
+                  first,
+                ),
+              ),
+          ),
+      [
+        treatments,
+        customerNumber,
+      ],
     );
 
-  const completedCount =
-    treatments.filter(
+  const filteredTreatments =
+    useMemo(() => {
+      if (filter === "All") {
+        return customerTreatments;
+      }
+
+      if (
+        filter ===
+        "Additional"
+      ) {
+        return customerTreatments.filter(
+          (treatment) =>
+            isAdditionalJob(
+              treatment,
+            ),
+        );
+      }
+
+      return customerTreatments.filter(
+        (treatment) =>
+          !isAdditionalJob(
+            treatment,
+          ),
+      );
+    }, [
+      customerTreatments,
+      filter,
+    ]);
+
+  const completedTreatments =
+    customerTreatments.filter(
       (treatment) =>
         treatment.status ===
         "Completed",
-    ).length;
-
-  const completedArea =
-    treatments
-      .filter(
-        (treatment) =>
-          treatment.status ===
-          "Completed",
-      )
-      .reduce(
-        (total, treatment) =>
-          total +
-          treatment
-            .treatmentAreaSquareMetres,
-        0,
-      );
-
-  const totalProductCost =
-    treatments
-      .filter(
-        (treatment) =>
-          treatment.status ===
-          "Completed",
-      )
-      .reduce(
-        (total, treatment) =>
-          total +
-          getTreatmentTotalProductCost(
-            treatment,
-          ),
-        0,
-      );
-
-  const latestCompleted =
-    useMemo(
-      () =>
-        treatments.find(
-          (treatment) =>
-            treatment.status ===
-            "Completed",
-        ),
-      [treatments],
     );
 
-  if (!ready) {
+  const completedAdditional =
+    completedTreatments.filter(
+      isAdditionalJob,
+    );
+
+  const completedProgramme =
+    completedTreatments.filter(
+      (treatment) =>
+        !isAdditionalJob(
+          treatment,
+        ),
+    );
+
+  const invoicedValue =
+    completedTreatments.reduce(
+      (total, treatment) =>
+        total +
+        getInvoiceAmount(
+          treatment,
+          customer
+            ?.treatmentPrice ??
+            0,
+        ),
+      0,
+    );
+
+  if (
+    !treatmentsReady ||
+    !customersReady
+  ) {
     return (
-      <div className="rounded-xl border border-slate-200 p-6 text-center text-sm text-slate-500">
+      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
         Loading treatment history...
       </div>
     );
   }
 
-  if (treatments.length === 0) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center">
-        <div className="font-bold">
-          No treatment history recorded
-        </div>
-
-        <p className="mt-2 text-sm text-slate-500">
-          Complete a job to create the first
-          operational treatment record.
-        </p>
-
-        <Link
-          href="/jobs"
-          className="mt-4 inline-flex rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white"
-        >
-          Open Jobs
-        </Link>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-4">
-        <MiniSummary
-          label="Records"
+    <div className="space-y-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          label="Completed visits"
           value={String(
-            treatments.length,
+            completedTreatments.length,
           )}
+          detail="Programme and additional"
         />
 
-        <MiniSummary
-          label="Completed"
+        <SummaryCard
+          label="Programme"
           value={String(
-            completedCount,
+            completedProgramme.length,
           )}
+          detail="Seasonal treatments completed"
         />
 
-        <MiniSummary
-          label="Completed area"
-          value={`${completedArea.toLocaleString(
-            "en-GB",
-          )} m²`}
+        <SummaryCard
+          label="Additional jobs"
+          value={String(
+            completedAdditional.length,
+          )}
+          detail="Extra services completed"
+          highlight={
+            completedAdditional.length >
+            0
+          }
         />
 
-        <MiniSummary
-          label="Product cost"
-          value={`£${totalProductCost.toFixed(
+        <SummaryCard
+          label="Invoiced value"
+          value={`£${invoicedValue.toFixed(
             2,
           )}`}
+          detail="Completed treatment records"
         />
-      </div>
+      </section>
 
-      {latestCompleted && (
-        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
-          Latest completed treatment:{" "}
-          <strong>
-            {
-              latestCompleted.treatmentName
-            }
-          </strong>{" "}
-          on{" "}
-          <strong>
-            {formatDate(
-              getRecordDate(
-                latestCompleted,
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 p-5">
+          <div>
+            <h2 className="text-xl font-bold">
+              Treatment history
+            </h2>
+
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              Seasonal programme treatments and additional services are shown together in date order. Additional jobs keep their own agreed invoice value.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                "All",
+                "Programme",
+                "Additional",
+              ] as HistoryFilter[]
+            ).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() =>
+                  setFilter(
+                    item,
+                  )
+                }
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                  filter === item
+                    ? "bg-[#176b37] text-white"
+                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredTreatments.length ===
+        0 ? (
+          <div className="p-12 text-center">
+            <div className="font-bold text-slate-800">
+              No treatment records
+            </div>
+
+            <p className="mt-2 text-sm text-slate-500">
+              {filter ===
+              "Additional"
+                ? "No additional jobs have been recorded for this customer yet."
+                : filter ===
+                    "Programme"
+                  ? "No seasonal programme treatments have been recorded for this customer yet."
+                  : "Completed, rescheduled and cancelled treatment records will appear here."}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {filteredTreatments.map(
+              (treatment) => (
+                <TreatmentHistoryRow
+                  key={
+                    treatment.id
+                  }
+                  treatment={
+                    treatment
+                  }
+                  fallbackPrice={
+                    customer
+                      ?.treatmentPrice ??
+                    0
+                  }
+                />
               ),
             )}
-          </strong>
-          .
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-xl border border-slate-200">
-        <div className="grid grid-cols-[115px_145px_1.2fr_1.4fr_115px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-          <span>Date</span>
-          <span>Status</span>
-          <span>Treatment</span>
-          <span>Products</span>
-          <span>Next visit</span>
-        </div>
-
-        <div className="max-h-[50vh] overflow-y-auto">
-          {treatments.map(
-            (treatment) => {
-              const products =
-                getTreatmentProductNames(
-                  treatment,
-                );
-
-              const expanded =
-                expandedId ===
-                treatment.id;
-
-              return (
-                <div
-                  key={treatment.id}
-                  className="border-t border-slate-100"
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedId(
-                        expanded
-                          ? ""
-                          : treatment.id,
-                      )
-                    }
-                    className="grid w-full grid-cols-[115px_145px_1.2fr_1.4fr_115px] gap-3 px-4 py-3 text-left text-sm hover:bg-slate-50"
-                  >
-                    <span className="text-slate-600">
-                      {formatDate(
-                        getRecordDate(
-                          treatment,
-                        ),
-                      )}
-                    </span>
-
-                    <HistoryStatus
-                      status={
-                        treatment.status
-                      }
-                    />
-
-                    <div>
-                      <div className="font-semibold">
-                        {
-                          treatment.treatmentName
-                        }
-                      </div>
-
-                      <div className="mt-1 text-xs text-slate-500">
-                        Scheduled{" "}
-                        {formatDate(
-                          treatment.scheduledDate,
-                        )}
-                      </div>
-                    </div>
-
-                    <span className="line-clamp-2 text-slate-600">
-                      {products.length > 0
-                        ? products.join(", ")
-                        : "No products recorded"}
-                    </span>
-
-                    <span className="text-slate-600">
-                      {treatment.nextVisitDate
-                        ? formatDate(
-                            treatment.nextVisitDate,
-                          )
-                        : "—"}
-                    </span>
-                  </button>
-
-                  {expanded && (
-                    <div className="border-t border-slate-100 bg-slate-50 px-4 py-4">
-                      <div className="grid gap-3 text-sm sm:grid-cols-4">
-                        <Detail
-                          label="Area"
-                          value={`${treatment.treatmentAreaSquareMetres.toLocaleString(
-                            "en-GB",
-                          )} m²`}
-                        />
-
-                        <Detail
-                          label="Products recorded"
-                          value={String(
-                            getTreatmentApplications(
-                              treatment,
-                            ).length,
-                          )}
-                        />
-
-                        <Detail
-                          label="Product cost"
-                          value={`£${getTreatmentTotalProductCost(
-                            treatment,
-                          ).toFixed(2)}`}
-                        />
-
-                        <Detail
-                          label="Invoice"
-                          value={
-                            treatment.invoiceNumber ||
-                            "Not recorded"
-                          }
-                        />
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Internal product applications
-                        </div>
-
-                        <HistoryApplicationList
-                          applications={getTreatmentApplications(
-                            treatment,
-                          )}
-                        />
-                      </div>
-
-                      <div className="mt-4">
-                        <Detail
-                          label="Notes"
-                          value={
-                            treatment.notes ||
-                            "No notes recorded."
-                          }
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            },
-          )}
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <Link
-          href="/treatments"
-          className="rounded-xl border border-[#338b45] px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
-        >
-          Open all treatment records
-        </Link>
-      </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
 
-function HistoryApplicationList({
-  applications,
+function TreatmentHistoryRow({
+  treatment,
+  fallbackPrice,
 }: {
-  applications: TreatmentApplication[];
+  treatment: TreatmentRecord;
+  fallbackPrice: number;
 }) {
-  if (applications.length === 0) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-        No products were recorded for this visit.
-      </div>
+  const additional =
+    isAdditionalJob(
+      treatment,
     );
-  }
+
+  const completed =
+    treatment.status ===
+    "Completed";
+
+  const invoiceAmount =
+    getInvoiceAmount(
+      treatment,
+      fallbackPrice,
+    );
+
+  const products =
+    treatment.applications
+      .map(
+        (application) =>
+          application.productName,
+      )
+      .filter(Boolean);
+
+  const uniqueProducts =
+    Array.from(
+      new Set(products),
+    );
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {applications.map(
-        (application) => (
-          <div
-            key={application.id}
-            className="rounded-xl border border-slate-200 bg-white p-4"
-          >
-            <div className="font-bold">
-              {application.productName}
-            </div>
-
-            <div className="mt-1 text-xs text-slate-500">
-              {application.productType ||
-                "Uncategorised"}
-            </div>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Detail
-                label="Quantity"
-                value={formatProductAmount(
-                  application.productRequired,
-                  application.productUnit,
-                )}
-              />
-
-              <Detail
-                label="Rate"
-                value={
-                  application.applicationRate >
-                  0
-                    ? `${application.applicationRate} ${application.applicationRateUnit}`
-                    : "—"
-                }
-              />
-
-              <Detail
-                label="Water"
-                value={
-                  application.waterRequiredLitres >
-                  0
-                    ? `${application.waterRequiredLitres} L`
-                    : "—"
-                }
-              />
-
-              <Detail
-                label="Cost"
-                value={`£${application.estimatedProductCost.toFixed(
-                  2,
-                )}`}
-              />
-            </div>
+    <article className="p-5 transition hover:bg-slate-50/70">
+      <div className="grid gap-5 xl:grid-cols-[145px_minmax(230px,1fr)_minmax(200px,0.9fr)_140px_150px] xl:items-center">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
+            {completed
+              ? "Completed"
+              : "Visit date"}
           </div>
-        ),
+
+          <div className="mt-1 font-semibold text-slate-900">
+            {formatDate(
+              getRecordDate(
+                treatment,
+              ),
+            )}
+          </div>
+
+          <div className="mt-2">
+            <StatusBadge
+              status={
+                treatment.status
+              }
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-bold text-slate-950">
+              {
+                treatment.treatmentName
+              }
+            </h3>
+
+            {additional ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                Additional job
+              </span>
+            ) : (
+              <span className="rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-green-800">
+                Programme
+              </span>
+            )}
+          </div>
+
+          {treatment.invoiceNumber && (
+            <div className="mt-2 text-xs font-semibold text-slate-500">
+              Invoice{" "}
+              {
+                treatment.invoiceNumber
+              }
+            </div>
+          )}
+
+          {additional &&
+            treatment.customerWording
+              ?.trim() && (
+              <p className="mt-2 line-clamp-2 max-w-2xl text-xs leading-5 text-slate-500">
+                {
+                  treatment.customerWording
+                }
+              </p>
+            )}
+        </div>
+
+        <div>
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
+            Products
+          </div>
+
+          <div className="mt-1 text-sm text-slate-700">
+            {uniqueProducts.length >
+            0
+              ? uniqueProducts.join(
+                  ", ",
+                )
+              : "No products recorded"}
+          </div>
+
+          {treatment
+            .treatmentAreaSquareMetres >
+            0 && (
+            <div className="mt-1 text-xs text-slate-500">
+              {treatment.treatmentAreaSquareMetres.toLocaleString(
+                "en-GB",
+              )}{" "}
+              m² treated
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
+            {completed
+              ? "Invoice value"
+              : "Value"}
+          </div>
+
+          <div className="mt-1 text-lg font-bold text-slate-950">
+            {completed &&
+            invoiceAmount >
+              0
+              ? `£${invoiceAmount.toFixed(
+                  2,
+                )}`
+              : "—"}
+          </div>
+
+          {completed &&
+            additional &&
+            treatment.invoiceAmount >
+              0 && (
+              <div className="mt-1 text-[11px] font-semibold text-amber-700">
+                Agreed additional-job price
+              </div>
+            )}
+        </div>
+
+        <div className="flex flex-wrap gap-2 xl:justify-end">
+          <Link
+            href={`/documents/${treatment.id}`}
+            className="rounded-xl border border-[#338b45] bg-white px-3 py-2 text-xs font-bold text-[#176b37] hover:bg-green-50"
+          >
+            {completed
+              ? "Report & invoice"
+              : "Visit record"}
+          </Link>
+        </div>
+      </div>
+
+      {treatment.notes.trim() && (
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <summary className="cursor-pointer text-xs font-bold text-slate-600">
+            Visit notes
+          </summary>
+
+          <div className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">
+            {treatment.notes}
+          </div>
+        </details>
       )}
-    </div>
+    </article>
   );
 }
 
-function formatProductAmount(
-  amount: number,
-  unit: string,
+function SummaryCard({
+  label,
+  value,
+  detail,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  highlight?: boolean;
+}) {
+  return (
+    <article
+      className={`rounded-2xl border p-4 shadow-sm ${
+        highlight
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div
+        className={`text-xs font-bold uppercase tracking-wide ${
+          highlight
+            ? "text-amber-700"
+            : "text-slate-500"
+        }`}
+      >
+        {label}
+      </div>
+
+      <div className="mt-1 text-2xl font-bold text-slate-950">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-500">
+        {detail}
+      </div>
+    </article>
+  );
+}
+
+function StatusBadge({
+  status,
+}: {
+  status: TreatmentRecord["status"];
+}) {
+  const className =
+    status === "Completed"
+      ? "bg-green-100 text-green-800"
+      : status ===
+          "Cancelled"
+        ? "bg-slate-200 text-slate-700"
+        : status ===
+            "Needs Rescheduling"
+          ? "bg-amber-100 text-amber-800"
+          : status ===
+              "Rescheduled"
+            ? "bg-blue-100 text-blue-800"
+            : "bg-slate-100 text-slate-700";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${className}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function isAdditionalJob(
+  treatment: TreatmentRecord,
 ) {
-  if (!unit || amount <= 0) {
-    return "Not recorded";
+  return (
+    treatment.jobType ===
+      "additional" ||
+    treatment.programmeId.startsWith(
+      "additional-jobs-",
+    )
+  );
+}
+
+function getInvoiceAmount(
+  treatment: TreatmentRecord,
+  fallbackPrice: number,
+) {
+  if (
+    Number.isFinite(
+      treatment.invoiceAmount,
+    ) &&
+    treatment.invoiceAmount > 0
+  ) {
+    return treatment.invoiceAmount;
   }
 
   if (
-    unit === "L" &&
-    amount < 1
+    treatment.status ===
+      "Completed" &&
+    !isAdditionalJob(
+      treatment,
+    ) &&
+    Number.isFinite(
+      fallbackPrice,
+    ) &&
+    fallbackPrice > 0
   ) {
-    return `${(
-      amount * 1000
-    ).toFixed(1)} ml`;
+    return fallbackPrice;
   }
 
-  if (
-    unit === "kg" &&
-    amount < 1
-  ) {
-    return `${(
-      amount * 1000
-    ).toFixed(1)} g`;
-  }
-
-  return `${amount.toFixed(
-    3,
-  )} ${unit}`;
+  return 0;
 }
 
 function getRecordDate(
@@ -440,45 +569,6 @@ function getRecordDate(
   );
 }
 
-function HistoryStatus({
-  status,
-}: {
-  status: TreatmentStatus;
-}) {
-  const styles =
-    status === "Completed"
-      ? "bg-green-100 text-green-800"
-      : status ===
-          "Needs Rescheduling"
-        ? "bg-amber-100 text-amber-800"
-        : status === "Rescheduled"
-          ? "bg-blue-100 text-blue-800"
-          : "bg-red-100 text-red-700";
-
-  return (
-    <span
-      className={`h-fit w-fit rounded-full px-2.5 py-1 text-xs font-bold ${styles}`}
-    >
-      {status}
-    </span>
-  );
-}
-
-function parseDate(
-  value: string,
-) {
-  const [year, month, day] =
-    value
-      .split("-")
-      .map(Number);
-
-  return new Date(
-    year,
-    month - 1,
-    day,
-  );
-}
-
 function formatDate(
   value: string,
 ) {
@@ -487,55 +577,30 @@ function formatDate(
       value,
     )
   ) {
-    return "—";
+    return "No date";
   }
+
+  const [
+    year,
+    month,
+    day,
+  ] = value
+    .split("-")
+    .map(Number);
 
   return new Intl.DateTimeFormat(
     "en-GB",
     {
+      weekday: "short",
       day: "numeric",
       month: "short",
       year: "numeric",
     },
-  ).format(parseDate(value));
-}
-
-function MiniSummary({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div className="text-xs font-semibold text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-1 text-xl font-bold">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Detail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-semibold text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-1 whitespace-pre-wrap font-semibold text-slate-700">
-        {value}
-      </div>
-    </div>
+  ).format(
+    new Date(
+      year,
+      month - 1,
+      day,
+    ),
   );
 }

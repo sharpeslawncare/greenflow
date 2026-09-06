@@ -84,6 +84,23 @@ export type TreatmentRecord = {
   completedDate: string;
   status: TreatmentStatus;
   treatmentName: string;
+
+  /*
+   * Commercial/document snapshot.
+   *
+   * invoiceAmount records the actual agreed charge for this
+   * completed visit. This is particularly important for
+   * Additional Jobs, whose price can differ from the customer's
+   * normal seasonal treatment price.
+   *
+   * customerWording records the customer-facing wording that
+   * applied when the job was booked/completed, so later edits to
+   * the Treatment Library do not rewrite historic paperwork.
+   */
+  jobType: "programme" | "additional";
+  invoiceAmount: number;
+  customerWording: string;
+
   treatmentAreaSquareMetres: number;
   applications: TreatmentApplication[];
   notes: string;
@@ -823,6 +840,25 @@ function normaliseTreatmentRecord(
     treatmentName:
       treatment.treatmentName?.trim() ??
       "",
+
+    jobType:
+      treatment.jobType ===
+        "additional" ||
+      treatment.programmeId?.startsWith(
+        "additional-jobs-",
+      )
+        ? "additional"
+        : "programme",
+
+    invoiceAmount:
+      safeNumber(
+        treatment.invoiceAmount,
+      ),
+
+    customerWording:
+      treatment.customerWording ??
+      "",
+
     treatmentAreaSquareMetres: safeNumber(
       treatment.treatmentAreaSquareMetres,
     ),

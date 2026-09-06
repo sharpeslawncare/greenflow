@@ -173,6 +173,15 @@ type SettingsStoreValue = {
 const STORAGE_KEY =
   "greenflow-business-settings-v1";
 
+/*
+ * Business identity is important invoice data, so keep a small
+ * independent recovery copy as well as the main settings object.
+ * This protects address/contact/VAT details if the main settings
+ * record is reset or partially corrupted.
+ */
+const BUSINESS_DETAILS_BACKUP_KEY =
+  "greenflow-business-details-backup-v1";
+
 export const defaultSettings: GreenFlowSettings = {
   business: {
     applicationName: "GreenFlow",
@@ -415,10 +424,24 @@ export function SettingsStoreProvider({
             savedSettings,
           ) as Partial<GreenFlowSettings>;
 
-        const mergedSettings =
+        let mergedSettings =
           mergeSettingsWithDefaults(
             parsedSettings,
           );
+
+        const businessBackup =
+          readBusinessDetailsBackup();
+
+        if (businessBackup) {
+          mergedSettings = {
+            ...mergedSettings,
+            business:
+              mergeBusinessWithRecovery(
+                mergedSettings.business,
+                businessBackup,
+              ),
+          };
+        }
 
         invoiceSequenceRef.current =
           mergedSettings.invoices
@@ -435,6 +458,34 @@ export function SettingsStoreProvider({
         window.localStorage.removeItem(
           STORAGE_KEY,
         );
+
+        const businessBackup =
+          readBusinessDetailsBackup();
+
+        if (businessBackup) {
+          setSettings({
+            ...defaultSettings,
+            business:
+              normaliseBusinessSettings({
+                ...defaultSettings.business,
+                ...businessBackup,
+              }),
+          });
+        }
+      }
+    } else {
+      const businessBackup =
+        readBusinessDetailsBackup();
+
+      if (businessBackup) {
+        setSettings({
+          ...defaultSettings,
+          business:
+            normaliseBusinessSettings({
+              ...defaultSettings.business,
+              ...businessBackup,
+            }),
+        });
       }
     }
 
@@ -457,6 +508,13 @@ export function SettingsStoreProvider({
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(settings),
+    );
+
+    window.localStorage.setItem(
+      BUSINESS_DETAILS_BACKUP_KEY,
+      JSON.stringify(
+        settings.business,
+      ),
     );
   }, [settings, ready]);
 
@@ -891,6 +949,23 @@ export function SettingsStoreProvider({
 
       return {
         ...defaultSettings,
+
+        /*
+         * "Restore defaults" must never silently erase the
+         * company's invoice identity or the operational
+         * Treatment Library.
+         */
+        business: {
+          ...current.business,
+        },
+
+        treatmentLibrary:
+          current.treatmentLibrary.map(
+            (item) => ({
+              ...item,
+            }),
+          ),
+
         invoices:
           nextInvoiceSettings,
       };
@@ -942,6 +1017,88 @@ export function useSettingsStore() {
   }
 
   return context;
+}
+
+function readBusinessDetailsBackup():
+  Partial<BusinessSettings> | null {
+  try {
+    const saved =
+      window.localStorage.getItem(
+        BUSINESS_DETAILS_BACKUP_KEY,
+      );
+
+    if (!saved) {
+      return null;
+    }
+
+    const parsed =
+      JSON.parse(saved) as
+        Partial<BusinessSettings>;
+
+    return parsed &&
+      typeof parsed === "object"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeBusinessWithRecovery(
+  current: BusinessSettings,
+  recovery:
+    Partial<BusinessSettings>,
+): BusinessSettings {
+  const recovered = {
+    ...current,
+  };
+
+  const fields: Array<
+    keyof BusinessSettings
+  > = [
+    "applicationName",
+    "businessName",
+    "proprietorName",
+    "addressLine1",
+    "addressLine2",
+    "town",
+    "county",
+    "postcode",
+    "telephone",
+    "mobile",
+    "email",
+    "website",
+    "vatNumber",
+    "companyNumber",
+  ];
+
+  fields.forEach((field) => {
+    const currentValue =
+      String(
+        current[field] ?? "",
+      ).trim();
+
+    const recoveryValue =
+      String(
+        recovery[field] ?? "",
+      ).trim();
+
+    /*
+     * Recovery only fills a blank field. A deliberate edit in
+     * the live settings always wins over the backup copy.
+     */
+    if (
+      !currentValue &&
+      recoveryValue
+    ) {
+      recovered[field] =
+        recoveryValue;
+    }
+  });
+
+  return normaliseBusinessSettings(
+    recovered,
+  );
 }
 
 function mergeSettingsWithDefaults(

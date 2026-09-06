@@ -452,6 +452,13 @@ function JobsPageContent() {
               </Link>
 
               <Link
+                href="/additional-jobs"
+                className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
+              >
+                Additional Jobs Planner
+              </Link>
+
+              <Link
                 href={`/routes?date=${selectedDate}`}
                 className="rounded-xl border border-blue-300 bg-blue-50 px-5 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100"
               >

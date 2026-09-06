@@ -17,9 +17,8 @@ import {
   useTreatmentStore,
 } from "@/components/treatment-store";
 
-type StatusFilter =
-  | "All"
-  | TreatmentStatus;
+type StatusFilter = "All" | TreatmentStatus;
+type JobTypeFilter = "All" | "Programme" | "Additional";
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
@@ -58,120 +57,142 @@ function DocumentsPageContent() {
     customerNumber
       ? customers.find(
           (customer) =>
-            customer.customerNumber ===
-            customerNumber,
+            customer.customerNumber === customerNumber,
         ) ?? null
       : null;
 
-  const [search, setSearch] =
-    useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] =
+    useState<StatusFilter>("All");
+  const [jobTypeFilter, setJobTypeFilter] =
+    useState<JobTypeFilter>("All");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  const [
-    statusFilter,
-    setStatusFilter,
-  ] = useState<StatusFilter>("All");
+  const filteredTreatments = useMemo(() => {
+    const query = search.trim().toLowerCase();
 
-  const [dateFrom, setDateFrom] =
-    useState("");
-
-  const [dateTo, setDateTo] =
-    useState("");
-
-  const filteredTreatments =
-    useMemo(() => {
-      const query =
-        search.trim().toLowerCase();
-
-      return [...treatments]
-        .filter((treatment) => {
-          const customer =
-            customers.find(
-              (item) =>
-                item.customerNumber ===
-                treatment.customerNumber,
-            );
-
-          const recordDate =
-            getRecordDate(
-              treatment,
-            );
-
-          const matchesCustomer =
-            !customerNumber ||
-            treatment.customerNumber ===
-              customerNumber;
-
-          const matchesStatus =
-            statusFilter === "All" ||
-            treatment.status ===
-              statusFilter;
-
-          const matchesDates =
-            (!dateFrom ||
-              recordDate >= dateFrom) &&
-            (!dateTo ||
-              recordDate <= dateTo);
-
-          const matchesSearch =
-            !query ||
-            [
-              treatment.customerNumber,
-              treatment.treatmentName,
-              treatment.chemicalName,
-              treatment.fertiliser,
-              treatment.herbicide,
-              treatment.otherMaterials,
-              treatment.invoiceNumber,
-              treatment.notes,
-              customer?.fullName ?? "",
-              customer?.address ?? "",
-              customer?.postcode ?? "",
-            ].some((value) =>
-              value
-                .toLowerCase()
-                .includes(query),
-            );
-
-          return (
-            matchesCustomer &&
-            matchesStatus &&
-            matchesDates &&
-            matchesSearch
-          );
-        })
-        .sort(
-          (first, second) =>
-            getRecordDate(
-              second,
-            ).localeCompare(
-              getRecordDate(first),
-            ),
+    return [...treatments]
+      .filter((treatment) => {
+        const customer = customers.find(
+          (item) =>
+            item.customerNumber ===
+            treatment.customerNumber,
         );
-    }, [
-      treatments,
-      customers,
-      search,
-      statusFilter,
-      dateFrom,
-      dateTo,
-      customerNumber,
-    ]);
 
-  const scopedTreatments =
-    customerNumber
-      ? treatments.filter(
-          (treatment) =>
-            treatment.customerNumber ===
-            customerNumber,
-        )
-      : treatments;
+        const recordDate = getRecordDate(treatment);
+        const additional = isAdditionalJob(treatment);
 
-  const completedCount =
+        const matchesCustomer =
+          !customerNumber ||
+          treatment.customerNumber === customerNumber;
+
+        const matchesStatus =
+          statusFilter === "All" ||
+          treatment.status === statusFilter;
+
+        const matchesJobType =
+          jobTypeFilter === "All" ||
+          (jobTypeFilter === "Additional"
+            ? additional
+            : !additional);
+
+        const matchesDates =
+          (!dateFrom || recordDate >= dateFrom) &&
+          (!dateTo || recordDate <= dateTo);
+
+        const matchesSearch =
+          !query ||
+          [
+            treatment.customerNumber,
+            treatment.treatmentName,
+            treatment.chemicalName,
+            treatment.fertiliser,
+            treatment.herbicide,
+            treatment.otherMaterials,
+            treatment.invoiceNumber,
+            treatment.notes,
+            treatment.customerWording,
+            additional ? "additional job" : "programme",
+            customer?.fullName ?? "",
+            customer?.address ?? "",
+            customer?.postcode ?? "",
+          ].some((value) =>
+            String(value ?? "")
+              .toLowerCase()
+              .includes(query),
+          );
+
+        return (
+          matchesCustomer &&
+          matchesStatus &&
+          matchesJobType &&
+          matchesDates &&
+          matchesSearch
+        );
+      })
+      .sort((first, second) =>
+        getRecordDate(second).localeCompare(
+          getRecordDate(first),
+        ),
+      );
+  }, [
+    treatments,
+    customers,
+    search,
+    statusFilter,
+    jobTypeFilter,
+    dateFrom,
+    dateTo,
+    customerNumber,
+  ]);
+
+  const scopedTreatments = customerNumber
+    ? treatments.filter(
+        (treatment) =>
+          treatment.customerNumber === customerNumber,
+      )
+    : treatments;
+
+  const completedTreatments =
     scopedTreatments.filter(
       (treatment) =>
-        treatment.status ===
-        "Completed",
+        treatment.status === "Completed",
+    );
+
+  const completedCount =
+    completedTreatments.length;
+
+  const additionalCount =
+    completedTreatments.filter(
+      isAdditionalJob,
     ).length;
+
+  const programmeCount =
+    completedTreatments.filter(
+      (treatment) =>
+        !isAdditionalJob(treatment),
+    ).length;
+
+  const invoicedValue =
+    completedTreatments.reduce(
+      (total, treatment) => {
+        const customer = customers.find(
+          (item) =>
+            item.customerNumber ===
+            treatment.customerNumber,
+        );
+
+        return (
+          total +
+          getInvoiceAmount(
+            treatment,
+            customer?.treatmentPrice ?? 0,
+          )
+        );
+      },
+      0,
+    );
 
   const reschedulingCount =
     scopedTreatments.filter(
@@ -180,24 +201,7 @@ function DocumentsPageContent() {
         "Needs Rescheduling",
     ).length;
 
-  const rescheduledCount =
-    scopedTreatments.filter(
-      (treatment) =>
-        treatment.status ===
-        "Rescheduled",
-    ).length;
-
-  const cancelledCount =
-    scopedTreatments.filter(
-      (treatment) =>
-        treatment.status ===
-        "Cancelled",
-    ).length;
-
-  if (
-    !customersReady ||
-    !treatmentsReady
-  ) {
+  if (!customersReady || !treatmentsReady) {
     return (
       <AppShell>
         <main className="p-6">
@@ -212,6 +216,7 @@ function DocumentsPageContent() {
   function resetFilters() {
     setSearch("");
     setStatusFilter("All");
+    setJobTypeFilter("All");
     setDateFrom("");
     setDateTo("");
   }
@@ -219,7 +224,7 @@ function DocumentsPageContent() {
   return (
     <AppShell>
       <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1650px]">
+        <div className="mx-auto max-w-[1750px]">
           <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
               <Link
@@ -236,7 +241,7 @@ function DocumentsPageContent() {
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
                 {selectedCustomer
                   ? `Treatment reports, invoices and visit records for ${selectedCustomer.fullName}.`
-                  : "Print or save customer treatment reports, invoices and visit-outcome records generated directly from Treatment Records."}
+                  : "Treatment reports, invoices and visit-outcome records for seasonal programme work and additional jobs."}
               </p>
             </div>
 
@@ -297,62 +302,72 @@ function DocumentsPageContent() {
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <SummaryCard
-              label="All records"
-              value={String(
-                scopedTreatments.length,
-              )}
-              detail="Available documents"
+              label="Completed"
+              value={String(completedCount)}
+              detail="Reports and invoices"
             />
 
             <SummaryCard
-              label="Completed"
-              value={String(
-                completedCount,
-              )}
-              detail="Report and invoice"
+              label="Programme"
+              value={String(programmeCount)}
+              detail="Completed seasonal visits"
+            />
+
+            <SummaryCard
+              label="Additional jobs"
+              value={String(additionalCount)}
+              detail="Completed extra services"
+              highlight={additionalCount > 0}
+            />
+
+            <SummaryCard
+              label="Invoiced value"
+              value={`£${invoicedValue.toFixed(2)}`}
+              detail="Completed treatment records"
             />
 
             <SummaryCard
               label="Needs rescheduling"
-              value={String(
-                reschedulingCount,
-              )}
+              value={String(reschedulingCount)}
               detail="Visit outcome records"
-              warning={
-                reschedulingCount > 0
-              }
-            />
-
-            <SummaryCard
-              label="Rescheduled"
-              value={String(
-                rescheduledCount,
-              )}
-              detail="Resolved failures"
-            />
-
-            <SummaryCard
-              label="Cancelled"
-              value={String(
-                cancelledCount,
-              )}
-              detail="Cancellation records"
+              warning={reschedulingCount > 0}
             />
           </section>
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_210px_170px_170px_auto] xl:items-end">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_190px_190px_160px_160px_auto] xl:items-end">
               <Field label="Search documents">
                 <input
                   value={search}
                   onChange={(event) =>
-                    setSearch(
-                      event.target.value,
-                    )
+                    setSearch(event.target.value)
                   }
-                  placeholder="Customer, address, treatment, product, invoice or notes"
+                  placeholder="Customer, treatment, invoice, address, product or notes"
                   className={inputClass}
                 />
+              </Field>
+
+              <Field label="Work type">
+                <select
+                  value={jobTypeFilter}
+                  onChange={(event) =>
+                    setJobTypeFilter(
+                      event.target
+                        .value as JobTypeFilter,
+                    )
+                  }
+                  className={inputClass}
+                >
+                  <option value="All">
+                    All work
+                  </option>
+                  <option value="Programme">
+                    Programme
+                  </option>
+                  <option value="Additional">
+                    Additional jobs
+                  </option>
+                </select>
               </Field>
 
               <Field label="Status">
@@ -369,19 +384,15 @@ function DocumentsPageContent() {
                   <option value="All">
                     All statuses
                   </option>
-
                   <option value="Completed">
                     Completed
                   </option>
-
                   <option value="Needs Rescheduling">
                     Needs Rescheduling
                   </option>
-
                   <option value="Rescheduled">
                     Rescheduled
                   </option>
-
                   <option value="Cancelled">
                     Cancelled
                   </option>
@@ -425,56 +436,63 @@ function DocumentsPageContent() {
           </section>
 
           <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-[115px_85px_1.2fr_1.2fr_1.25fr_150px_145px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-              <span>Date</span>
-              <span>Number</span>
-              <span>Customer</span>
-              <span>Treatment</span>
-              <span>Products</span>
-              <span>Status</span>
-              <span>Document</span>
-            </div>
-
-            <div className="max-h-[62vh] overflow-y-auto">
-              {filteredTreatments.length ===
-              0 ? (
-                <div className="p-12 text-center">
-                  <div className="font-bold">
-                    No documents found
-                  </div>
-
-                  <p className="mt-2 text-sm text-slate-500">
-                    Adjust the filters or record a
-                    job outcome to create a document.
-                  </p>
+            <div className="overflow-x-auto">
+              <div className="min-w-[1260px]">
+                <div className="grid grid-cols-[110px_80px_1.1fr_1.35fr_130px_1.1fr_145px_145px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                  <span>Date</span>
+                  <span>Number</span>
+                  <span>Customer</span>
+                  <span>Treatment</span>
+                  <span>Invoice value</span>
+                  <span>Products</span>
+                  <span>Status</span>
+                  <span>Document</span>
                 </div>
-              ) : (
-                filteredTreatments.map(
-                  (treatment) => {
-                    const customer =
-                      customers.find(
-                        (item) =>
-                          item.customerNumber ===
-                          treatment.customerNumber,
-                      );
 
-                    return (
-                      <DocumentRow
-                        key={
-                          treatment.id
-                        }
-                        treatment={
-                          treatment
-                        }
-                        customerName={
-                          customer?.fullName ??
-                          "Customer not found"
-                        }
-                      />
-                    );
-                  },
-                )
-              )}
+                <div className="max-h-[62vh] overflow-y-auto">
+                  {filteredTreatments.length ===
+                  0 ? (
+                    <div className="p-12 text-center">
+                      <div className="font-bold">
+                        No documents found
+                      </div>
+
+                      <p className="mt-2 text-sm text-slate-500">
+                        Adjust the filters or record a job outcome to create a document.
+                      </p>
+                    </div>
+                  ) : (
+                    filteredTreatments.map(
+                      (treatment) => {
+                        const customer =
+                          customers.find(
+                            (item) =>
+                              item.customerNumber ===
+                              treatment.customerNumber,
+                          );
+
+                        return (
+                          <DocumentRow
+                            key={treatment.id}
+                            treatment={
+                              treatment
+                            }
+                            customerName={
+                              customer?.fullName ??
+                              "Customer not found"
+                            }
+                            fallbackPrice={
+                              customer
+                                ?.treatmentPrice ??
+                              0
+                            }
+                          />
+                        );
+                      },
+                    )
+                  )}
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -486,32 +504,39 @@ function DocumentsPageContent() {
 function DocumentRow({
   treatment,
   customerName,
+  fallbackPrice,
 }: {
   treatment: TreatmentRecord;
   customerName: string;
+  fallbackPrice: number;
 }) {
   const products =
-    [
-      treatment.chemicalName,
-      treatment.fertiliser,
-      treatment.herbicide,
-      treatment.otherMaterials,
-    ]
-      .filter(
-        (product) =>
-          product &&
-          product !== "None",
+    treatment.applications
+      .map(
+        (application) =>
+          application.productName,
       )
-      .join(", ");
+      .filter(Boolean);
+
+  const uniqueProducts =
+    Array.from(new Set(products));
 
   const documentLabel =
-    treatment.status ===
-    "Completed"
+    treatment.status === "Completed"
       ? "Report & invoice"
       : "Visit record";
 
+  const additional =
+    isAdditionalJob(treatment);
+
+  const invoiceAmount =
+    getInvoiceAmount(
+      treatment,
+      fallbackPrice,
+    );
+
   return (
-    <div className="grid grid-cols-[115px_85px_1.2fr_1.2fr_1.25fr_150px_145px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-0 hover:bg-green-50/40">
+    <div className="grid grid-cols-[110px_80px_1.1fr_1.35fr_130px_1.1fr_145px_145px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-0 hover:bg-green-50/40">
       <span className="text-slate-600">
         {formatDate(
           getRecordDate(treatment),
@@ -530,8 +555,20 @@ function DocumentRow({
       </span>
 
       <div>
-        <div className="font-semibold">
-          {treatment.treatmentName}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold">
+            {treatment.treatmentName}
+          </span>
+
+          {additional ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+              Additional
+            </span>
+          ) : (
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
+              Programme
+            </span>
+          )}
         </div>
 
         {treatment.invoiceNumber && (
@@ -541,9 +578,37 @@ function DocumentRow({
         )}
       </div>
 
+      <div>
+        {treatment.status ===
+          "Completed" &&
+        invoiceAmount > 0 ? (
+          <>
+            <div className="font-bold">
+              £
+              {invoiceAmount.toFixed(
+                2,
+              )}
+            </div>
+
+            {additional &&
+              treatment.invoiceAmount >
+                0 && (
+                <div className="mt-1 text-[10px] font-semibold text-amber-700">
+                  Agreed job price
+                </div>
+              )}
+          </>
+        ) : (
+          <span className="text-slate-400">
+            —
+          </span>
+        )}
+      </div>
+
       <span className="truncate text-slate-600">
-        {products ||
-          "No products applied"}
+        {uniqueProducts.length > 0
+          ? uniqueProducts.join(", ")
+          : "No products applied"}
       </span>
 
       <StatusBadge
@@ -560,6 +625,44 @@ function DocumentRow({
   );
 }
 
+function isAdditionalJob(
+  treatment: TreatmentRecord,
+) {
+  return (
+    treatment.jobType ===
+      "additional" ||
+    treatment.programmeId.startsWith(
+      "additional-jobs-",
+    )
+  );
+}
+
+function getInvoiceAmount(
+  treatment: TreatmentRecord,
+  fallbackPrice: number,
+) {
+  if (
+    Number.isFinite(
+      treatment.invoiceAmount,
+    ) &&
+    treatment.invoiceAmount > 0
+  ) {
+    return treatment.invoiceAmount;
+  }
+
+  if (
+    treatment.status ===
+      "Completed" &&
+    !isAdditionalJob(treatment) &&
+    Number.isFinite(fallbackPrice) &&
+    fallbackPrice > 0
+  ) {
+    return fallbackPrice;
+  }
+
+  return 0;
+}
+
 function getRecordDate(
   treatment: TreatmentRecord,
 ) {
@@ -573,13 +676,9 @@ function getRecordDate(
   );
 }
 
-function parseDate(
-  value: string,
-) {
+function parseDate(value: string) {
   const [year, month, day] =
-    value
-      .split("-")
-      .map(Number);
+    value.split("-").map(Number);
 
   return new Date(
     year,
@@ -588,9 +687,7 @@ function parseDate(
   );
 }
 
-function formatDate(
-  value: string,
-) {
+function formatDate(value: string) {
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(
       value,
@@ -632,19 +729,29 @@ function SummaryCard({
   value,
   detail,
   warning = false,
+  highlight = false,
 }: {
   label: string;
   value: string;
   detail: string;
   warning?: boolean;
+  highlight?: boolean;
 }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <article
+      className={`rounded-2xl border p-4 shadow-sm ${
+        highlight
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
       <div
         className={`mb-3 h-1.5 w-10 rounded-full ${
           warning
             ? "bg-amber-500"
-            : "bg-[#338b45]"
+            : highlight
+              ? "bg-amber-400"
+              : "bg-[#338b45]"
         }`}
       />
 

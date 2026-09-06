@@ -1331,6 +1331,24 @@ function VisitCentrePageContent() {
         status: treatmentStatus,
         treatmentName:
           job.visit.treatmentName,
+
+        jobType:
+          job.source,
+
+        invoiceAmount:
+          outcome === "Completed"
+            ? Number(
+                job.price.toFixed(
+                  2,
+                ),
+              )
+            : 0,
+
+        customerWording:
+          job.additionalJob
+            ?.wordingSnapshot ??
+          "",
+
         treatmentAreaSquareMetres:
           outcome === "Completed"
             ? job.customer.lawnSize

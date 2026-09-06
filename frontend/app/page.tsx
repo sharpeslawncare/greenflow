@@ -166,6 +166,66 @@ export default function DashboardPage() {
       [customers],
     );
 
+  const additionalJobSummary =
+    useMemo(() => {
+      const rows = activeCustomers.flatMap(
+        (customer) =>
+          (customer.additionalJobs ?? []).map(
+            (job) => ({
+              customer,
+              job,
+            }),
+          ),
+      );
+
+      const unscheduled = rows.filter(
+        ({ job }) =>
+          job.status === "Unscheduled",
+      );
+
+      const scheduled = rows.filter(
+        ({ job }) =>
+          job.status === "Scheduled",
+      );
+
+      const selectedDateJobs =
+        scheduled.filter(
+          ({ job }) =>
+            job.scheduledDate ===
+            selectedDate,
+        );
+
+      return {
+        unscheduledCount:
+          unscheduled.length,
+        unscheduledValue:
+          unscheduled.reduce(
+            (total, { job }) =>
+              total + job.price,
+            0,
+          ),
+        scheduledCount:
+          scheduled.length,
+        scheduledValue:
+          scheduled.reduce(
+            (total, { job }) =>
+              total + job.price,
+            0,
+          ),
+        selectedDateCount:
+          selectedDateJobs.length,
+        selectedDateValue:
+          selectedDateJobs.reduce(
+            (total, { job }) =>
+              total + job.price,
+            0,
+          ),
+      };
+    }, [
+      activeCustomers,
+      selectedDate,
+    ]);
+
   const scheduledVisits =
     useMemo(() => {
       if (!selectedDate) {
@@ -218,6 +278,51 @@ export default function DashboardPage() {
       selectedDate,
     ]);
 
+  const scheduledAdditionalJobs =
+    useMemo(() => {
+      if (!selectedDate) {
+        return [];
+      }
+
+      return activeCustomers.flatMap(
+        (customer) =>
+          (customer.additionalJobs ?? [])
+            .filter(
+              (job) =>
+                job.status === "Scheduled" &&
+                job.scheduledDate === selectedDate,
+            )
+            .map((job) => ({
+              customer,
+              job,
+            })),
+      );
+    }, [activeCustomers, selectedDate]);
+
+  const scheduledWork = useMemo(
+    () => [
+      ...scheduledVisits.map(
+        ({ programme, visit, customer }) => ({
+          key: `programme-${programme.id}-${visit.id}`,
+          source: "programme" as const,
+          customer,
+          treatmentName: visit.treatmentName,
+          price: customer?.treatmentPrice ?? 0,
+        }),
+      ),
+      ...scheduledAdditionalJobs.map(
+        ({ customer, job }) => ({
+          key: `additional-${customer.customerNumber}-${job.id}`,
+          source: "additional" as const,
+          customer,
+          treatmentName: job.treatmentName,
+          price: job.price ?? 0,
+        }),
+      ),
+    ],
+    [scheduledVisits, scheduledAdditionalJobs],
+  );
+
   const selectedDateTreatments =
     useMemo(() => {
       if (!selectedDate) {
@@ -251,27 +356,22 @@ export default function DashboardPage() {
     );
 
   const totalScheduledArea =
-    scheduledVisits.reduce(
+    scheduledWork.reduce(
       (total, item) =>
         total +
-        (item.customer?.lawnSize ??
-          0),
+        (item.customer?.lawnSize ?? 0),
       0,
     );
 
   const expectedIncome =
-    scheduledVisits.reduce(
-      (total, item) =>
-        total +
-        (item.customer
-          ?.treatmentPrice ?? 0),
+    scheduledWork.reduce(
+      (total, item) => total + item.price,
       0,
     );
 
   const lockedGateCount =
-    scheduledVisits.filter(
-      (item) =>
-        item.customer?.lockedGate,
+    scheduledWork.filter(
+      (item) => item.customer?.lockedGate,
     ).length;
 
   const lowStockProducts =
@@ -503,18 +603,28 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
-              <Field label="Working date">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(event) =>
-                      setSelectedDate(
-                        event.target.value,
+              <div className="block">
+                <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Working date
+                </span>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedDate((current) =>
+                        shiftDateValue(current, -1),
                       )
                     }
-                    className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
-                  />
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    aria-label="Previous day"
+                  >
+                    ← Previous
+                  </button>
+
+                  <div className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-bold text-slate-800">
+                    {formatDateWithDay(selectedDate)}
+                  </div>
 
                   <button
                     type="button"
@@ -523,12 +633,25 @@ export default function DashboardPage() {
                         getTodayDateValue(),
                       )
                     }
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="rounded-xl border border-[#338b45] bg-green-50 px-4 py-2.5 text-sm font-semibold text-[#176b37] transition hover:bg-green-100"
                   >
                     Today
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedDate((current) =>
+                        shiftDateValue(current, 1),
+                      )
+                    }
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    aria-label="Next day"
+                  >
+                    Next →
+                  </button>
                 </div>
-              </Field>
+              </div>
 
               <Link
                 href="/enquiries"
@@ -546,7 +669,7 @@ export default function DashboardPage() {
             </div>
           </header>
 
-          {scheduledVisits.length === 0 && (
+          {scheduledWork.length === 0 && (
             <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
               No jobs are scheduled for{" "}
               <strong>
@@ -555,7 +678,7 @@ export default function DashboardPage() {
                 )}
               </strong>
               . You can still review the rest of the
-              dashboard or choose another calendar date.
+              dashboard or scroll to another date.
             </section>
           )}
 
@@ -563,7 +686,7 @@ export default function DashboardPage() {
             <MetricCard
               label="Scheduled jobs"
               value={String(
-                scheduledVisits.length,
+                scheduledWork.length,
               )}
               detail={
                 selectedDate
@@ -577,7 +700,7 @@ export default function DashboardPage() {
             <MetricCard
               label="Completed"
               value={`${completedOnSelectedDate}/${
-                scheduledVisits.length +
+                scheduledWork.length +
                 completedOnSelectedDate
               }`}
               detail="Recorded on selected date"
@@ -596,8 +719,87 @@ export default function DashboardPage() {
               value={`£${expectedIncome.toFixed(
                 2,
               )}`}
-              detail="Standard treatment prices"
+              detail="Programme + additional prices"
             />
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                  Additional Jobs
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-amber-950">
+                  Additional work pipeline
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-900">
+                  Scarification, Aeration, Overseeding and future additional services remain separate from the five-treatment seasonal programme until they are scheduled.
+                </p>
+              </div>
+
+              <Link
+                href="/additional-jobs"
+                className="inline-flex h-11 items-center rounded-xl bg-amber-700 px-5 text-sm font-bold text-white transition hover:bg-amber-800"
+              >
+                Open Additional Jobs Planner
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <AdditionalJobMetric
+                label="Unscheduled"
+                value={String(
+                  additionalJobSummary.unscheduledCount,
+                )}
+                detail="Waiting to allocate"
+                warning={
+                  additionalJobSummary.unscheduledCount >
+                  0
+                }
+              />
+
+              <AdditionalJobMetric
+                label="Waiting value"
+                value={`£${additionalJobSummary.unscheduledValue.toFixed(
+                  2,
+                )}`}
+                detail="Unscheduled work"
+                warning={
+                  additionalJobSummary.unscheduledValue >
+                  0
+                }
+              />
+
+              <AdditionalJobMetric
+                label="Scheduled upcoming"
+                value={String(
+                  additionalJobSummary.scheduledCount,
+                )}
+                detail="Booked into working days"
+              />
+
+              <AdditionalJobMetric
+                label="Scheduled value"
+                value={`£${additionalJobSummary.scheduledValue.toFixed(
+                  2,
+                )}`}
+                detail="Upcoming additional work"
+              />
+
+              <AdditionalJobMetric
+                label="On selected date"
+                value={String(
+                  additionalJobSummary.selectedDateCount,
+                )}
+                detail={`£${additionalJobSummary.selectedDateValue.toFixed(
+                  2,
+                )} · ${formatShortDate(
+                  selectedDate,
+                )}`}
+              />
+            </div>
           </section>
 
           <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -652,8 +854,8 @@ export default function DashboardPage() {
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    Customer programme
-                    visits for the selected
+                    Programme visits and scheduled
+                    additional jobs for the selected
                     date.
                   </p>
                 </div>
@@ -673,7 +875,7 @@ export default function DashboardPage() {
                     label="Vans"
                     value={
                       new Set(
-                        scheduledVisits.map(
+                        scheduledWork.map(
                           (item) =>
                             item.customer
                               ?.vanNumber,
@@ -685,8 +887,9 @@ export default function DashboardPage() {
               </div>
 
               <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-                <div className="grid grid-cols-[85px_1.2fr_1.6fr_1.2fr_85px_90px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <div className="grid grid-cols-[85px_100px_1.15fr_1.45fr_1.15fr_75px_90px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                   <span>Number</span>
+                  <span>Type</span>
                   <span>Customer</span>
                   <span>Address</span>
                   <span>Treatment</span>
@@ -695,99 +898,86 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="max-h-[340px] overflow-y-auto">
-                  {scheduledVisits.length ===
-                  0 ? (
+                  {scheduledWork.length === 0 ? (
                     <div className="p-10 text-center text-sm text-slate-500">
-                      No active visits
-                      match the selected
-                      date.
+                      No active programme visits or additional jobs
+                      match the selected date.
                     </div>
                   ) : (
-                    scheduledVisits.map(
-                      ({
-                        programme,
-                        visit,
-                        customer,
-                      }) => {
-                        if (!customer) {
-                          return null;
-                        }
+                    scheduledWork.map((item) => {
+                      const customer = item.customer;
 
-                        return (
-                          <div
-                            key={`${programme.id}-${visit.id}`}
-                            className="grid grid-cols-[85px_1.2fr_1.6fr_1.2fr_85px_90px] items-center gap-3 border-t border-slate-100 px-4 py-3 text-sm hover:bg-green-50/40"
+                      if (!customer) {
+                        return null;
+                      }
+
+                      return (
+                        <div
+                          key={item.key}
+                          className="grid grid-cols-[85px_100px_1.15fr_1.45fr_1.15fr_75px_90px] items-center gap-3 border-t border-slate-100 px-4 py-3 text-sm hover:bg-green-50/40"
+                        >
+                          <Link
+                            href={`/customers/${customer.customerNumber}`}
+                            className="font-bold text-[#176b37] hover:underline"
                           >
-                            <Link
-                              href={`/customers/${customer.customerNumber}`}
-                              className="font-bold text-[#176b37] hover:underline"
-                            >
-                              {
-                                customer.customerNumber
-                              }
-                            </Link>
+                            {customer.customerNumber}
+                          </Link>
 
-                            <div>
-                              <div className="font-semibold">
-                                {
-                                  customer.fullName
-                                }
-                              </div>
+                          <span
+                            className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-bold ${
+                              item.source === "additional"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-green-100 text-green-800"
+                            }`}
+                          >
+                            {item.source === "additional"
+                              ? "Additional"
+                              : "Programme"}
+                          </span>
 
-                              <div className="mt-0.5 flex gap-2 text-xs">
-                                {customer.lockedGate && (
-                                  <span className="font-bold text-red-600">
-                                    Locked gate
-                                  </span>
-                                )}
-
-                                {customer.dogOnProperty && (
-                                  <span className="font-bold text-amber-700">
-                                    Dog
-                                  </span>
-                                )}
-                              </div>
+                          <div>
+                            <div className="font-semibold">
+                              {customer.fullName}
                             </div>
 
-                            <span className="text-slate-600">
-                              {
-                                customer.address
-                              }
-                              ,{" "}
-                              {
-                                customer.postcode
-                              }
-                            </span>
-
-                            <span className="font-semibold">
-                              {
-                                visit.treatmentName
-                              }
-                            </span>
-
-                            <span>
-                              {
-                                customer.groupNumber
-                              }
-                            </span>
-
-                            <span className="font-bold">
-                              £
-                              {customer.treatmentPrice.toFixed(
-                                2,
+                            <div className="mt-0.5 flex gap-2 text-xs">
+                              {customer.lockedGate && (
+                                <span className="font-bold text-red-600">
+                                  Locked gate
+                                </span>
                               )}
-                            </span>
+
+                              {customer.dogOnProperty && (
+                                <span className="font-bold text-amber-700">
+                                  Dog
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        );
-                      },
-                    )
+
+                          <span className="text-slate-600">
+                            {customer.address}, {customer.postcode}
+                          </span>
+
+                          <span className="font-semibold">
+                            {item.treatmentName}
+                          </span>
+
+                          <span>{customer.groupNumber}</span>
+
+                          <span className="font-bold">
+                            £{item.price.toFixed(2)}
+                          </span>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
 
               <div className="mt-4 flex justify-end">
                 <Link
-                  href="/jobs"
+                  href={`/jobs?date=${selectedDate}`}
                   className="rounded-xl border border-[#338b45] px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
                 >
                   Manage scheduled jobs
@@ -1203,6 +1393,29 @@ function hasFinalRecordedOutcome(
   );
 }
 
+function shiftDateValue(
+  value: string,
+  days: number,
+) {
+  const date = parseDate(
+    value || getTodayDateValue(),
+  );
+
+  date.setDate(
+    date.getDate() + days,
+  );
+
+  const year = date.getFullYear();
+  const month = String(
+    date.getMonth() + 1,
+  ).padStart(2, "0");
+  const day = String(
+    date.getDate(),
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function formatShortDate(
   value: string,
 ) {
@@ -1231,6 +1444,40 @@ function Field({
 
       {children}
     </label>
+  );
+}
+
+function AdditionalJobMetric({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <article
+      className={`rounded-xl border p-4 ${
+        warning
+          ? "border-amber-300 bg-white"
+          : "border-amber-200 bg-white/80"
+      }`}
+    >
+      <div className="text-xs font-bold uppercase tracking-wide text-amber-700">
+        {label}
+      </div>
+
+      <div className="mt-1 text-2xl font-bold text-slate-900">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-500">
+        {detail}
+      </div>
+    </article>
   );
 }
 
