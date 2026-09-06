@@ -16,6 +16,7 @@ import {
 } from "@/lib/date-utils";
 
 import { AppShell } from "@/components/app-shell";
+import { useActionStore } from "@/components/action-store";
 import { useChemicalStore } from "@/components/chemical-store";
 
 import { useCustomerStore } from "@/components/customer-store";
@@ -42,6 +43,11 @@ type CommunicationRecord = {
     | "Sent"
     | "Failed"
     | "Cancelled";
+
+  customerNumber?: string;
+  scheduledDate?: string;
+  treatmentName?: string;
+  jobType?: "programme" | "additional";
 };
 
 type CommunicationsData = {
@@ -76,6 +82,11 @@ export default function DashboardPage() {
     chemicals,
     ready: chemicalsReady,
   } = useChemicalStore();
+
+  const {
+    actions,
+    ready: actionsReady,
+  } = useActionStore();
 
   const [
     communicationsData,
@@ -382,6 +393,168 @@ export default function DashboardPage() {
           chemical.reorderLevel,
     );
 
+  const tomorrowDate =
+    shiftDateValue(
+      getTodayDateValue(),
+      1,
+    );
+
+  const tomorrowProgrammeVisits =
+    useMemo(
+      () =>
+        programmes
+          .flatMap((programme) =>
+            programme.visits
+              .filter(
+                (visit) =>
+                  visit.scheduledDate ===
+                    tomorrowDate &&
+                  (visit.status ===
+                    "Scheduled" ||
+                    visit.status ===
+                      "Planned"),
+              )
+              .map((visit) => ({
+                programme,
+                visit,
+                customer:
+                  customers.find(
+                    (customer) =>
+                      customer.customerNumber ===
+                      programme.customerNumber,
+                  ),
+              }))
+              .filter(
+                (item) =>
+                  item.customer?.status ===
+                    "Active" &&
+                  !hasFinalRecordedOutcome(
+                    treatments,
+                    item.programme,
+                    item.visit,
+                    item.customer
+                      .customerNumber,
+                  ),
+              ),
+          )
+          .map(
+            ({
+              programme,
+              visit,
+              customer,
+            }) => ({
+              key: `programme-${programme.id}-${visit.id}`,
+              customerNumber:
+                customer!
+                  .customerNumber,
+              treatmentName:
+                visit.treatmentName,
+              jobType:
+                "programme" as const,
+            }),
+          ),
+      [
+        programmes,
+        customers,
+        treatments,
+        tomorrowDate,
+      ],
+    );
+
+  const tomorrowAdditionalJobs =
+    useMemo(
+      () =>
+        activeCustomers.flatMap(
+          (customer) =>
+            (
+              customer.additionalJobs ??
+              []
+            )
+              .filter(
+                (job) =>
+                  job.status ===
+                    "Scheduled" &&
+                  job.scheduledDate ===
+                    tomorrowDate,
+              )
+              .map((job) => ({
+                key: `additional-${customer.customerNumber}-${job.id}`,
+                customerNumber:
+                  customer.customerNumber,
+                treatmentName:
+                  job.treatmentName,
+                jobType:
+                  "additional" as const,
+              })),
+        ),
+      [
+        activeCustomers,
+        tomorrowDate,
+      ],
+    );
+
+  const tomorrowReminderSummary =
+    useMemo(() => {
+      const work = [
+        ...tomorrowProgrammeVisits,
+        ...tomorrowAdditionalJobs,
+      ];
+
+      let queued = 0;
+      let sent = 0;
+      let needsAttention = 0;
+
+      work.forEach((item) => {
+        const matchingRecords =
+          communicationsData.records.filter(
+            (record) =>
+              record.customerNumber ===
+                item.customerNumber &&
+              record.scheduledDate ===
+                tomorrowDate &&
+              record.treatmentName ===
+                item.treatmentName &&
+              record.jobType ===
+                item.jobType,
+          );
+
+        if (
+          matchingRecords.some(
+            (record) =>
+              record.status === "Sent",
+          )
+        ) {
+          sent += 1;
+          return;
+        }
+
+        if (
+          matchingRecords.some(
+            (record) =>
+              record.status ===
+              "Queued",
+          )
+        ) {
+          queued += 1;
+          return;
+        }
+
+        needsAttention += 1;
+      });
+
+      return {
+        scheduled: work.length,
+        queued,
+        sent,
+        needsAttention,
+      };
+    }, [
+      communicationsData.records,
+      tomorrowAdditionalJobs,
+      tomorrowDate,
+      tomorrowProgrammeVisits,
+    ]);
+
   const queuedMessages =
     communicationsData.records.filter(
       (record) =>
@@ -548,6 +721,64 @@ export default function DashboardPage() {
       treatments,
     ]);
 
+  const todayDate =
+    getTodayDateValue();
+
+  const openActions =
+    actions.filter(
+      (action) =>
+        action.status === "Open",
+    );
+
+  const overdueActions =
+    openActions.filter(
+      (action) =>
+        Boolean(action.dueDate) &&
+        action.dueDate < todayDate,
+    );
+
+  const dueTodayActions =
+    openActions.filter(
+      (action) =>
+        action.dueDate === todayDate,
+    );
+
+  const urgentOpenActions =
+    openActions.filter(
+      (action) =>
+        action.priority === "Urgent",
+    );
+
+  const actionsNeedingAttention =
+    [...openActions]
+      .filter(
+        (action) =>
+          Boolean(action.dueDate) &&
+          action.dueDate <= todayDate,
+      )
+      .sort((first, second) => {
+        if (
+          first.priority === "Urgent" &&
+          second.priority !== "Urgent"
+        ) {
+          return -1;
+        }
+
+        if (
+          first.priority !== "Urgent" &&
+          second.priority === "Urgent"
+        ) {
+          return 1;
+        }
+
+        return (
+          first.dueDate || "9999-12-31"
+        ).localeCompare(
+          second.dueDate || "9999-12-31",
+        );
+      })
+      .slice(0, 5);
+
   const enquiryAttentionCount =
     newEnquiries.length +
     outstandingQuotes.length +
@@ -557,7 +788,6 @@ export default function DashboardPage() {
     reschedulingRecords.length +
     lowStockProducts.length +
     customersWithoutProgramme.length +
-    queuedMessages.length +
     enquiryAttentionCount;
 
   const ready =
@@ -565,7 +795,8 @@ export default function DashboardPage() {
     enquiriesReady &&
     programmesReady &&
     treatmentsReady &&
-    chemicalsReady;
+    chemicalsReady &&
+    actionsReady;
 
   if (!ready) {
     return (
@@ -723,25 +954,218 @@ export default function DashboardPage() {
             />
           </section>
 
+          <section className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+                  Customer communications
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-blue-950">
+                  Tomorrow&apos;s reminders
+                </h2>
+
+                <p className="mt-1 text-sm leading-6 text-blue-900">
+                  {formatDateWithDay(
+                    tomorrowDate,
+                  )} · Programme visits and scheduled Additional Jobs.
+                </p>
+              </div>
+
+              <Link
+                href={`/communications?date=${tomorrowDate}`}
+                className="inline-flex h-11 items-center rounded-xl bg-blue-700 px-5 text-sm font-bold text-white transition hover:bg-blue-800"
+              >
+                Prepare tomorrow&apos;s reminders
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <ReminderMetric
+                label="Scheduled"
+                value={
+                  tomorrowReminderSummary.scheduled
+                }
+                detail="Customers due tomorrow"
+              />
+
+              <ReminderMetric
+                label="Need attention"
+                value={
+                  tomorrowReminderSummary.needsAttention
+                }
+                detail="Not queued or sent"
+                warning={
+                  tomorrowReminderSummary.needsAttention >
+                  0
+                }
+              />
+
+              <ReminderMetric
+                label="Queued"
+                value={
+                  tomorrowReminderSummary.queued
+                }
+                detail="Ready to contact"
+              />
+
+              <ReminderMetric
+                label="Sent"
+                value={
+                  tomorrowReminderSummary.sent
+                }
+                detail="Already contacted"
+              />
+            </div>
+          </section>
+
           <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
-                  Additional Jobs
+                  Action Centre
                 </div>
 
                 <h2 className="mt-1 text-xl font-bold text-amber-950">
+                  Actions needing attention
+                </h2>
+
+                <p className="mt-1 text-sm leading-6 text-amber-900">
+                  Customer follow-ups due today or already overdue.
+                </p>
+              </div>
+
+              <Link
+                href="/actions"
+                className="inline-flex h-11 items-center rounded-xl bg-amber-700 px-5 text-sm font-bold text-white transition hover:bg-amber-800"
+              >
+                Open Action Centre
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <ActionMetric
+                label="Overdue"
+                value={overdueActions.length}
+                detail="Past their due date"
+                warning={
+                  overdueActions.length > 0
+                }
+              />
+
+              <ActionMetric
+                label="Due today"
+                value={dueTodayActions.length}
+                detail="Need dealing with today"
+                warning={
+                  dueTodayActions.length > 0
+                }
+              />
+
+              <ActionMetric
+                label="Urgent open"
+                value={urgentOpenActions.length}
+                detail="Urgent priority"
+                warning={
+                  urgentOpenActions.length > 0
+                }
+              />
+
+              <ActionMetric
+                label="Open actions"
+                value={openActions.length}
+                detail="All outstanding follow-ups"
+              />
+            </div>
+
+            {actionsNeedingAttention.length > 0 ? (
+              <div className="mt-4 divide-y divide-amber-200 overflow-hidden rounded-xl border border-amber-200 bg-white">
+                {actionsNeedingAttention.map(
+                  (action) => {
+                    const overdue =
+                      Boolean(
+                        action.dueDate,
+                      ) &&
+                      action.dueDate <
+                        todayDate;
+
+                    return (
+                      <div
+                        key={action.id}
+                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              href={`/customers/${action.customerNumber}?tab=actions`}
+                              className="font-bold text-slate-950 hover:text-[#176b37]"
+                            >
+                              {action.customerName ||
+                                `Customer ${action.customerNumber}`}
+                            </Link>
+
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                              {action.type}
+                            </span>
+
+                            {action.priority ===
+                              "Urgent" && (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
+                                Urgent
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-1 line-clamp-1 text-sm text-slate-600">
+                            {action.note}
+                          </p>
+                        </div>
+
+                        <div
+                          className={`shrink-0 text-xs font-bold ${
+                            overdue
+                              ? "text-red-700"
+                              : "text-amber-800"
+                          }`}
+                        >
+                          {overdue
+                            ? "Overdue · "
+                            : "Due today · "}
+                          {formatShortDate(
+                            action.dueDate,
+                          )}
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-green-200 bg-white p-4 text-sm font-semibold text-green-800">
+                Nothing overdue or due today.
+              </div>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+                  Additional Jobs
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-emerald-950">
                   Additional work pipeline
                 </h2>
 
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-900">
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-emerald-900">
                   Scarification, Aeration, Overseeding and future additional services remain separate from the five-treatment seasonal programme until they are scheduled.
                 </p>
               </div>
 
               <Link
                 href="/additional-jobs"
-                className="inline-flex h-11 items-center rounded-xl bg-amber-700 px-5 text-sm font-bold text-white transition hover:bg-amber-800"
+                className="inline-flex h-11 items-center rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white transition hover:bg-emerald-800"
               >
                 Open Additional Jobs Planner
               </Link>
@@ -1010,70 +1434,80 @@ export default function DashboardPage() {
                 </span>
               </div>
 
-              <div className="mt-5 space-y-3">
-                <AttentionItem
-                  title="New enquiries"
-                  count={
-                    newEnquiries.length
-                  }
-                  href="/enquiries"
-                  severity="information"
-                />
+              {totalAttentionItems > 0 && (
+                <div className="mt-5 space-y-3">
+                  {newEnquiries.length > 0 && (
+                    <AttentionItem
+                      title="New enquiries"
+                      count={
+                        newEnquiries.length
+                      }
+                      href="/enquiries"
+                      severity="information"
+                    />
+                  )}
 
-                <AttentionItem
-                  title="Outstanding quotes"
-                  count={
-                    outstandingQuotes.length
-                  }
-                  href="/enquiries"
-                  severity="warning"
-                />
+                  {outstandingQuotes.length >
+                    0 && (
+                    <AttentionItem
+                      title="Outstanding quotes"
+                      count={
+                        outstandingQuotes.length
+                      }
+                      href="/enquiries"
+                      severity="warning"
+                    />
+                  )}
 
-                <AttentionItem
-                  title="Accepted quotes to convert"
-                  count={
-                    acceptedEnquiries.length
-                  }
-                  href="/enquiries"
-                  severity="information"
-                />
+                  {acceptedEnquiries.length >
+                    0 && (
+                    <AttentionItem
+                      title="Accepted quotes to convert"
+                      count={
+                        acceptedEnquiries.length
+                      }
+                      href="/enquiries"
+                      severity="information"
+                    />
+                  )}
 
-                <AttentionItem
-                  title="Visits need rescheduling"
-                  count={
-                    reschedulingRecords.length
-                  }
-                  href="/jobs?view=reschedule"
-                  severity="warning"
-                />
+                  {reschedulingRecords.length >
+                    0 && (
+                    <AttentionItem
+                      title="Visits need rescheduling"
+                      count={
+                        reschedulingRecords.length
+                      }
+                      href="/jobs?view=reschedule"
+                      severity="warning"
+                    />
+                  )}
 
-                <AttentionItem
-                  title="Products at reorder level"
-                  count={
-                    lowStockProducts.length
-                  }
-                  href="/stock"
-                  severity="danger"
-                />
+                  {lowStockProducts.length >
+                    0 && (
+                    <AttentionItem
+                      title="Products at reorder level"
+                      count={
+                        lowStockProducts.length
+                      }
+                      href="/stock"
+                      severity="danger"
+                    />
+                  )}
 
-                <AttentionItem
-                  title="Customers without programme"
-                  count={
-                    customersWithoutProgramme.length
-                  }
-                  href="/programmes"
-                  severity="warning"
-                />
-
-                <AttentionItem
-                  title="Queued reminders"
-                  count={
-                    queuedMessages.length
-                  }
-                  href="/communications"
-                  severity="information"
-                />
-              </div>
+                  {customersWithoutProgramme.length >
+                    0 && (
+                    <AttentionItem
+                      title="Customers without programme"
+                      count={
+                        customersWithoutProgramme.length
+                      }
+                      href="/programmes"
+                      severity="warning"
+                    />
+                  )}
+                </div>
+              )}
 
               {totalAttentionItems ===
                 0 && (
@@ -1444,6 +1878,92 @@ function Field({
 
       {children}
     </label>
+  );
+}
+
+function ActionMetric({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        warning
+          ? "border-amber-300 bg-amber-100"
+          : "border-amber-200 bg-white"
+      }`}
+    >
+      <div className="text-xs font-bold uppercase tracking-wide text-amber-700">
+        {label}
+      </div>
+
+      <div className="mt-1 text-2xl font-black text-amber-950">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-amber-800">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function ReminderMetric({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        warning
+          ? "border-amber-300 bg-amber-50"
+          : "border-violet-200 bg-white"
+      }`}
+    >
+      <div
+        className={`text-xs font-bold uppercase tracking-wide ${
+          warning
+            ? "text-amber-700"
+            : "text-violet-700"
+        }`}
+      >
+        {label}
+      </div>
+
+      <div
+        className={`mt-1 text-2xl font-black ${
+          warning
+            ? "text-amber-950"
+            : "text-violet-950"
+        }`}
+      >
+        {value}
+      </div>
+
+      <div
+        className={`mt-1 text-xs ${
+          warning
+            ? "text-amber-800"
+            : "text-violet-700"
+        }`}
+      >
+        {detail}
+      </div>
+    </div>
   );
 }
 

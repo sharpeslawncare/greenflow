@@ -13,6 +13,7 @@ import {
   type AdvisoryType,
   type BrandingSettings,
   type BusinessSettings,
+  type CommunicationSettings,
   type InvoiceSettings,
   type TreatmentLibraryItem,
   type TreatmentWordingSettings,
@@ -35,6 +36,7 @@ type SettingsTab =
   | "business"
   | "invoices"
   | "wording"
+  | "communications"
   | "advisories"
   | "branding"
   | "fleet";
@@ -68,6 +70,10 @@ const tabs: Array<{
     label: "Treatment wording",
   },
   {
+    id: "communications",
+    label: "Customer communications",
+  },
+  {
     id: "advisories",
     label: "Advisories",
   },
@@ -88,6 +94,7 @@ export default function SettingsPage() {
     updateBusinessSettings,
     updateInvoiceSettings,
     updateTreatmentWording,
+    updateCommunicationSettings,
     addTreatmentLibraryItem,
     updateTreatmentLibraryItem,
     deleteTreatmentLibraryItem,
@@ -756,6 +763,15 @@ export default function SettingsPage() {
                   }
                   deleteTreatment={
                     deleteTreatmentLibraryItem
+                  }
+                />
+              )}
+
+              {activeTab === "communications" && (
+                <CustomerCommunicationsTab
+                  settings={settings.communications}
+                  updateSettings={
+                    updateCommunicationSettings
                   }
                 />
               )}
@@ -2152,6 +2168,119 @@ function InvoicesTab({
       </div>
     </div>
   );
+}
+
+function CustomerCommunicationsTab({
+  settings,
+  updateSettings,
+}: {
+  settings: CommunicationSettings;
+  updateSettings: (
+    updates: Partial<CommunicationSettings>,
+  ) => void;
+}) {
+  const defaultTemplate =
+    "Hi {firstName}, just a reminder that Sharpes Lawn Care is due to visit on {date} for {treatment}. Please make sure we can access the lawn. Many thanks, Rob - Sharpes Lawn Care";
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <SectionHeading
+          title="Customer communications"
+          description="Control the wording GreenFlow uses when preparing upcoming-visit reminders. Changes are saved automatically."
+        />
+
+        <div className="mt-6">
+          <Field label="Visit reminder template">
+            <textarea
+              value={settings.visitReminderTemplate}
+              onChange={(event) =>
+                updateSettings({
+                  visitReminderTemplate:
+                    event.target.value,
+                })
+              }
+              rows={7}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm leading-6 outline-none transition focus:border-[#338b45] focus:ring-2 focus:ring-green-100"
+            />
+          </Field>
+
+          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <div className="font-bold">
+              Available placeholders
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[
+                "{firstName}",
+                "{date}",
+                "{treatment}",
+              ].map((placeholder) => (
+                <code
+                  key={placeholder}
+                  className="rounded-md border border-blue-200 bg-white px-2 py-1 font-semibold"
+                >
+                  {placeholder}
+                </code>
+              ))}
+            </div>
+            <p className="mt-3 leading-6">
+              GreenFlow replaces these automatically for each customer. Programme visits use “your scheduled lawn treatment”; Additional Jobs use the actual service name.
+            </p>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              Example preview
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+              {renderCommunicationTemplate(
+                settings.visitReminderTemplate,
+                {
+                  firstName: "John",
+                  date: "Monday 14 September 2026",
+                  treatment:
+                    "your scheduled lawn treatment",
+                },
+              )}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              updateSettings({
+                visitReminderTemplate:
+                  defaultTemplate,
+              })
+            }
+            className="mt-4 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Restore default reminder
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function renderCommunicationTemplate(
+  template: string,
+  values: {
+    firstName: string;
+    date: string;
+    treatment: string;
+  },
+) {
+  return (template || "")
+    .replaceAll(
+      "{firstName}",
+      values.firstName,
+    )
+    .replaceAll("{date}", values.date)
+    .replaceAll(
+      "{treatment}",
+      values.treatment,
+    );
 }
 
 function TreatmentWordingTab({

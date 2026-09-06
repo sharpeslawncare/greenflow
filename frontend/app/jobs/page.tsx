@@ -374,10 +374,10 @@ function JobsPageContent() {
 
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
                 Review the scheduled
-                workload, open the Visit
-                Centre and print a compact
-                working job sheet for the
-                selected day.
+                workload, notify customers,
+                open the Visit Centre and
+                print a compact working job
+                sheet for the selected day.
               </p>
             </div>
 
@@ -456,6 +456,17 @@ function JobsPageContent() {
                 className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
               >
                 Additional Jobs Planner
+              </Link>
+
+              <Link
+                href={`/communications?date=${selectedDate}`}
+                className={`rounded-xl border border-violet-300 bg-violet-50 px-5 py-2.5 text-sm font-bold text-violet-800 hover:bg-violet-100 ${
+                  scheduledJobs.length === 0
+                    ? "pointer-events-none opacity-50"
+                    : ""
+                }`}
+              >
+                Notify Customers
               </Link>
 
               <Link

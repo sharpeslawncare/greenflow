@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { ActionStoreProvider } from "@/components/action-store";
 import { ChemicalStoreProvider } from "@/components/chemical-store";
 import { CustomerStoreProvider } from "@/components/customer-store";
 import { EnquiryStoreProvider } from "@/components/enquiry-store";
@@ -23,7 +24,9 @@ export function Providers({
             <ProgrammeStoreProvider>
               <ChemicalStoreProvider>
                 <TreatmentStoreProvider>
-                  {children}
+                  <ActionStoreProvider>
+                    {children}
+                  </ActionStoreProvider>
                 </TreatmentStoreProvider>
               </ChemicalStoreProvider>
             </ProgrammeStoreProvider>

@@ -11,6 +11,11 @@ import {
 
 import { CustomerTreatmentHistory } from "@/components/customer-treatment-history";
 import {
+  type ActionPriority,
+  type ActionType,
+  useActionStore,
+} from "@/components/action-store";
+import {
   type AdditionalCustomerJob,
   type StoredCustomer,
   useCustomerStore,
@@ -34,6 +39,7 @@ type TabId =
   | "overview"
   | "programme"
   | "additionalJobs"
+  | "actions"
   | "treatments"
   | "documents"
   | "communications"
@@ -55,6 +61,10 @@ const tabs: Array<{
   {
     id: "additionalJobs",
     label: "Additional Jobs",
+  },
+  {
+    id: "actions",
+    label: "Actions",
   },
   {
     id: "treatments",
@@ -124,6 +134,14 @@ export function CustomerProfileClient({
     ready: settingsReady,
   } = useSettingsStore();
 
+  const {
+    actions,
+    ready: actionsReady,
+    addAction,
+    completeAction,
+    cancelAction,
+  } = useActionStore();
+
   const customer =
     getCustomer(customerNumber);
 
@@ -171,6 +189,25 @@ export function CustomerProfileClient({
     additionalJobNotes,
     setAdditionalJobNotes,
   ] = useState("");
+
+  const [
+    addingAction,
+    setAddingAction,
+  ] = useState(false);
+
+  const [actionType, setActionType] =
+    useState<ActionType>("Call back");
+
+  const [
+    actionPriority,
+    setActionPriority,
+  ] = useState<ActionPriority>("Normal");
+
+  const [actionDueDate, setActionDueDate] =
+    useState(toDateValue(new Date()));
+
+  const [actionNote, setActionNote] =
+    useState("");
 
   useEffect(() => {
     if (!customer) {
@@ -370,6 +407,42 @@ export function CustomerProfileClient({
           ),
       );
 
+  const customerActions =
+    actions
+      .filter(
+        (action) =>
+          action.customerNumber ===
+          customerNumber,
+      )
+      .slice()
+      .sort((first, second) => {
+        if (
+          first.status === "Open" &&
+          second.status !== "Open"
+        ) {
+          return -1;
+        }
+
+        if (
+          first.status !== "Open" &&
+          second.status === "Open"
+        ) {
+          return 1;
+        }
+
+        return (
+          first.dueDate || "9999-12-31"
+        ).localeCompare(
+          second.dueDate || "9999-12-31",
+        );
+      });
+
+  const openCustomerActions =
+    customerActions.filter(
+      (action) =>
+        action.status === "Open",
+    );
+
   const nextAdditionalJob =
     additionalJobs.find(
       (job) =>
@@ -417,7 +490,8 @@ export function CustomerProfileClient({
     programmesReady &&
     seasonsReady &&
     treatmentsReady &&
-    settingsReady;
+    settingsReady &&
+    actionsReady;
 
   if (!ready) {
     return (
@@ -734,6 +808,46 @@ function cancelEditing() {
     });
   }
 
+  function openActionModal() {
+    setActionType("Call back");
+    setActionPriority("Normal");
+    setActionDueDate(
+      toDateValue(new Date()),
+    );
+    setActionNote("");
+    setAddingAction(true);
+  }
+
+  function saveCustomerAction() {
+    if (!actionNote.trim()) {
+      setSavedMessage(
+        "Enter what needs to be done before saving the action.",
+      );
+      return;
+    }
+
+    addAction({
+      customerNumber:
+        currentCustomer.customerNumber,
+      customerName:
+        currentCustomer.fullName,
+      type: actionType,
+      priority: actionPriority,
+      status: "Open",
+      dueDate: actionDueDate,
+      note: actionNote.trim(),
+    });
+
+    setAddingAction(false);
+    setSavedMessage(
+      "Customer action added.",
+    );
+
+    window.setTimeout(() => {
+      setSavedMessage("");
+    }, 3500);
+  }
+
   const aerationPrice =
     currentCustomer.treatmentPrice * 2;
 
@@ -844,6 +958,14 @@ function cancelEditing() {
 
             <button
               type="button"
+              onClick={openActionModal}
+              className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-semibold text-green-800 transition hover:bg-green-50"
+            >
+              + New action
+            </button>
+
+            <button
+              type="button"
               onClick={beginEditing}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
             >
@@ -941,6 +1063,25 @@ function cancelEditing() {
               }
               onDeleteJob={
                 deleteAdditionalJob
+              }
+            />
+          )}
+
+          {activeTab ===
+            "actions" && (
+            <CustomerActionsTab
+              actions={customerActions}
+              openCount={
+                openCustomerActions.length
+              }
+              onAddAction={
+                openActionModal
+              }
+              onComplete={
+                completeAction
+              }
+              onCancel={
+                cancelAction
               }
             />
           )}
@@ -1155,6 +1296,127 @@ function cancelEditing() {
                 className="rounded-xl bg-[#176b37] px-5 py-2.5 font-semibold text-white hover:bg-[#125b2f]"
               >
                 Add job
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addingAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-bold">
+                  New customer action
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {currentCustomer.fullName} · Customer {currentCustomer.customerNumber}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setAddingAction(false)
+                }
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Action type">
+                  <select
+                    value={actionType}
+                    onChange={(event) =>
+                      setActionType(
+                        event.target
+                          .value as ActionType,
+                      )
+                    }
+                    className={inputClass}
+                  >
+                    <option value="Call back">Call back</option>
+                    <option value="Quote follow-up">Quote follow-up</option>
+                    <option value="Payment">Payment</option>
+                    <option value="Access issue">Access issue</option>
+                    <option value="Programme change">Programme change</option>
+                    <option value="Customer request">Customer request</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </FormField>
+
+                <FormField label="Priority">
+                  <select
+                    value={actionPriority}
+                    onChange={(event) =>
+                      setActionPriority(
+                        event.target
+                          .value as ActionPriority,
+                      )
+                    }
+                    className={inputClass}
+                  >
+                    <option value="Normal">Normal</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </FormField>
+              </div>
+
+              <FormField label="Due date">
+                <input
+                  type="date"
+                  value={actionDueDate}
+                  onChange={(event) =>
+                    setActionDueDate(
+                      event.target.value,
+                    )
+                  }
+                  className={inputClass}
+                />
+              </FormField>
+
+              <FormField label="Action / note">
+                <textarea
+                  rows={5}
+                  value={actionNote}
+                  onChange={(event) =>
+                    setActionNote(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="What needs to be followed up?"
+                  className={inputClass}
+                />
+              </FormField>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() =>
+                  setAddingAction(false)
+                }
+                className="rounded-xl border border-slate-300 px-5 py-2.5 font-semibold hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  saveCustomerAction
+                }
+                disabled={
+                  !actionNote.trim()
+                }
+                className="rounded-xl bg-[#176b37] px-5 py-2.5 font-semibold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                Save action
               </button>
             </div>
           </div>
@@ -1577,6 +1839,162 @@ function cancelEditing() {
         </div>
       )}
     </>
+  );
+}
+
+function CustomerActionsTab({
+  actions,
+  openCount,
+  onAddAction,
+  onComplete,
+  onCancel,
+}: {
+  actions: ReturnType<
+    typeof useActionStore
+  >["actions"];
+  openCount: number;
+  onAddAction: () => void;
+  onComplete: (id: string) => void;
+  onCancel: (id: string) => void;
+}) {
+  const today = toDateValue(new Date());
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold">
+            Customer Actions
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+            Follow-ups and office actions for this customer. {openCount} currently open.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/actions"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+          >
+            Open Action Centre
+          </Link>
+
+          <button
+            type="button"
+            onClick={onAddAction}
+            className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+          >
+            + New action
+          </button>
+        </div>
+      </div>
+
+      {actions.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+          <div className="font-bold text-slate-800">
+            No customer actions
+          </div>
+          <p className="mt-2 text-sm text-slate-500">
+            Add a call back, payment chase, access issue or any other follow-up that needs attention.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 space-y-3">
+          {actions.map((action) => {
+            const overdue =
+              action.status === "Open" &&
+              Boolean(action.dueDate) &&
+              action.dueDate < today;
+
+            return (
+              <article
+                key={action.id}
+                className={`rounded-2xl border bg-white p-5 shadow-sm ${
+                  overdue
+                    ? "border-red-300"
+                    : action.priority ===
+                        "Urgent"
+                      ? "border-amber-300"
+                      : "border-slate-200"
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                        action.status === "Completed"
+                          ? "bg-green-100 text-green-800"
+                          : action.status === "Cancelled"
+                            ? "bg-slate-100 text-slate-600"
+                            : "bg-blue-100 text-blue-800"
+                      }`}>
+                        {action.status}
+                      </span>
+
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                        action.priority === "Urgent"
+                          ? "bg-red-100 text-red-700"
+                          : action.priority === "High"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-slate-100 text-slate-600"
+                      }`}>
+                        {action.priority}
+                      </span>
+
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {action.type}
+                      </span>
+
+                      {overdue && (
+                        <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
+                          Overdue
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                      {action.note}
+                    </p>
+
+                    <div className="mt-3 text-xs font-semibold text-slate-500">
+                      Due:{" "}
+                      {action.dueDate
+                        ? formatDate(
+                            action.dueDate,
+                          )
+                        : "No date"}
+                    </div>
+                  </div>
+
+                  {action.status === "Open" && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onComplete(action.id)
+                        }
+                        className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f]"
+                      >
+                        Complete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onCancel(action.id)
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

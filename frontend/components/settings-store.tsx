@@ -91,6 +91,10 @@ export type TreatmentWordingSettings = {
   nextVisitPreparation: string;
 };
 
+export type CommunicationSettings = {
+  visitReminderTemplate: string;
+};
+
 export type BrandingSettings = {
   primaryColour: string;
   secondaryColour: string;
@@ -104,6 +108,7 @@ export type GreenFlowSettings = {
   invoices: InvoiceSettings;
   treatmentWording: TreatmentWordingSettings;
   treatmentLibrary: TreatmentLibraryItem[];
+  communications: CommunicationSettings;
   advisories: AdvisorySetting[];
   branding: BrandingSettings;
 };
@@ -122,6 +127,10 @@ type SettingsStoreValue = {
 
   updateTreatmentWording: (
     updates: Partial<TreatmentWordingSettings>,
+  ) => void;
+
+  updateCommunicationSettings: (
+    updates: Partial<CommunicationSettings>,
   ) => void;
 
   addTreatmentLibraryItem: () => string;
@@ -265,6 +274,11 @@ export const defaultSettings: GreenFlowSettings = {
 
     nextVisitPreparation:
       "Please keep the lawn accessible for the next scheduled visit. If you have a locked gate, leave it unlocked after receiving your reminder. Where possible, avoid mowing immediately before the visit and remove toys, furniture or other items from the lawn.",
+  },
+
+  communications: {
+    visitReminderTemplate:
+      "Hi {firstName}, just a reminder that Sharpes Lawn Care is due to visit on {date} for {treatment}. Please make sure we can access the lawn. Many thanks, Rob - Sharpes Lawn Care",
   },
 
   treatmentLibrary: [
@@ -578,6 +592,18 @@ export function SettingsStoreProvider({
 
       treatmentWording: {
         ...current.treatmentWording,
+        ...updates,
+      },
+    }));
+  }
+
+  function updateCommunicationSettings(
+    updates: Partial<CommunicationSettings>,
+  ) {
+    setSettings((current) => ({
+      ...current,
+      communications: {
+        ...current.communications,
         ...updates,
       },
     }));
@@ -980,6 +1006,7 @@ export function SettingsStoreProvider({
         updateBusinessSettings,
         updateInvoiceSettings,
         updateTreatmentWording,
+        updateCommunicationSettings,
         addTreatmentLibraryItem,
         updateTreatmentLibraryItem,
         deleteTreatmentLibraryItem,
@@ -1120,6 +1147,14 @@ function mergeSettingsWithDefaults(
     treatmentWording: {
       ...defaultSettings.treatmentWording,
       ...savedSettings.treatmentWording,
+    },
+
+    communications: {
+      ...defaultSettings.communications,
+      ...(savedSettings.communications &&
+      typeof savedSettings.communications === "object"
+        ? savedSettings.communications
+        : {}),
     },
 
     treatmentLibrary:
