@@ -1295,7 +1295,7 @@ export default function RoutesPage() {
                 number="4"
                 title="Close Day"
                 detail="Return to Dashboard for the end-of-day check."
-                href="/"
+                href={`/?date=${selectedDate}`}
                 state="later"
               />
             </div>

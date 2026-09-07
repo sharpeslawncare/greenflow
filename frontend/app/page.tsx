@@ -103,6 +103,17 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
+    const requestedDate =
+      new URLSearchParams(
+        window.location.search,
+      ).get("date") ?? "";
+
+    if (isDateValue(requestedDate)) {
+      setSelectedDate(requestedDate);
+    }
+  }, []);
+
+  useEffect(() => {
     loadLocalModules();
 
     function refreshLocalModules() {
@@ -1507,6 +1518,63 @@ export default function DashboardPage() {
               <CloseDayStatusBadge status={closeDayStatus} />
             </div>
 
+            <div className="mt-4 rounded-xl border border-indigo-200 bg-white/80 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-700">
+                    Working day workflow
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-slate-700">
+                    Stage 4 of 4 · {formatDateWithDay(selectedDate)}
+                  </div>
+                </div>
+
+                <div className="text-xs font-semibold text-slate-500">
+                  Review the day before moving on
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <WorkingDayStage
+                  number="1"
+                  title="Review Jobs"
+                  detail="Review the selected date workload."
+                  href={`/jobs?date=${selectedDate}`}
+                  state="complete"
+                />
+
+                <WorkingDayStage
+                  number="2"
+                  title="Groups & Routes"
+                  detail="Review the saved route and working order."
+                  href={`/routes?date=${selectedDate}`}
+                  state="complete"
+                />
+
+                <WorkingDayStage
+                  number="3"
+                  title="Visit Centre"
+                  detail="Record visit outcomes and completed work."
+                  href={`/visit-centre?date=${selectedDate}`}
+                  state="complete"
+                />
+
+                <WorkingDayStage
+                  number="4"
+                  title="Close Day"
+                  detail={
+                    closeDayOutstandingCount === 0
+                      ? "End-of-day check is clear."
+                      : `${closeDayOutstandingCount} item${
+                          closeDayOutstandingCount === 1 ? "" : "s"
+                        } still need attention.`
+                  }
+                  href={`/?date=${selectedDate}`}
+                  state="current"
+                />
+              </div>
+            </div>
+
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <CloseDayMetric
                 label="Planned"
@@ -1578,7 +1646,7 @@ export default function DashboardPage() {
               />
               {selectedDateReschedulingCount > 0 && (
                 <WorkflowLink
-                  href="/jobs?view=reschedule"
+                  href={`/jobs?date=${selectedDate}&view=reschedule`}
                   label="Reschedule visits"
                 />
               )}
@@ -1977,6 +2045,64 @@ export default function DashboardPage() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+function WorkingDayStage({
+  number,
+  title,
+  detail,
+  href,
+  state,
+}: {
+  number: string;
+  title: string;
+  detail: string;
+  href: string;
+  state: "complete" | "current";
+}) {
+  const styles =
+    state === "current"
+      ? "border-indigo-300 bg-indigo-50"
+      : "border-slate-200 bg-white";
+
+  const badgeStyles =
+    state === "current"
+      ? "bg-indigo-700 text-white"
+      : "bg-green-100 text-green-800";
+
+  return (
+    <Link
+      href={href}
+      className={`group rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${styles}`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${badgeStyles}`}
+        >
+          {state === "complete" ? "✓" : number}
+        </span>
+
+        <div className="min-w-0">
+          <div className="font-bold text-slate-950">
+            {title}
+          </div>
+
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {detail}
+          </p>
+
+          <div className="mt-3 text-xs font-black text-slate-700">
+            {state === "current" ? "Current stage" : "Open stage"}
+            {state !== "current" && (
+              <span className="ml-1 inline-block transition group-hover:translate-x-0.5">
+                →
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </Link>
   );
 }
 
@@ -2814,4 +2940,7 @@ function PipelineCard({
       </div>
     </div>
   );
+}
+function isDateValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }

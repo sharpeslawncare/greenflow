@@ -2176,7 +2176,7 @@ function VisitCentrePageContent() {
                     ? "All visible visits are resolved. Review the end-of-day check."
                     : `${jobs.length} visit${jobs.length === 1 ? "" : "s"} still visible before close.`
                 }
-                href="/"
+                href={`/?date=${selectedDate}`}
                 state={jobs.length === 0 ? "next" : "later"}
               />
             </div>
