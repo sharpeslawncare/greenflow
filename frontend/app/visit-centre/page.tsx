@@ -631,6 +631,29 @@ function VisitCentrePageContent() {
     selectedJobIds.includes(job.id),
   );
 
+  const selectedTreatmentKeys = Array.from(
+    new Set(
+      selectedJobs.map((job) =>
+        normaliseTreatmentName(
+          job.visit.treatmentName,
+        ),
+      ),
+    ),
+  );
+
+  const mixedTreatmentSelection =
+    selectedTreatmentKeys.length > 1;
+
+  const routeStopCustomerNumbers =
+    Array.from(
+      new Set(
+        jobs.map(
+          (job) =>
+            job.customer.customerNumber,
+        ),
+      ),
+    );
+
   const spotSprayAvailable =
     selectedJobs.length > 0 &&
     selectedJobs.every((job) =>
@@ -1034,6 +1057,20 @@ function VisitCentrePageContent() {
     if (selectedJobs.length === 0) {
       const error =
         "Select at least one scheduled customer.";
+      setReviewError(error);
+      showMessage(
+        error,
+        "error",
+      );
+      return;
+    }
+
+    if (
+      outcome === "Completed" &&
+      mixedTreatmentSelection
+    ) {
+      const error =
+        "Complete one treatment type at a time. The selected jobs contain different treatments, so GreenFlow will not apply one shared product mix to all of them.";
       setReviewError(error);
       showMessage(
         error,
@@ -2295,8 +2332,32 @@ function VisitCentrePageContent() {
                       No visits remain on this date.
                     </div>
                   ) : (
-                    jobs.map((job, index) => {
-                      const selected = selectedJobIds.includes(job.id);
+                    jobs.map((job) => {
+                      const selected =
+                        selectedJobIds.includes(
+                          job.id,
+                        );
+
+                      const stopNumber =
+                        routeStopCustomerNumbers.indexOf(
+                          job.customer
+                            .customerNumber,
+                        ) + 1;
+
+                      const customerJobs =
+                        jobs.filter(
+                          (item) =>
+                            item.customer
+                              .customerNumber ===
+                            job.customer
+                              .customerNumber,
+                        );
+
+                      const visitNumber =
+                        customerJobs.findIndex(
+                          (item) =>
+                            item.id === job.id,
+                        ) + 1;
 
                       return (
                         <label
@@ -2320,11 +2381,19 @@ function VisitCentrePageContent() {
                                 <div className="min-w-0">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-slate-900 px-2 text-xs font-bold text-white">
-                                      {index + 1}
+                                      {stopNumber}
                                     </span>
 
-                                    <div className="truncate font-bold">
-                                      {job.customer.fullName}
+                                    <div className="min-w-0">
+                                      <div className="truncate font-bold">
+                                        {job.customer.fullName}
+                                      </div>
+
+                                      {customerJobs.length > 1 && (
+                                        <div className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-blue-700">
+                                          Stop {stopNumber} · Visit {visitNumber} of {customerJobs.length}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
 
@@ -2407,7 +2476,7 @@ function VisitCentrePageContent() {
                       <h2 className="text-2xl font-bold">
                         {selectedJobs.length === 1
                           ? selectedJobs[0].customer.fullName
-                          : `${selectedJobs.length} selected customers`}
+                          : `${selectedJobs.length} selected visits`}
                       </h2>
 
                       <p className="mt-2 text-sm text-slate-500">
@@ -2652,6 +2721,38 @@ function VisitCentrePageContent() {
 
                 {outcome === "Completed" && (
                   <Panel title="Visit Products">
+                    {mixedTreatmentSelection ? (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                        <div className="font-bold">
+                          Different treatments selected
+                        </div>
+
+                        <p className="mt-2 text-sm leading-6">
+                          GreenFlow will not apply one shared product mix across different treatment types. Complete one treatment type at a time, or select several customers receiving the same treatment for efficient bulk completion.
+                        </p>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {Array.from(
+                            new Set(
+                              selectedJobs.map(
+                                (job) =>
+                                  job.visit.treatmentName,
+                              ),
+                            ),
+                          ).map(
+                            (treatmentName) => (
+                              <span
+                                key={treatmentName}
+                                className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-900"
+                              >
+                                {treatmentName}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <ProductModeOption
                         label="Use Today’s Mix"
@@ -2857,7 +2958,7 @@ function VisitCentrePageContent() {
                     {combinedPreview.length > 0 && (
                       <div className="mt-5">
                         <h3 className="font-bold">
-                          Requirement for selected customers
+                          Requirement for selected visits
                         </h3>
 
                         <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -2919,6 +3020,8 @@ function VisitCentrePageContent() {
                         </div>
                       </div>
                     )}
+                      </>
+                    )}
                   </Panel>
                 )}
 
@@ -2926,12 +3029,15 @@ function VisitCentrePageContent() {
                   <div className="text-sm text-slate-500">
                     {selectedJobs.length === 0
                       ? "Select customers from the route list."
-                      : outcome === "Completed"
-                        ? `${selectedJobs.length} individual treatment record${
-                            selectedJobs.length === 1 ? "" : "s"
-                          } and invoice${
-                            selectedJobs.length === 1 ? "" : "s"
-                          } will be created.`
+                      : outcome === "Completed" &&
+                          mixedTreatmentSelection
+                        ? "Different treatment types are selected. Complete one treatment type at a time so products are recorded correctly."
+                        : outcome === "Completed"
+                          ? `${selectedJobs.length} individual treatment record${
+                              selectedJobs.length === 1 ? "" : "s"
+                            } and invoice${
+                              selectedJobs.length === 1 ? "" : "s"
+                            } will be created.`
                         : "This outcome will be recorded for the selected customer."}
                   </div>
 
@@ -2943,14 +3049,19 @@ function VisitCentrePageContent() {
                     }}
                     disabled={
                       selectedJobs.length === 0 ||
-                      (outcome !== "Completed" && selectedJobs.length > 1)
+                      (outcome === "Completed" &&
+                        mixedTreatmentSelection) ||
+                      (outcome !== "Completed" &&
+                        selectedJobs.length > 1)
                     }
                     className="rounded-xl bg-[#176b37] px-8 py-3 text-base font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {outcome === "Completed"
-                      ? `Review ${selectedJobs.length || ""} visit${
-                          selectedJobs.length === 1 ? "" : "s"
-                        }`
+                      ? mixedTreatmentSelection
+                        ? "Select one treatment type"
+                        : `Review ${selectedJobs.length || ""} visit${
+                            selectedJobs.length === 1 ? "" : "s"
+                          }`
                       : outcome === "Cancelled"
                         ? "Review cancellation"
                         : "Review reschedule"}
@@ -2988,7 +3099,7 @@ function VisitCentrePageContent() {
                   <div className="space-y-5 p-5">
                     <div className="grid gap-3 sm:grid-cols-4">
                       <ReviewStat label="Working date" value={formatDateWithDay(selectedDate)} />
-                      <ReviewStat label="Customers" value={String(selectedJobs.length)} />
+                      <ReviewStat label="Visits" value={String(selectedJobs.length)} />
                       <ReviewStat label="Combined area" value={`${totalSelectedArea.toLocaleString("en-GB")} m²`} />
                       <ReviewStat label="Outcome" value={outcome} />
                     </div>
@@ -3025,17 +3136,45 @@ function VisitCentrePageContent() {
 
                     <section className="rounded-xl border border-slate-200">
                       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-bold">
-                        Selected customers
+                        Selected visits
                       </div>
 
                       <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
-                        {selectedJobs.map((job) => (
+                        {selectedJobs.map((job) => {
+                          const customerJobs =
+                            jobs.filter(
+                              (item) =>
+                                item.customer
+                                  .customerNumber ===
+                                job.customer
+                                  .customerNumber,
+                            );
+
+                          const stopNumber =
+                            routeStopCustomerNumbers.indexOf(
+                              job.customer
+                                .customerNumber,
+                            ) + 1;
+
+                          const visitNumber =
+                            customerJobs.findIndex(
+                              (item) =>
+                                item.id === job.id,
+                            ) + 1;
+
+                          return (
                           <div
                             key={job.id}
                             className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_120px_120px]"
                           >
                             <div>
                               <div className="font-bold">{job.customer.fullName}</div>
+                              <div className="mt-1 text-xs font-semibold text-[#176b37]">
+                                {job.visit.treatmentName}
+                                {customerJobs.length > 1
+                                  ? ` · Stop ${stopNumber} · Visit ${visitNumber} of ${customerJobs.length}`
+                                  : ""}
+                              </div>
                               <div className="mt-1 text-xs text-slate-500">
                                 {job.customer.address}, {job.customer.postcode}
                               </div>
@@ -3051,7 +3190,8 @@ function VisitCentrePageContent() {
                               </div>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </section>
 
@@ -3176,6 +3316,15 @@ function VisitCentrePageContent() {
       </main>
     </AppShell>
   );
+}
+
+function normaliseTreatmentName(
+  value: string,
+) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 function ReviewStat({
