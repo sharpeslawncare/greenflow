@@ -804,7 +804,9 @@ export default function DashboardPage() {
       detail: "Follow-ups that have passed their due date.",
       count: overdueActions.length,
       href: "/actions",
+      actionLabel: "Deal with overdue actions",
       severity: "danger" as const,
+      priority: "now" as const,
     },
     {
       key: "actions-today",
@@ -812,7 +814,9 @@ export default function DashboardPage() {
       detail: "Open follow-ups that need dealing with today.",
       count: dueTodayActions.length,
       href: "/actions",
+      actionLabel: "Open today's actions",
       severity: "warning" as const,
+      priority: "now" as const,
     },
     {
       key: "rescheduling",
@@ -820,23 +824,9 @@ export default function DashboardPage() {
       detail: "Programme visits that need a replacement working date.",
       count: reschedulingRecords.length,
       href: "/jobs?view=reschedule",
+      actionLabel: "Reschedule visits",
       severity: "warning" as const,
-    },
-    {
-      key: "communications",
-      title: "Tomorrow's reminders not prepared",
-      detail: "Programme visits or Additional Jobs not yet queued or sent.",
-      count: tomorrowReminderSummary.needsAttention,
-      href: `/communications?date=${tomorrowDate}`,
-      severity: "warning" as const,
-    },
-    {
-      key: "additional-unscheduled",
-      title: "Unscheduled Additional Jobs",
-      detail: "Additional work waiting for a working date.",
-      count: unscheduledAdditionalJobs.length,
-      href: "/additional-jobs",
-      severity: "information" as const,
+      priority: "now" as const,
     },
     {
       key: "stock",
@@ -844,7 +834,29 @@ export default function DashboardPage() {
       detail: "Active products at or below their reorder level.",
       count: lowStockProducts.length,
       href: "/stock",
+      actionLabel: "Review stock",
       severity: "danger" as const,
+      priority: "now" as const,
+    },
+    {
+      key: "communications",
+      title: "Tomorrow's reminders not prepared",
+      detail: "Programme visits or Additional Jobs not yet queued or sent.",
+      count: tomorrowReminderSummary.needsAttention,
+      href: `/communications?date=${tomorrowDate}`,
+      actionLabel: "Prepare reminders",
+      severity: "warning" as const,
+      priority: "next" as const,
+    },
+    {
+      key: "additional-unscheduled",
+      title: "Unscheduled Additional Jobs",
+      detail: "Additional work waiting for a working date.",
+      count: unscheduledAdditionalJobs.length,
+      href: "/additional-jobs",
+      actionLabel: "Schedule jobs",
+      severity: "information" as const,
+      priority: "ahead" as const,
     },
     {
       key: "enquiries",
@@ -852,7 +864,9 @@ export default function DashboardPage() {
       detail: "New enquiries, outstanding quotes or accepted quotes to convert.",
       count: enquiryAttentionCount,
       href: "/enquiries",
+      actionLabel: "Progress enquiries",
       severity: "information" as const,
+      priority: "ahead" as const,
     },
     {
       key: "programmes",
@@ -860,9 +874,26 @@ export default function DashboardPage() {
       detail: "Active customers not linked to a programme for the current year.",
       count: customersWithoutProgramme.length,
       href: "/programmes",
+      actionLabel: "Review programmes",
       severity: "warning" as const,
+      priority: "ahead" as const,
     },
   ].filter((item) => item.count > 0);
+
+  const workflowDoNowItems =
+    workflowAttentionItems.filter(
+      (item) => item.priority === "now",
+    );
+
+  const workflowPrepareNextItems =
+    workflowAttentionItems.filter(
+      (item) => item.priority === "next",
+    );
+
+  const workflowPlanAheadItems =
+    workflowAttentionItems.filter(
+      (item) => item.priority === "ahead",
+    );
 
   const workflowAttentionCount =
     workflowAttentionItems.reduce(
@@ -1286,17 +1317,33 @@ export default function DashboardPage() {
             </div>
 
             {workflowAttentionItems.length > 0 ? (
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {workflowAttentionItems.map((item) => (
-                  <WorkflowAttentionCard
-                    key={item.key}
-                    title={item.title}
-                    detail={item.detail}
-                    count={item.count}
-                    href={item.href}
-                    severity={item.severity}
+              <div className="mt-4 space-y-4">
+                {workflowDoNowItems.length > 0 && (
+                  <WorkflowPriorityGroup
+                    label="Do now"
+                    detail="Items that are overdue, due today or need operational intervention."
+                    tone="danger"
+                    items={workflowDoNowItems}
                   />
-                ))}
+                )}
+
+                {workflowPrepareNextItems.length > 0 && (
+                  <WorkflowPriorityGroup
+                    label="Prepare next"
+                    detail="Preparation needed for the next working day."
+                    tone="warning"
+                    items={workflowPrepareNextItems}
+                  />
+                )}
+
+                {workflowPlanAheadItems.length > 0 && (
+                  <WorkflowPriorityGroup
+                    label="Plan ahead"
+                    detail="Important work to progress when today's operational priorities are under control."
+                    tone="information"
+                    items={workflowPlanAheadItems}
+                  />
+                )}
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
@@ -2434,17 +2481,85 @@ function WorkStatusMetric({
   );
 }
 
+function WorkflowPriorityGroup({
+  label,
+  detail,
+  tone,
+  items,
+}: {
+  label: string;
+  detail: string;
+  tone: "danger" | "warning" | "information";
+  items: Array<{
+    key: string;
+    title: string;
+    detail: string;
+    count: number;
+    href: string;
+    actionLabel: string;
+    severity: "danger" | "warning" | "information";
+    priority: "now" | "next" | "ahead";
+  }>;
+}) {
+  const headingStyles =
+    tone === "danger"
+      ? "border-red-200 bg-red-50 text-red-900"
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-blue-200 bg-blue-50 text-blue-900";
+
+  const count = items.reduce(
+    (total, item) => total + item.count,
+    0,
+  );
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
+      <div
+        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${headingStyles}`}
+      >
+        <div>
+          <div className="font-black">{label}</div>
+          <div className="mt-0.5 text-xs opacity-80">
+            {detail}
+          </div>
+        </div>
+
+        <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-black">
+          {count} {count === 1 ? "item" : "items"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => (
+          <WorkflowAttentionCard
+            key={item.key}
+            title={item.title}
+            detail={item.detail}
+            count={item.count}
+            href={item.href}
+            actionLabel={item.actionLabel}
+            severity={item.severity}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkflowAttentionCard({
   title,
   detail,
   count,
   href,
+  actionLabel,
   severity,
 }: {
   title: string;
   detail: string;
   count: number;
   href: string;
+  actionLabel: string;
   severity: "danger" | "warning" | "information";
 }) {
   const styles =
@@ -2454,13 +2569,26 @@ function WorkflowAttentionCard({
         ? "border-amber-200 bg-amber-50 text-amber-950"
         : "border-blue-200 bg-blue-50 text-blue-950";
 
+  const actionStyles =
+    severity === "danger"
+      ? "text-red-800"
+      : severity === "warning"
+        ? "text-amber-900"
+        : "text-blue-900";
+
   return (
     <Link
       href={href}
-      className={`rounded-xl border p-4 transition hover:brightness-[0.98] ${styles}`}
+      className={`group flex min-h-[150px] flex-col rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${styles}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="font-bold">{title}</div>
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.12em] opacity-60">
+            Next step
+          </div>
+          <div className="mt-1 font-bold">{title}</div>
+        </div>
+
         <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-1 text-sm font-black">
           {count}
         </span>
@@ -2470,8 +2598,13 @@ function WorkflowAttentionCard({
         {detail}
       </p>
 
-      <div className="mt-3 text-xs font-bold">
-        Open →
+      <div
+        className={`mt-auto pt-4 text-sm font-black ${actionStyles}`}
+      >
+        {actionLabel}
+        <span className="ml-1 inline-block transition group-hover:translate-x-0.5">
+          →
+        </span>
       </div>
     </Link>
   );
