@@ -790,6 +790,268 @@ export default function DashboardPage() {
     customersWithoutProgramme.length +
     enquiryAttentionCount;
 
+  const unscheduledAdditionalJobs =
+    activeCustomers.flatMap((customer) =>
+      (customer.additionalJobs ?? [])
+        .filter((job) => job.status === "Unscheduled")
+        .map((job) => ({ customer, job })),
+    );
+
+  const workflowAttentionItems = [
+    {
+      key: "actions-overdue",
+      title: "Overdue customer actions",
+      detail: "Follow-ups that have passed their due date.",
+      count: overdueActions.length,
+      href: "/actions",
+      severity: "danger" as const,
+    },
+    {
+      key: "actions-today",
+      title: "Customer actions due today",
+      detail: "Open follow-ups that need dealing with today.",
+      count: dueTodayActions.length,
+      href: "/actions",
+      severity: "warning" as const,
+    },
+    {
+      key: "rescheduling",
+      title: "Visits needing rescheduling",
+      detail: "Programme visits that need a replacement working date.",
+      count: reschedulingRecords.length,
+      href: "/jobs?view=reschedule",
+      severity: "warning" as const,
+    },
+    {
+      key: "communications",
+      title: "Tomorrow's reminders not prepared",
+      detail: "Programme visits or Additional Jobs not yet queued or sent.",
+      count: tomorrowReminderSummary.needsAttention,
+      href: `/communications?date=${tomorrowDate}`,
+      severity: "warning" as const,
+    },
+    {
+      key: "additional-unscheduled",
+      title: "Unscheduled Additional Jobs",
+      detail: "Additional work waiting for a working date.",
+      count: unscheduledAdditionalJobs.length,
+      href: "/additional-jobs",
+      severity: "information" as const,
+    },
+    {
+      key: "stock",
+      title: "Products at reorder level",
+      detail: "Active products at or below their reorder level.",
+      count: lowStockProducts.length,
+      href: "/stock",
+      severity: "danger" as const,
+    },
+    {
+      key: "enquiries",
+      title: "Enquiries needing progress",
+      detail: "New enquiries, outstanding quotes or accepted quotes to convert.",
+      count: enquiryAttentionCount,
+      href: "/enquiries",
+      severity: "information" as const,
+    },
+    {
+      key: "programmes",
+      title: "Active customers without programme",
+      detail: "Active customers not linked to a programme for the current year.",
+      count: customersWithoutProgramme.length,
+      href: "/programmes",
+      severity: "warning" as const,
+    },
+  ].filter((item) => item.count > 0);
+
+  const workflowAttentionCount =
+    workflowAttentionItems.reduce(
+      (total, item) => total + item.count,
+      0,
+    );
+
+  const selectedDateProgrammeCount =
+    scheduledWork.filter(
+      (item) => item.source === "programme",
+    ).length;
+
+  const selectedDateAdditionalCount =
+    scheduledWork.filter(
+      (item) => item.source === "additional",
+    ).length;
+
+  const remainingWorkCount =
+    scheduledWork.length;
+
+  const selectedDateTotalWorkCount =
+    remainingWorkCount +
+    completedOnSelectedDate;
+
+  const selectedDateWorkloadUnits =
+    scheduledWork.reduce(
+      (total, item) =>
+        total +
+        getDashboardWorkloadUnits(
+          item.source,
+          item.treatmentName,
+        ),
+      0,
+    );
+
+  const selectedDateVanCount =
+    new Set(
+      scheduledWork
+        .map((item) => item.customer?.vanNumber)
+        .filter(
+          (value) =>
+            value !== undefined &&
+            value !== null,
+        ),
+    ).size;
+
+  const comingNextDays =
+    useMemo(() => {
+      const programmeByDate = programmes.flatMap(
+        (programme) => {
+          const customer = customers.find(
+            (record) =>
+              record.customerNumber ===
+              programme.customerNumber,
+          );
+
+          if (
+            !customer ||
+            customer.status !== "Active"
+          ) {
+            return [];
+          }
+
+          return programme.visits
+            .filter(
+              (visit) =>
+                visit.scheduledDate > selectedDate &&
+                (visit.status === "Scheduled" ||
+                  visit.status === "Planned"),
+            )
+            .filter(
+              (visit) =>
+                !hasFinalRecordedOutcome(
+                  treatments,
+                  programme,
+                  visit,
+                  customer.customerNumber,
+                ),
+            )
+            .map((visit) => ({
+              date: visit.scheduledDate,
+              source: "programme" as const,
+              treatmentName: visit.treatmentName,
+              customer,
+              price: customer.treatmentPrice ?? 0,
+            }));
+        },
+      );
+
+      const additionalByDate =
+        activeCustomers.flatMap((customer) =>
+          (customer.additionalJobs ?? [])
+            .filter(
+              (job) =>
+                job.status === "Scheduled" &&
+                Boolean(job.scheduledDate) &&
+                job.scheduledDate! > selectedDate,
+            )
+            .map((job) => ({
+              date: job.scheduledDate!,
+              source: "additional" as const,
+              treatmentName: job.treatmentName,
+              customer,
+              price: job.price ?? 0,
+            })),
+        );
+
+      const rows = [
+        ...programmeByDate,
+        ...additionalByDate,
+      ];
+
+      const dates = Array.from(
+        new Set(rows.map((row) => row.date)),
+      )
+        .sort((first, second) =>
+          first.localeCompare(second),
+        )
+        .slice(0, 5);
+
+      return dates.map((date) => {
+        const dayRows = rows.filter(
+          (row) => row.date === date,
+        );
+
+        const programmeCount =
+          dayRows.filter(
+            (row) => row.source === "programme",
+          ).length;
+
+        const additionalCount =
+          dayRows.filter(
+            (row) => row.source === "additional",
+          ).length;
+
+        const workloadUnits =
+          dayRows.reduce(
+            (total, row) =>
+              total +
+              getDashboardWorkloadUnits(
+                row.source,
+                row.treatmentName,
+              ),
+            0,
+          );
+
+        const area =
+          dayRows.reduce(
+            (total, row) =>
+              total + (row.customer.lawnSize ?? 0),
+            0,
+          );
+
+        const revenue =
+          dayRows.reduce(
+            (total, row) =>
+              total + row.price,
+            0,
+          );
+
+        const lockedGates =
+          dayRows.filter(
+            (row) => row.customer.lockedGate,
+          ).length;
+
+        return {
+          date,
+          programmeCount,
+          additionalCount,
+          totalJobs: dayRows.length,
+          workloadUnits,
+          area,
+          revenue,
+          lockedGates,
+          capacity:
+            getDashboardCapacityRating(
+              workloadUnits,
+              area,
+            ),
+        };
+      });
+    }, [
+      activeCustomers,
+      customers,
+      programmes,
+      selectedDate,
+      treatments,
+    ]);
+
   const ready =
     customersReady &&
     enquiriesReady &&
@@ -952,6 +1214,303 @@ export default function DashboardPage() {
               )}`}
               detail="Programme + additional prices"
             />
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                  Daily workflow
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  Needs attention
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                  One operational list for the things GreenFlow has identified
+                  that need action now or preparation for the next working day.
+                </p>
+              </div>
+
+              <div
+                className={`rounded-full px-4 py-2 text-sm font-black ${
+                  workflowAttentionCount > 0
+                    ? "bg-red-100 text-red-700"
+                    : "bg-green-100 text-green-800"
+                }`}
+              >
+                {workflowAttentionCount > 0
+                  ? `${workflowAttentionCount} to deal with`
+                  : "All clear"}
+              </div>
+            </div>
+
+            {workflowAttentionItems.length > 0 ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {workflowAttentionItems.map((item) => (
+                  <WorkflowAttentionCard
+                    key={item.key}
+                    title={item.title}
+                    detail={item.detail}
+                    count={item.count}
+                    href={item.href}
+                    severity={item.severity}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
+                Nothing currently needs operational attention.
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+              <WorkflowLink
+                href={`/jobs?date=${selectedDate}`}
+                label="Today's Jobs"
+              />
+              <WorkflowLink
+                href={`/routes?date=${selectedDate}`}
+                label="Groups & Routes"
+              />
+              <WorkflowLink
+                href={`/visit-centre?date=${selectedDate}`}
+                label="Visit Centre"
+              />
+              <WorkflowLink
+                href="/actions"
+                label="Action Centre"
+              />
+              <WorkflowLink
+                href="/additional-jobs"
+                label="Additional Jobs"
+              />
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-green-200 bg-green-50/60 p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                  Today&apos;s work status
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  {formatDateWithDay(selectedDate)}
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                  Live operational position for the selected working date,
+                  combining programme work and scheduled Additional Jobs.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <WorkflowLink
+                  href={`/jobs?date=${selectedDate}`}
+                  label="Open Jobs"
+                />
+                <WorkflowLink
+                  href={`/routes?date=${selectedDate}`}
+                  label="Groups & Routes"
+                />
+                <WorkflowLink
+                  href={`/visit-centre?date=${selectedDate}`}
+                  label="Visit Centre"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+              <WorkStatusMetric
+                label="Programme"
+                value={String(selectedDateProgrammeCount)}
+                detail="Remaining visits"
+              />
+
+              <WorkStatusMetric
+                label="Additional"
+                value={String(selectedDateAdditionalCount)}
+                detail="Remaining jobs"
+              />
+
+              <WorkStatusMetric
+                label="Completed"
+                value={String(completedOnSelectedDate)}
+                detail={`Of ${selectedDateTotalWorkCount} recorded / remaining`}
+                positive={completedOnSelectedDate > 0}
+              />
+
+              <WorkStatusMetric
+                label="Remaining"
+                value={String(remainingWorkCount)}
+                detail="Still to complete"
+                warning={remainingWorkCount > 0}
+              />
+
+              <WorkStatusMetric
+                label="Workload"
+                value={`${selectedDateWorkloadUnits} units`}
+                detail="Programme 1 · additional weighted"
+              />
+
+              <WorkStatusMetric
+                label="Area"
+                value={`${totalScheduledArea.toLocaleString("en-GB")} m²`}
+                detail="Remaining scheduled lawns"
+              />
+
+              <WorkStatusMetric
+                label="Revenue"
+                value={`£${expectedIncome.toFixed(2)}`}
+                detail="Remaining scheduled value"
+              />
+
+              <WorkStatusMetric
+                label="Access"
+                value={String(lockedGateCount)}
+                detail={
+                  lockedGateCount === 1
+                    ? "Locked gate warning"
+                    : "Locked gate warnings"
+                }
+                danger={lockedGateCount > 0}
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-green-200 pt-4 text-xs text-slate-600">
+              <span>
+                <strong className="text-slate-900">
+                  {selectedDateVanCount}
+                </strong>{" "}
+                {selectedDateVanCount === 1 ? "van" : "vans"} represented
+              </span>
+
+              <span>
+                <strong className="text-slate-900">
+                  {scheduledWork.length}
+                </strong>{" "}
+                jobs currently remaining
+              </span>
+
+              <span>
+                Aeration = 2 units · Scarification = 3 · Overseeding = 2
+              </span>
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Coming next
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  Upcoming working days
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                  The next scheduled working days after the selected date,
+                  with workload, area, revenue and capacity warnings visible
+                  before the diary becomes overloaded.
+                </p>
+              </div>
+
+              <Link
+                href="/capacity"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-700 transition hover:border-[#338b45] hover:bg-green-50 hover:text-[#176b37]"
+              >
+                Open Working Day Capacity
+              </Link>
+            </div>
+
+            {comingNextDays.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
+                No later scheduled working days are currently recorded.
+              </div>
+            ) : (
+              <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+                <div className="hidden grid-cols-[1.35fr_0.8fr_0.8fr_0.9fr_1fr_1fr_1fr_0.85fr_110px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+                  <span>Date</span>
+                  <span>Programme</span>
+                  <span>Additional</span>
+                  <span>Jobs</span>
+                  <span>Workload</span>
+                  <span>Area</span>
+                  <span>Revenue</span>
+                  <span>Capacity</span>
+                  <span />
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {comingNextDays.map((day) => (
+                    <div
+                      key={day.date}
+                      className="grid gap-3 px-4 py-4 xl:grid-cols-[1.35fr_0.8fr_0.8fr_0.9fr_1fr_1fr_1fr_0.85fr_110px] xl:items-center"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-950">
+                          {formatDateWithDay(day.date)}
+                        </div>
+
+                        {day.lockedGates > 0 && (
+                          <div className="mt-1 text-xs font-bold text-red-700">
+                            {day.lockedGates} locked gate
+                            {day.lockedGates === 1 ? "" : "s"}
+                          </div>
+                        )}
+                      </div>
+
+                      <ComingNextValue
+                        label="Programme"
+                        value={String(day.programmeCount)}
+                      />
+
+                      <ComingNextValue
+                        label="Additional"
+                        value={String(day.additionalCount)}
+                      />
+
+                      <ComingNextValue
+                        label="Jobs"
+                        value={String(day.totalJobs)}
+                      />
+
+                      <ComingNextValue
+                        label="Workload"
+                        value={`${day.workloadUnits} units`}
+                      />
+
+                      <ComingNextValue
+                        label="Area"
+                        value={`${day.area.toLocaleString("en-GB")} m²`}
+                      />
+
+                      <ComingNextValue
+                        label="Revenue"
+                        value={`£${day.revenue.toFixed(2)}`}
+                      />
+
+                      <div>
+                        <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400 xl:hidden">
+                          Capacity
+                        </div>
+                        <CapacityBadge rating={day.capacity} />
+                      </div>
+
+                      <Link
+                        href={`/jobs?date=${day.date}`}
+                        className="inline-flex justify-center rounded-xl border border-[#338b45] bg-white px-3 py-2 text-sm font-bold text-[#176b37] transition hover:bg-green-50"
+                      >
+                        Open day
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
@@ -1793,6 +2352,60 @@ export default function DashboardPage() {
   );
 }
 
+function getDashboardCapacityRating(
+  workloadUnits: number,
+  area: number,
+):
+  | "Normal"
+  | "Busy"
+  | "Big day"
+  | "Very busy" {
+  if (
+    workloadUnits >= 50 ||
+    area >= 5500
+  ) {
+    return "Very busy";
+  }
+
+  if (area >= 4750) {
+    return "Big day";
+  }
+
+  if (
+    workloadUnits >= 40 ||
+    area >= 4000
+  ) {
+    return "Busy";
+  }
+
+  return "Normal";
+}
+
+function getDashboardWorkloadUnits(
+  source: "programme" | "additional",
+  treatmentName: string,
+) {
+  if (source === "programme") {
+    return 1;
+  }
+
+  const normalisedName =
+    treatmentName.trim().toLowerCase();
+
+  if (normalisedName.includes("scarif")) {
+    return 3;
+  }
+
+  if (
+    normalisedName.includes("aerat") ||
+    normalisedName.includes("overseed")
+  ) {
+    return 2;
+  }
+
+  return 1;
+}
+
 function hasFinalRecordedOutcome(
   treatments: TreatmentRecord[],
   programme: CustomerProgramme,
@@ -2066,6 +2679,159 @@ function SummaryPill({
     >
       {label}: {value}
     </span>
+  );
+}
+
+function ComingNextValue({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400 xl:hidden">
+        {label}
+      </div>
+
+      <div className="font-semibold text-slate-800">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function CapacityBadge({
+  rating,
+}: {
+  rating:
+    | "Normal"
+    | "Busy"
+    | "Big day"
+    | "Very busy";
+}) {
+  const styles =
+    rating === "Very busy"
+      ? "bg-red-100 text-red-700"
+      : rating === "Big day"
+        ? "bg-orange-100 text-orange-800"
+        : rating === "Busy"
+          ? "bg-amber-100 text-amber-800"
+          : "bg-green-100 text-green-800";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black ${styles}`}
+    >
+      {rating}
+    </span>
+  );
+}
+
+function WorkStatusMetric({
+  label,
+  value,
+  detail,
+  warning = false,
+  danger = false,
+  positive = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+  danger?: boolean;
+  positive?: boolean;
+}) {
+  const styles = danger
+    ? "border-red-200 bg-red-50"
+    : warning
+      ? "border-amber-200 bg-amber-50"
+      : positive
+        ? "border-green-300 bg-green-100"
+        : "border-green-200 bg-white";
+
+  const valueStyle = danger
+    ? "text-red-800"
+    : warning
+      ? "text-amber-900"
+      : "text-slate-950";
+
+  return (
+    <div className={`rounded-xl border p-4 ${styles}`}>
+      <div className="text-xs font-bold uppercase tracking-wide text-[#176b37]">
+        {label}
+      </div>
+
+      <div className={`mt-1 text-xl font-black ${valueStyle}`}>
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs leading-5 text-slate-600">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowAttentionCard({
+  title,
+  detail,
+  count,
+  href,
+  severity,
+}: {
+  title: string;
+  detail: string;
+  count: number;
+  href: string;
+  severity: "danger" | "warning" | "information";
+}) {
+  const styles =
+    severity === "danger"
+      ? "border-red-200 bg-red-50 text-red-950"
+      : severity === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-950"
+        : "border-blue-200 bg-blue-50 text-blue-950";
+
+  return (
+    <Link
+      href={href}
+      className={`rounded-xl border p-4 transition hover:brightness-[0.98] ${styles}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="font-bold">{title}</div>
+        <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-1 text-sm font-black">
+          {count}
+        </span>
+      </div>
+
+      <p className="mt-2 text-xs leading-5 opacity-80">
+        {detail}
+      </p>
+
+      <div className="mt-3 text-xs font-bold">
+        Open →
+      </div>
+    </Link>
+  );
+}
+
+function WorkflowLink({
+  href,
+  label,
+}: {
+  href: string;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#338b45] hover:bg-green-50 hover:text-[#176b37]"
+    >
+      {label}
+    </Link>
   );
 }
 
