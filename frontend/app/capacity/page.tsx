@@ -19,6 +19,7 @@ type DayCapacity = {
   additionalJobs: number;
   totalVisits: number;
   workloadUnits: number;
+  totalLawnArea: number;
   expectedValue: number;
   groups: number[];
   vans: number[];
@@ -73,6 +74,7 @@ export default function CapacityPage() {
           .map(() => ({
             value: customer.treatmentPrice ?? 0,
             workloadUnits: 1,
+            lawnArea: customer.lawnSize ?? 0,
             groupNumber: customer.groupNumber,
             vanNumber: customer.vanNumber,
           }));
@@ -94,6 +96,7 @@ export default function CapacityPage() {
             workloadUnits: getAdditionalJobWorkloadUnits(
               job.treatmentName,
             ),
+            lawnArea: customer.lawnSize ?? 0,
             groupNumber: customer.groupNumber,
             vanNumber: customer.vanNumber,
           }));
@@ -108,6 +111,10 @@ export default function CapacityPage() {
         totalVisits: allWork.length,
         workloadUnits: allWork.reduce(
           (total, job) => total + job.workloadUnits,
+          0,
+        ),
+        totalLawnArea: allWork.reduce(
+          (total, job) => total + job.lawnArea,
           0,
         ),
         expectedValue: allWork.reduce(
@@ -141,6 +148,8 @@ export default function CapacityPage() {
             summary.totalVisits + day.totalVisits,
           workloadUnits:
             summary.workloadUnits + day.workloadUnits,
+          totalLawnArea:
+            summary.totalLawnArea + day.totalLawnArea,
           expectedValue:
             summary.expectedValue + day.expectedValue,
         }),
@@ -149,6 +158,7 @@ export default function CapacityPage() {
           additionalJobs: 0,
           totalVisits: 0,
           workloadUnits: 0,
+          totalLawnArea: 0,
           expectedValue: 0,
         },
       ),
@@ -229,7 +239,7 @@ export default function CapacityPage() {
             </div>
           </header>
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <SummaryCard
               label="Total visits"
               value={String(totals.totalVisits)}
@@ -251,6 +261,11 @@ export default function CapacityPage() {
               detail="Weighted operational workload"
             />
             <SummaryCard
+              label="Lawn area"
+              value={`${totals.totalLawnArea.toLocaleString("en-GB")} m²`}
+              detail="Total treatment area in this window"
+            />
+            <SummaryCard
               label="Expected value"
               value={`£${totals.expectedValue.toFixed(2)}`}
               detail="Programme + additional work"
@@ -264,11 +279,12 @@ export default function CapacityPage() {
                   21-day planning window
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Capacity uses weighted workload rather than raw visit count:
-                  programme visits = 1 unit, Aeration = 2, Scarification = 3,
-                  Overseeding = 2, and other additional jobs = 1. A high
-                  number of normal treatment visits can therefore remain
-                  manageable.
+                  Capacity uses both weighted workload and total lawn area.
+                  Programme visits = 1 unit, Aeration = 2, Scarification = 3,
+                  Overseeding = 2, and other additional jobs = 1. Lawn area is
+                  assessed separately: 4,000 m² is Busy, 4,750 m² is a Big day,
+                  and 5,500 m² is Very busy. The day uses whichever measure gives
+                  the higher workload rating.
                 </p>
               </div>
 
@@ -281,13 +297,14 @@ export default function CapacityPage() {
             </div>
 
             <div className="mt-5 overflow-x-auto">
-              <div className="min-w-[980px] overflow-hidden rounded-xl border border-slate-200">
-                <div className="grid grid-cols-[1.4fr_95px_105px_80px_95px_125px_120px_1.5fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+              <div className="min-w-[1120px] overflow-hidden rounded-xl border border-slate-200">
+                <div className="grid grid-cols-[1.4fr_90px_100px_70px_80px_105px_115px_120px_1.5fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                   <span>Date</span>
                   <span>Programme</span>
                   <span>Additional</span>
                   <span>Total</span>
                   <span>Units</span>
+                  <span>Lawn area</span>
                   <span>Expected £</span>
                   <span>Capacity</span>
                   <span>Open</span>
@@ -296,7 +313,7 @@ export default function CapacityPage() {
                 {days.map((day) => (
                   <div
                     key={day.date}
-                    className={`grid grid-cols-[1.4fr_95px_105px_80px_95px_125px_120px_1.5fr] items-center gap-3 border-t border-slate-100 px-4 py-3 text-sm ${
+                    className={`grid grid-cols-[1.4fr_90px_100px_70px_80px_105px_115px_120px_1.5fr] items-center gap-3 border-t border-slate-100 px-4 py-3 text-sm ${
                       day.date === getTodayDateValue()
                         ? "bg-green-50/60"
                         : "bg-white"
@@ -334,10 +351,17 @@ export default function CapacityPage() {
                     </span>
 
                     <span className="font-bold">
+                      {day.totalLawnArea.toLocaleString("en-GB")} m²
+                    </span>
+
+                    <span className="font-bold">
                       £{day.expectedValue.toFixed(2)}
                     </span>
 
-                    <CapacityBadge workloadUnits={day.workloadUnits} />
+                    <CapacityBadge
+                      workloadUnits={day.workloadUnits}
+                      totalLawnArea={day.totalLawnArea}
+                    />
 
                     <div className="flex flex-wrap gap-2">
                       <Link
@@ -374,33 +398,50 @@ export default function CapacityPage() {
 
 function CapacityBadge({
   workloadUnits,
+  totalLawnArea,
 }: {
   workloadUnits: number;
+  totalLawnArea: number;
 }) {
+  const unitLevel =
+    workloadUnits >= 50 ? 4 : workloadUnits >= 40 ? 2 : workloadUnits === 0 ? 0 : 1;
+  const areaLevel =
+    totalLawnArea >= 5500 ? 4 : totalLawnArea >= 4750 ? 3 : totalLawnArea >= 4000 ? 2 : totalLawnArea === 0 ? 0 : 1;
+  const level = Math.max(unitLevel, areaLevel);
+
   const label =
-    workloadUnits >= 50
-      ? "Very busy"
-      : workloadUnits >= 40
-        ? "Busy"
-        : workloadUnits === 0
-          ? "Empty"
-          : "Available";
+    level === 4 ? "Very busy" :
+    level === 3 ? "Big day" :
+    level === 2 ? "Busy" :
+    level === 0 ? "Empty" : "Available";
 
   const styles =
-    workloadUnits >= 50
-      ? "border-red-200 bg-red-50 text-red-800"
-      : workloadUnits >= 40
-        ? "border-amber-200 bg-amber-50 text-amber-800"
-        : workloadUnits === 0
-          ? "border-slate-200 bg-slate-50 text-slate-500"
-          : "border-green-200 bg-green-50 text-green-800";
+    level === 4 ? "border-red-200 bg-red-50 text-red-800" :
+    level === 3 ? "border-orange-200 bg-orange-50 text-orange-800" :
+    level === 2 ? "border-amber-200 bg-amber-50 text-amber-800" :
+    level === 0 ? "border-slate-200 bg-slate-50 text-slate-500" :
+    "border-green-200 bg-green-50 text-green-800";
+
+  const reason =
+    areaLevel > unitLevel
+      ? `${totalLawnArea.toLocaleString("en-GB")} m² lawn area`
+      : unitLevel > areaLevel
+        ? `${workloadUnits} workload units`
+        : level > 1
+          ? `${workloadUnits} units · ${totalLawnArea.toLocaleString("en-GB")} m²`
+          : "";
 
   return (
-    <span
-      className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-bold ${styles}`}
-    >
-      {label}
-    </span>
+    <div>
+      <span className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-bold ${styles}`}>
+        {label}
+      </span>
+      {reason && (
+        <div className="mt-1 text-[11px] font-semibold text-slate-500">
+          {reason}
+        </div>
+      )}
+    </div>
   );
 }
 

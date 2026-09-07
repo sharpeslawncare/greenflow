@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Suspense,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -62,11 +63,14 @@ function JobsPageContent() {
   const {
     programmes,
     ready: programmesReady,
+    saveProgramme,
+    canScheduleDate,
   } = useProgrammeStore();
 
   const {
     treatments,
     ready: treatmentsReady,
+    updateTreatment,
   } = useTreatmentStore();
 
   const {
@@ -76,6 +80,9 @@ function JobsPageContent() {
 
   const requestedDate =
     searchParams.get("date");
+
+  const requestedAttention =
+    searchParams.get("attention");
 
   const requestedGroup =
     Number(
@@ -215,6 +222,215 @@ function JobsPageContent() {
       requestedVan,
       sortBySavedRoute,
     ]);
+
+  const visitsNeedingRescheduling =
+    useMemo(() => {
+      return treatments
+        .filter(
+          (treatment) =>
+            treatment.status === "Needs Rescheduling",
+        )
+        .map((treatment) => ({
+          treatment,
+          customer: customers.find(
+            (item) =>
+              item.customerNumber === treatment.customerNumber,
+          ),
+        }))
+        .sort((first, second) =>
+          first.treatment.scheduledDate.localeCompare(
+            second.treatment.scheduledDate,
+          ),
+        );
+    }, [treatments, customers]);
+
+  const showReschedulingAttention =
+    requestedAttention === "rescheduling" ||
+    visitsNeedingRescheduling.length > 0;
+
+  const [rescheduleDates, setRescheduleDates] =
+    useState<Record<string, string>>({});
+
+  const [rescheduleMessages, setRescheduleMessages] =
+    useState<
+      Record<
+        string,
+        {
+          tone: "success" | "error";
+          text: string;
+        }
+      >
+    >({});
+
+  const [
+    manualProgrammeVisitIds,
+    setManualProgrammeVisitIds,
+  ] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setRescheduleDates((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      visitsNeedingRescheduling.forEach(({ treatment }) => {
+        if (!next[treatment.id] && treatment.nextVisitDate) {
+          next[treatment.id] = treatment.nextVisitDate;
+          changed = true;
+        }
+      });
+
+      return changed ? next : current;
+    });
+  }, [visitsNeedingRescheduling]);
+
+  function setRescheduleMessage(
+    treatmentId: string,
+    tone: "success" | "error",
+    text: string,
+  ) {
+    setRescheduleMessages((current) => ({
+      ...current,
+      [treatmentId]: {
+        tone,
+        text,
+      },
+    }));
+  }
+
+  function resolveReschedulingTreatment(
+    treatment: TreatmentRecord,
+  ) {
+    const replacementDate =
+      rescheduleDates[treatment.id]?.trim() ||
+      treatment.nextVisitDate.trim();
+
+    if (!isDateValue(replacementDate)) {
+      setRescheduleMessage(
+        treatment.id,
+        "error",
+        "Choose a valid replacement date first.",
+      );
+      return;
+    }
+
+    if (
+      !canScheduleDate(
+        treatment.customerNumber,
+        replacementDate,
+      )
+    ) {
+      setRescheduleMessage(
+        treatment.id,
+        "error",
+        "That replacement date is not valid for this active customer.",
+      );
+      return;
+    }
+
+    const linked =
+      findLinkedProgrammeVisit(
+        programmes,
+        treatment,
+      ) ??
+      findProgrammeVisitBySelection(
+        programmes,
+        treatment.customerNumber,
+        manualProgrammeVisitIds[
+          treatment.id
+        ],
+      );
+
+    if (!linked) {
+      setRescheduleMessage(
+        treatment.id,
+        "error",
+        "Choose the programme visit that this failed treatment belongs to before repairing the schedule.",
+      );
+      return;
+    }
+
+    const { programme, visit } = linked;
+
+    if (
+      visit.status === "Completed" ||
+      visit.status === "Skipped"
+    ) {
+      setRescheduleMessage(
+        treatment.id,
+        "error",
+        "The linked programme visit is already final and cannot be rescheduled here.",
+      );
+      return;
+    }
+
+    const originalDate =
+      treatment.scheduledDate || visit.scheduledDate;
+
+    const updatedProgramme: CustomerProgramme = {
+      ...programme,
+      visits: programme.visits.map((item) =>
+        item.id === visit.id
+          ? {
+              ...item,
+              scheduledDate: replacementDate,
+              status: "Scheduled",
+              notes: appendProgrammeNote(
+                item.notes,
+                createRescheduleRepairNote(
+                  originalDate,
+                  replacementDate,
+                ),
+              ),
+            }
+          : item,
+      ),
+    };
+
+    const programmeResult =
+      saveProgramme(updatedProgramme);
+
+    if (!programmeResult.success) {
+      setRescheduleMessage(
+        treatment.id,
+        "error",
+        programmeResult.message ||
+          "The programme could not be updated.",
+      );
+      return;
+    }
+
+    const treatmentResult =
+      updateTreatment({
+        ...treatment,
+        status: "Rescheduled",
+        nextVisitDate: replacementDate,
+        notes: appendProgrammeNote(
+          treatment.notes,
+          `Replacement visit arranged for ${formatDateWithDay(
+            replacementDate,
+          )}.`,
+        ),
+      });
+
+    if (!treatmentResult.success) {
+      setRescheduleMessage(
+        treatment.id,
+        "error",
+        treatmentResult.message ||
+          "The programme was updated, but the treatment record could not be marked as rescheduled. Review Treatment Records.",
+      );
+      return;
+    }
+
+    setSelectedDate(replacementDate);
+    setRescheduleMessage(
+      treatment.id,
+      "success",
+      `Replacement visit scheduled for ${formatDateWithDay(
+        replacementDate,
+      )}. It will now appear in Jobs, Routes and Visit Centre on that date.`,
+    );
+  }
 
   const completedTreatments =
     useMemo(
@@ -492,6 +708,327 @@ function JobsPageContent() {
               </Link>
             </div>
           </header>
+
+          {showReschedulingAttention && (
+            <section
+              id="rescheduling"
+              className="mb-4 overflow-hidden rounded-2xl border border-amber-300 bg-amber-50 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-amber-200 p-5">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                    Requires attention
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-amber-950">
+                    Visits needing rescheduling
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-900">
+                    These visits need a new appointment. They are shown here
+                    regardless of the working date selected above.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-center">
+                  <div className="text-2xl font-bold text-amber-950">
+                    {visitsNeedingRescheduling.length}
+                  </div>
+                  <div className="text-xs font-semibold text-amber-700">
+                    outstanding
+                  </div>
+                </div>
+              </div>
+
+              {visitsNeedingRescheduling.length === 0 ? (
+                <div className="p-5 text-sm font-semibold text-green-800">
+                  ✓ No visits currently need rescheduling.
+                </div>
+              ) : (
+                <div className="divide-y divide-amber-200">
+                  {visitsNeedingRescheduling.map(
+                    ({ treatment, customer }) => {
+                      const automaticLinked =
+                        findLinkedProgrammeVisit(
+                          programmes,
+                          treatment,
+                        );
+
+                      const manualCandidates =
+                        getManualProgrammeVisitCandidates(
+                          programmes,
+                          treatment,
+                        );
+
+                      const selectedManualLink =
+                        findProgrammeVisitBySelection(
+                          programmes,
+                          treatment.customerNumber,
+                          manualProgrammeVisitIds[
+                            treatment.id
+                          ],
+                        );
+
+                      const linked =
+                        automaticLinked ??
+                        selectedManualLink;
+
+                      const replacementDate =
+                        rescheduleDates[treatment.id] ??
+                        treatment.nextVisitDate ??
+                        "";
+
+                      const message =
+                        rescheduleMessages[treatment.id];
+
+                      return (
+                        <div
+                          key={treatment.id}
+                          className="p-5"
+                        >
+                          <div className="grid gap-4 lg:grid-cols-[1.05fr_1.15fr_1fr] lg:items-start">
+                            <div>
+                              <div className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                                Customer
+                              </div>
+                              <div className="mt-1 font-bold text-amber-950">
+                                {customer?.fullName ??
+                                  `Customer ${treatment.customerNumber}`}
+                              </div>
+                              <div className="mt-0.5 text-xs text-amber-800">
+                                Customer {treatment.customerNumber}
+                                {customer
+                                  ? ` · Group ${customer.groupNumber}${
+                                      customer.vanNumber > 0
+                                        ? ` · Van ${customer.vanNumber}`
+                                        : ""
+                                    }`
+                                  : ""}
+                              </div>
+
+                              {customer && (
+                                <Link
+                                  href={`/customers/${customer.customerNumber}`}
+                                  className="mt-3 inline-flex rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
+                                >
+                                  Open customer
+                                </Link>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                                Failed visit
+                              </div>
+                              <div className="mt-1 font-bold text-amber-950">
+                                {treatment.treatmentName}
+                              </div>
+                              <div className="mt-0.5 text-xs text-amber-800">
+                                Original date:{" "}
+                                {treatment.scheduledDate
+                                  ? formatDateWithDay(
+                                      treatment.scheduledDate,
+                                    )
+                                  : "Not recorded"}
+                              </div>
+
+                              {treatment.notes && (
+                                <div className="mt-2 whitespace-pre-wrap text-xs leading-5 text-amber-900">
+                                  {treatment.notes}
+                                </div>
+                              )}
+
+                              <div className="mt-3 text-xs text-amber-800">
+                                {automaticLinked ? (
+                                  <>
+                                    Linked programme visit:{" "}
+                                    <strong>
+                                      {automaticLinked.visit.treatmentName}
+                                    </strong>
+                                    {" · "}
+                                    currently{" "}
+                                    <strong>
+                                      {formatDateWithDay(
+                                        automaticLinked.visit.scheduledDate,
+                                      )}
+                                    </strong>
+                                  </>
+                                ) : (
+                                  <div className="rounded-xl border border-amber-300 bg-amber-100/60 p-3">
+                                    <div className="font-bold text-amber-950">
+                                      Programme link needs confirming
+                                    </div>
+                                    <p className="mt-1 leading-5">
+                                      This is an older inconsistent record. Choose the existing programme visit that this failed treatment belongs to.
+                                    </p>
+
+                                    <select
+                                      value={
+                                        manualProgrammeVisitIds[
+                                          treatment.id
+                                        ] ?? ""
+                                      }
+                                      onChange={(event) => {
+                                        const value =
+                                          event.target.value;
+
+                                        setManualProgrammeVisitIds(
+                                          (current) => ({
+                                            ...current,
+                                            [treatment.id]:
+                                              value,
+                                          }),
+                                        );
+
+                                        setRescheduleMessages(
+                                          (current) => {
+                                            if (
+                                              !current[
+                                                treatment.id
+                                              ]
+                                            ) {
+                                              return current;
+                                            }
+
+                                            const next = {
+                                              ...current,
+                                            };
+                                            delete next[
+                                              treatment.id
+                                            ];
+                                            return next;
+                                          },
+                                        );
+                                      }}
+                                      className="mt-2 w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100"
+                                    >
+                                      <option value="">
+                                        Choose programme visit
+                                      </option>
+
+                                      {manualCandidates.map(
+                                        ({
+                                          programme,
+                                          visit,
+                                        }) => (
+                                          <option
+                                            key={`${programme.id}::${visit.id}`}
+                                            value={`${programme.id}::${visit.id}`}
+                                          >
+                                            Round {visit.visitNumber} · {visit.treatmentName} · {formatDateWithDay(visit.scheduledDate)} · {visit.status}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+
+                                    {manualCandidates.length ===
+                                      0 && (
+                                      <div className="mt-2 font-semibold text-red-700">
+                                        No editable programme visits are available for this customer.
+                                      </div>
+                                    )}
+
+                                    {selectedManualLink && (
+                                      <div className="mt-2 font-semibold text-green-800">
+                                        Selected: Round{" "}
+                                        {
+                                          selectedManualLink
+                                            .visit
+                                            .visitNumber
+                                        }{" "}
+                                        ·{" "}
+                                        {
+                                          selectedManualLink
+                                            .visit
+                                            .treatmentName
+                                        }{" "}
+                                        · currently{" "}
+                                        {formatDateWithDay(
+                                          selectedManualLink
+                                            .visit
+                                            .scheduledDate,
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-amber-300 bg-white p-4">
+                              <div className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                                Replacement appointment
+                              </div>
+
+                              <input
+                                type="date"
+                                value={replacementDate}
+                                onChange={(event) => {
+                                  const value = event.target.value;
+                                  setRescheduleDates((current) => ({
+                                    ...current,
+                                    [treatment.id]: value,
+                                  }));
+                                  setRescheduleMessages((current) => {
+                                    if (!current[treatment.id]) {
+                                      return current;
+                                    }
+                                    const next = { ...current };
+                                    delete next[treatment.id];
+                                    return next;
+                                  });
+                                }}
+                                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100"
+                              />
+
+                              {treatment.nextVisitDate && (
+                                <div className="mt-2 text-xs text-slate-500">
+                                  Recorded replacement:{" "}
+                                  <strong>
+                                    {formatDateWithDay(
+                                      treatment.nextVisitDate,
+                                    )}
+                                  </strong>
+                                </div>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  resolveReschedulingTreatment(
+                                    treatment,
+                                  )
+                                }
+                                disabled={!linked}
+                                className="mt-3 w-full rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                              >
+                                {treatment.nextVisitDate
+                                  ? "Repair schedule"
+                                  : "Schedule replacement"}
+                              </button>
+
+                              <p className="mt-2 text-xs leading-5 text-slate-500">
+                                This moves the existing programme visit. It does not create a duplicate treatment.
+                              </p>
+                            </div>
+                          </div>
+
+                          {message && (
+                            <div
+                              className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                                message.tone === "success"
+                                  ? "border-green-200 bg-green-50 text-green-800"
+                                  : "border-red-200 bg-red-50 text-red-800"
+                              }`}
+                            >
+                              {message.text}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
           {(requestedGroup > 0 ||
             requestedVan > 0) && (
@@ -935,6 +1472,261 @@ function PrintStat({
       </div>
     </div>
   );
+}
+
+function normaliseTreatmentName(
+  value: string,
+) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function findLinkedProgrammeVisit(
+  programmes: CustomerProgramme[],
+  treatment: TreatmentRecord,
+): {
+  programme: CustomerProgramme;
+  visit: ProgrammeVisit;
+} | null {
+  if (
+    treatment.programmeId &&
+    treatment.programmeVisitId
+  ) {
+    const programme = programmes.find(
+      (item) =>
+        item.id === treatment.programmeId,
+    );
+
+    const visit = programme?.visits.find(
+      (item) =>
+        item.id ===
+        treatment.programmeVisitId,
+    );
+
+    if (programme && visit) {
+      return {
+        programme,
+        visit,
+      };
+    }
+  }
+
+  const treatmentName =
+    normaliseTreatmentName(
+      treatment.treatmentName,
+    );
+
+  const customerProgrammes =
+    programmes.filter(
+      (programme) =>
+        programme.customerNumber ===
+        treatment.customerNumber,
+    );
+
+  for (const programme of customerProgrammes) {
+    const exactVisit =
+      programme.visits.find(
+        (visit) =>
+          normaliseTreatmentName(
+            visit.treatmentName,
+          ) === treatmentName &&
+          visit.scheduledDate ===
+            treatment.scheduledDate,
+      );
+
+    if (exactVisit) {
+      return {
+        programme,
+        visit: exactVisit,
+      };
+    }
+  }
+
+  const sameTreatmentCandidates =
+    customerProgrammes.flatMap(
+      (programme) =>
+        programme.visits
+          .filter(
+            (visit) =>
+              normaliseTreatmentName(
+                visit.treatmentName,
+              ) === treatmentName &&
+              visit.status !==
+                "Completed" &&
+              visit.status !==
+                "Skipped",
+          )
+          .map((visit) => ({
+            programme,
+            visit,
+          })),
+    );
+
+  if (
+    sameTreatmentCandidates.length ===
+    1
+  ) {
+    return sameTreatmentCandidates[0];
+  }
+
+  return null;
+}
+
+function getManualProgrammeVisitCandidates(
+  programmes: CustomerProgramme[],
+  treatment: TreatmentRecord,
+) {
+  const customerProgrammes =
+    programmes.filter(
+      (programme) =>
+        programme.customerNumber ===
+        treatment.customerNumber,
+    );
+
+  const editable =
+    customerProgrammes.flatMap(
+      (programme) =>
+        programme.visits
+          .filter(
+            (visit) =>
+              visit.status !==
+                "Completed" &&
+              visit.status !==
+                "Skipped",
+          )
+          .map((visit) => ({
+            programme,
+            visit,
+          })),
+    );
+
+  const treatmentName =
+    normaliseTreatmentName(
+      treatment.treatmentName,
+    );
+
+  return editable.sort(
+    (first, second) => {
+      const firstSameName =
+        normaliseTreatmentName(
+          first.visit.treatmentName,
+        ) === treatmentName
+          ? 0
+          : 1;
+
+      const secondSameName =
+        normaliseTreatmentName(
+          second.visit.treatmentName,
+        ) === treatmentName
+          ? 0
+          : 1;
+
+      if (
+        firstSameName !== secondSameName
+      ) {
+        return (
+          firstSameName -
+          secondSameName
+        );
+      }
+
+      return (
+        first.visit.visitNumber -
+        second.visit.visitNumber
+      );
+    },
+  );
+}
+
+function findProgrammeVisitBySelection(
+  programmes: CustomerProgramme[],
+  customerNumber: string,
+  selection: string | undefined,
+): {
+  programme: CustomerProgramme;
+  visit: ProgrammeVisit;
+} | null {
+  if (!selection) {
+    return null;
+  }
+
+  const separatorIndex =
+    selection.indexOf("::");
+
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const programmeId =
+    selection.slice(0, separatorIndex);
+  const visitId =
+    selection.slice(separatorIndex + 2);
+
+  const programme = programmes.find(
+    (item) =>
+      item.id === programmeId &&
+      item.customerNumber ===
+        customerNumber,
+  );
+
+  const visit = programme?.visits.find(
+    (item) => item.id === visitId,
+  );
+
+  if (
+    !programme ||
+    !visit ||
+    visit.status === "Completed" ||
+    visit.status === "Skipped"
+  ) {
+    return null;
+  }
+
+  return {
+    programme,
+    visit,
+  };
+}
+
+function createRescheduleRepairNote(
+  originalDate: string,
+  replacementDate: string,
+) {
+  if (!originalDate) {
+    return `Replacement visit scheduled for ${formatDateWithDay(
+      replacementDate,
+    )}.`;
+  }
+
+  return `Rescheduled from ${formatDateWithDay(
+    originalDate,
+  )} to ${formatDateWithDay(
+    replacementDate,
+  )}.`;
+}
+
+function appendProgrammeNote(
+  existing: string,
+  next: string,
+) {
+  const existingLines = existing
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (
+    existingLines.some(
+      (line) => line === next.trim(),
+    )
+  ) {
+    return existingLines.join("\n");
+  }
+
+  return [...existingLines, next.trim()]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function createAdditionalJobProgramme(

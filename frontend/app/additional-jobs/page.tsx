@@ -90,6 +90,19 @@ export default function AdditionalJobsPlannerPage() {
     "success" | "error"
   >("success");
 
+  const [showBulkCreator, setShowBulkCreator] =
+    useState(false);
+  const [bulkService, setBulkService] =
+    useState("Aeration");
+  const [bulkDate, setBulkDate] =
+    useState("");
+  const [bulkSearch, setBulkSearch] =
+    useState("");
+  const [bulkCustomerNumbers, setBulkCustomerNumbers] =
+    useState<string[]>([]);
+  const [bulkCustomerMode, setBulkCustomerMode] =
+    useState<"scheduled" | "all">("scheduled");
+
   const allRows =
     useMemo<PlannerRow[]>(
       () =>
@@ -221,6 +234,160 @@ export default function AdditionalJobsPlannerPage() {
           ),
       [customers],
     );
+
+  const bulkDateProgrammeVisits =
+    useMemo(() => {
+      if (!bulkDate) {
+        return [];
+      }
+
+      return programmes.flatMap(
+        (programme) =>
+          programme.visits
+            .filter(
+              (visit) =>
+                visit.scheduledDate ===
+                  bulkDate &&
+                (visit.status ===
+                  "Scheduled" ||
+                  visit.status ===
+                    "Planned"),
+            )
+            .map((visit) => ({
+              customerNumber:
+                programme.customerNumber,
+              treatmentName:
+                visit.treatmentName,
+            })),
+      );
+    }, [programmes, bulkDate]);
+
+  const bulkDateProgrammeMap =
+    useMemo(() => {
+      const map = new Map<
+        string,
+        string[]
+      >();
+
+      bulkDateProgrammeVisits.forEach(
+        (visit) => {
+          const existing =
+            map.get(
+              visit.customerNumber,
+            ) ?? [];
+
+          existing.push(
+            visit.treatmentName,
+          );
+
+          map.set(
+            visit.customerNumber,
+            existing,
+          );
+        },
+      );
+
+      return map;
+    }, [bulkDateProgrammeVisits]);
+
+  const bulkCustomers =
+    useMemo(() => {
+      const query =
+        bulkSearch.trim().toLowerCase();
+
+      return customers
+        .filter(
+          (customer) =>
+            customer.status === "Active",
+        )
+        .filter((customer) => {
+          if (
+            bulkCustomerMode ===
+              "scheduled" &&
+            bulkDate &&
+            !bulkDateProgrammeMap.has(
+              customer.customerNumber,
+            )
+          ) {
+            return false;
+          }
+
+          if (!query) {
+            return true;
+          }
+
+          return [
+            customer.fullName,
+            customer.customerNumber,
+            customer.address,
+            customer.postcode,
+            `group ${customer.groupNumber}`,
+            `van ${customer.vanNumber}`,
+            ...(bulkDateProgrammeMap.get(
+              customer.customerNumber,
+            ) ?? []),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(query);
+        })
+        .sort((first, second) => {
+          if (
+            first.groupNumber !==
+            second.groupNumber
+          ) {
+            return (
+              first.groupNumber -
+              second.groupNumber
+            );
+          }
+
+          return first.fullName.localeCompare(
+            second.fullName,
+          );
+        });
+    }, [
+      customers,
+      bulkSearch,
+      bulkCustomerMode,
+      bulkDate,
+      bulkDateProgrammeMap,
+    ]);
+
+  const selectedBulkCustomers =
+    customers.filter((customer) =>
+      bulkCustomerNumbers.includes(
+        customer.customerNumber,
+      ),
+    );
+
+  const selectedBulkArea =
+    selectedBulkCustomers.reduce(
+      (total, customer) =>
+        total + customer.lawnSize,
+      0,
+    );
+
+  const selectedBulkProjectedArea =
+    bulkDate
+      ? selectedBulkArea +
+        bulkDateProgrammeVisits.reduce(
+          (total, visit) => {
+            const customer =
+              customers.find(
+                (item) =>
+                  item.customerNumber ===
+                  visit.customerNumber,
+              );
+
+            return (
+              total +
+              (customer?.lawnSize ?? 0)
+            );
+          },
+          0,
+        )
+      : selectedBulkArea;
 
   const filteredRows =
     useMemo(() => {
@@ -469,6 +636,158 @@ export default function AdditionalJobsPlannerPage() {
         </main>
       </AppShell>
     );
+  }
+
+  function toggleBulkCustomer(
+    customerNumber: string,
+  ) {
+    setBulkCustomerNumbers((current) =>
+      current.includes(customerNumber)
+        ? current.filter(
+            (item) =>
+              item !== customerNumber,
+          )
+        : [...current, customerNumber],
+    );
+  }
+
+  function createBulkJobs() {
+    if (
+      bulkCustomerNumbers.length === 0
+    ) {
+      showMessage(
+        "Select at least one customer.",
+        "error",
+      );
+      return;
+    }
+
+    if (!bulkService.trim()) {
+      showMessage(
+        "Choose an additional service.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      bulkDate &&
+      !isDateValue(bulkDate)
+    ) {
+      showMessage(
+        "Choose a valid working date or leave it blank.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      bulkDate &&
+      bulkDate < getTodayDateValue()
+    ) {
+      showMessage(
+        "The working date cannot be in the past.",
+        "error",
+      );
+      return;
+    }
+
+    const selectedCustomers =
+      customers.filter((customer) =>
+        bulkCustomerNumbers.includes(
+          customer.customerNumber,
+        ),
+      );
+
+    const failures: string[] = [];
+    let created = 0;
+
+    selectedCustomers.forEach(
+      (customer) => {
+        const price =
+          getSuggestedAdditionalJobPrice(
+            customer,
+            bulkService,
+          );
+
+        const now =
+          new Date().toISOString();
+
+        const newJob: AdditionalCustomerJob = {
+          id: createAdditionalJobId(
+            customer.customerNumber,
+          ),
+          treatmentLibraryId:
+            getBuiltInTreatmentLibraryId(
+              bulkService,
+            ),
+          treatmentName: bulkService,
+          wordingSnapshot: bulkService,
+          scheduledDate: bulkDate,
+          price,
+          notes: "",
+          status: bulkDate
+            ? "Scheduled"
+            : "Unscheduled",
+          createdAt: now,
+        };
+
+        const result =
+          updateCustomer({
+            ...customer,
+            additionalJobs: [
+              ...customer.additionalJobs,
+              newJob,
+            ],
+          });
+
+        if (
+          result &&
+          "success" in result &&
+          !result.success
+        ) {
+          failures.push(
+            `${customer.fullName}: ${result.message}`,
+          );
+        } else {
+          created += 1;
+        }
+      },
+    );
+
+    if (failures.length > 0) {
+      showMessage(
+        `${created} job${
+          created === 1 ? "" : "s"
+        } created. ${failures.join(" • ")}`,
+        "error",
+      );
+      return;
+    }
+
+    showMessage(
+      `${created} ${bulkService} job${
+        created === 1 ? "" : "s"
+      } created${
+        bulkDate
+          ? ` for ${formatDateWithDay(
+              bulkDate,
+            )}`
+          : " as unscheduled work"
+      }.`,
+      "success",
+    );
+
+    setBulkCustomerNumbers([]);
+    setBulkSearch("");
+    setShowBulkCreator(false);
+
+    if (bulkDate) {
+      setActiveTab("Scheduled");
+      setWorkingDate(bulkDate);
+    } else {
+      setActiveTab("Unscheduled");
+    }
   }
 
   function changeTab(
@@ -725,12 +1044,28 @@ export default function AdditionalJobsPlannerPage() {
               </p>
             </div>
 
-            <Link
-              href="/customers"
-              className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold hover:bg-slate-50"
-            >
-              Open Customers
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setShowBulkCreator(
+                    (current) => !current,
+                  )
+                }
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+              >
+                {showBulkCreator
+                  ? "Close Add Jobs"
+                  : "+ Add Jobs"}
+              </button>
+
+              <Link
+                href="/customers"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold hover:bg-slate-50"
+              >
+                Open Customers
+              </Link>
+            </div>
           </header>
 
           {message && (
@@ -744,6 +1079,348 @@ export default function AdditionalJobsPlannerPage() {
             >
               {message}
             </div>
+          )}
+
+          {showBulkCreator && (
+            <section className="mb-4 rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+                    Bulk additional jobs
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold">
+                    Add work for multiple customers
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Choose a service and customers. When a working date is selected, GreenFlow shows the customers already scheduled for seasonal treatment on that day first, so you can add extra work without searching the full customer list.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-green-200 bg-white px-4 py-3 text-right">
+                  <div className="text-xs font-semibold text-slate-500">
+                    Selected
+                  </div>
+                  <div className="text-2xl font-bold">
+                    {bulkCustomerNumbers.length}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-[220px_220px_minmax(260px,1fr)_auto] lg:items-end">
+                <Field label="Service">
+                  <select
+                    value={bulkService}
+                    onChange={(event) =>
+                      setBulkService(
+                        event.target.value,
+                      )
+                    }
+                    className={inputClass}
+                  >
+                    <option value="Aeration">
+                      Aeration
+                    </option>
+                    <option value="Scarification">
+                      Scarification
+                    </option>
+                    <option value="Overseeding">
+                      Overseeding
+                    </option>
+                  </select>
+                </Field>
+
+                <Field label="Working date (optional)">
+                  <input
+                    type="date"
+                    min={getTodayDateValue()}
+                    value={bulkDate}
+                    onChange={(event) => {
+                      setBulkDate(
+                        event.target.value,
+                      );
+                      setBulkCustomerMode(
+                        "scheduled",
+                      );
+                      setBulkCustomerNumbers(
+                        [],
+                      );
+                    }}
+                    className={inputClass}
+                  />
+                </Field>
+
+                <Field label="Find customers">
+                  <input
+                    value={bulkSearch}
+                    onChange={(event) =>
+                      setBulkSearch(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Name, customer number, address, group or van"
+                    className={inputClass}
+                  />
+                </Field>
+
+                <button
+                  type="button"
+                  onClick={createBulkJobs}
+                  disabled={
+                    bulkCustomerNumbers.length ===
+                    0
+                  }
+                  className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  Create {bulkCustomerNumbers.length || ""} job
+                  {bulkCustomerNumbers.length === 1
+                    ? ""
+                    : "s"}
+                </button>
+              </div>
+
+              {bulkDate && (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <WorkloadMetric
+                    label="Seasonal customers"
+                    value={String(
+                      bulkDateProgrammeMap.size,
+                    )}
+                    detail={formatDateWithDay(
+                      bulkDate,
+                    )}
+                  />
+                  <WorkloadMetric
+                    label="Selected extras"
+                    value={String(
+                      bulkCustomerNumbers.length,
+                    )}
+                    detail={`${selectedBulkArea.toLocaleString(
+                      "en-GB",
+                    )} m² extra work`}
+                  />
+                  <WorkloadMetric
+                    label="Projected treatment area"
+                    value={`${selectedBulkProjectedArea.toLocaleString(
+                      "en-GB",
+                    )} m²`}
+                    detail="Seasonal work + selected extras"
+                  />
+                  <WorkloadMetric
+                    label="Area rating"
+                    value={
+                      selectedBulkProjectedArea >=
+                      5500
+                        ? "Very busy"
+                        : selectedBulkProjectedArea >=
+                            4750
+                          ? "Big day"
+                          : selectedBulkProjectedArea >=
+                              4000
+                            ? "Busy"
+                            : "Available"
+                    }
+                    detail={
+                      selectedBulkProjectedArea >=
+                      4750
+                        ? "Area threshold reached"
+                        : "Below big-day threshold"
+                    }
+                  />
+                </div>
+              )}
+
+              <div className="mt-4 overflow-hidden rounded-xl border border-green-200 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-700">
+                      {bulkDate &&
+                      bulkCustomerMode ===
+                        "scheduled"
+                        ? `Customers already scheduled on ${formatDateWithDay(
+                            bulkDate,
+                          )}`
+                        : "Active customers"}
+                      {" · "}
+                      {bulkCustomers.length} shown
+                    </div>
+
+                    {bulkDate && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBulkCustomerMode(
+                              "scheduled",
+                            );
+                            setBulkCustomerNumbers(
+                              [],
+                            );
+                          }}
+                          className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                            bulkCustomerMode ===
+                            "scheduled"
+                              ? "bg-[#176b37] text-white"
+                              : "border border-slate-300 bg-white hover:bg-slate-50"
+                          }`}
+                        >
+                          Scheduled that day ·{" "}
+                          {
+                            bulkDateProgrammeMap.size
+                          }
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBulkCustomerMode(
+                              "all",
+                            );
+                            setBulkCustomerNumbers(
+                              [],
+                            );
+                          }}
+                          className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                            bulkCustomerMode ===
+                            "all"
+                              ? "bg-[#176b37] text-white"
+                              : "border border-slate-300 bg-white hover:bg-slate-50"
+                          }`}
+                        >
+                          All active customers
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBulkCustomerNumbers(
+                          bulkCustomers.map(
+                            (customer) =>
+                              customer.customerNumber,
+                          ),
+                        )
+                      }
+                      disabled={
+                        bulkCustomers.length === 0
+                      }
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {bulkDate &&
+                      bulkCustomerMode ===
+                        "scheduled"
+                        ? "Select scheduled"
+                        : "Select shown"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBulkCustomerNumbers([])
+                      }
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold hover:bg-slate-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-[360px] divide-y divide-slate-100 overflow-y-auto">
+                  {bulkCustomers.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-slate-500">
+                      No active customers match this search.
+                    </div>
+                  ) : (
+                    bulkCustomers.map(
+                      (customer) => {
+                        const selected =
+                          bulkCustomerNumbers.includes(
+                            customer.customerNumber,
+                          );
+                        const suggestedPrice =
+                          getSuggestedAdditionalJobPrice(
+                            customer,
+                            bulkService,
+                          );
+
+                        return (
+                          <label
+                            key={
+                              customer.customerNumber
+                            }
+                            className={`grid cursor-pointer grid-cols-[34px_90px_minmax(180px,1fr)_90px_90px_110px_110px] items-center gap-3 px-4 py-3 text-sm ${
+                              selected
+                                ? "bg-green-50"
+                                : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() =>
+                                toggleBulkCustomer(
+                                  customer.customerNumber,
+                                )
+                              }
+                              className="h-4 w-4"
+                            />
+                            <span className="font-bold text-[#176b37]">
+                              {customer.customerNumber}
+                            </span>
+                            <span>
+                              <span className="block font-bold">
+                                {customer.fullName}
+                              </span>
+                              <span className="block text-xs text-slate-500">
+                                {[
+                                  customer.address,
+                                  customer.postcode,
+                                ]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </span>
+
+                              {bulkDateProgrammeMap.has(
+                                customer.customerNumber,
+                              ) && (
+                                <span className="mt-1 block text-xs font-semibold text-green-700">
+                                  Scheduled:{" "}
+                                  {(
+                                    bulkDateProgrammeMap.get(
+                                      customer.customerNumber,
+                                    ) ?? []
+                                  ).join(", ")}
+                                </span>
+                              )}
+                            </span>
+                            <span>
+                              Group {customer.groupNumber}
+                            </span>
+                            <span>
+                              Van {customer.vanNumber}
+                            </span>
+                            <span className="font-semibold">
+                              {customer.lawnSize.toLocaleString(
+                                "en-GB",
+                              )}{" "}
+                              m²
+                            </span>
+                            <span className="font-bold">
+                              £{suggestedPrice.toFixed(2)}
+                            </span>
+                          </label>
+                        );
+                      },
+                    )
+                  )}
+                </div>
+
+                <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                  Suggested prices use the existing GreenFlow rules: Aeration ×2, Scarification ×3, and other additional work uses the standard treatment price. Prices can still be edited later from the customer profile.
+                </div>
+              </div>
+            </section>
           )}
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1539,6 +2216,60 @@ function Field({
       {children}
     </label>
   );
+}
+
+function getSuggestedAdditionalJobPrice(
+  customer: StoredCustomer,
+  treatmentName: string,
+) {
+  const normalised =
+    treatmentName.trim().toLowerCase();
+
+  if (normalised.includes("scarif")) {
+    return (customer.treatmentPrice ?? 0) * 3;
+  }
+
+  if (normalised.includes("aerat")) {
+    return (customer.treatmentPrice ?? 0) * 2;
+  }
+
+  return customer.treatmentPrice ?? 0;
+}
+
+function getBuiltInTreatmentLibraryId(
+  treatmentName: string,
+) {
+  const normalised =
+    treatmentName.trim().toLowerCase();
+
+  if (normalised.includes("aerat")) {
+    return "aeration";
+  }
+
+  if (normalised.includes("scarif")) {
+    return "scarification";
+  }
+
+  if (normalised.includes("overseed")) {
+    return "overseeding";
+  }
+
+  return "";
+}
+
+function createAdditionalJobId(
+  customerNumber: string,
+) {
+  if (
+    typeof crypto !== "undefined" &&
+    "randomUUID" in crypto
+  ) {
+    return crypto.randomUUID();
+  }
+
+  return `additional-${customerNumber}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 9)}`;
 }
 
 function sortPlannerRows(

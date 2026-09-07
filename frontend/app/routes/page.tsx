@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   type ReactNode,
   useEffect,
@@ -45,6 +46,21 @@ const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
 export default function RoutesPage() {
+  const searchParams =
+    useSearchParams();
+
+  const requestedDate =
+    searchParams.get("date") ?? "";
+
+  const initialDate =
+    isDateValue(requestedDate)
+      ? requestedDate
+      : getTodayDateValue();
+
+  const initialYear =
+    Number(initialDate.slice(0, 4)) ||
+    new Date().getFullYear();
+
   const {
     customers,
     ready: customersReady,
@@ -86,12 +102,10 @@ export default function RoutesPage() {
     new Date().getFullYear();
 
   const [selectedYear, setSelectedYear] =
-    useState(currentYear);
+    useState(initialYear);
 
   const [selectedDate, setSelectedDate] =
-    useState(() =>
-      getTodayDateValue(),
-    );
+    useState(initialDate);
 
   const [selectedGroup, setSelectedGroup] =
     useState(1);
@@ -115,6 +129,32 @@ export default function RoutesPage() {
     useState<RouteMessageTone>(
       "success",
     );
+
+  useEffect(() => {
+    if (!isDateValue(requestedDate)) {
+      return;
+    }
+
+    if (requestedDate !== selectedDate) {
+      setSelectedDate(requestedDate);
+      setSelectedCustomers([]);
+    }
+
+    const requestedYear =
+      Number(requestedDate.slice(0, 4));
+
+    if (
+      Number.isFinite(requestedYear) &&
+      requestedYear > 0 &&
+      requestedYear !== selectedYear
+    ) {
+      setSelectedYear(requestedYear);
+    }
+  }, [
+    requestedDate,
+    selectedDate,
+    selectedYear,
+  ]);
 
   const selectedSeason =
     seasons.find(
@@ -912,15 +952,22 @@ export default function RoutesPage() {
     customerNumber: string,
     direction: "up" | "down",
   ) {
-    const remainingNumbers = routeCustomers
-      .filter(
-        (item) =>
-          item.customer.vanNumber === vanNumber &&
-          !item.completed,
-      )
-      .map(
-        (item) =>
-          item.customer.customerNumber,
+    /*
+     * Route order is a CUSTOMER-STOP order, not a job order.
+     *
+     * A customer can now have more than one job on the same
+     * day (for example their programme treatment + Aeration).
+     * The canonical route store deliberately saves unique
+     * customer numbers, so the arrow controls must also work
+     * from a unique list of customer stops.
+     */
+    const remainingNumbers =
+      getRemainingRouteStops(
+        routeCustomers,
+        vanNumber,
+      ).map(
+        (stop) =>
+          stop.customer.customerNumber,
       );
 
     const currentIndex =
@@ -967,7 +1014,7 @@ export default function RoutesPage() {
     );
 
     showMessage(
-      "Route order updated. Jobs and Visit Centre will use the saved order.",
+      "Route order updated. Jobs and Visit Centre will use the saved customer-stop order.",
     );
   }
 
@@ -1462,21 +1509,29 @@ export default function RoutesPage() {
                           </div>
 
                           <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-blue-800">
-                            {van.remainingJobs} remaining
+                            {getRemainingRouteStops(
+                              routeCustomers,
+                              van.vanNumber,
+                            ).length}{" "}
+                            stops · {van.remainingJobs} jobs
                           </span>
                         </div>
 
                         <div className="mt-3 space-y-2">
-                          {routeCustomers
-                            .filter(
-                              (item) =>
-                                item.customer.vanNumber ===
-                                  van.vanNumber &&
-                                !item.completed,
-                            )
-                            .map((item, index, items) => (
+                          {getRemainingRouteStops(
+                            routeCustomers,
+                            van.vanNumber,
+                          ).map(
+                            (
+                              stop,
+                              index,
+                              stops,
+                            ) => (
                               <div
-                                key={`${item.source}-${item.programmeVisitId}`}
+                                key={
+                                  stop.customer
+                                    .customerNumber
+                                }
                                 className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2"
                               >
                                 <span className="w-7 shrink-0 text-center text-sm font-bold text-blue-900">
@@ -1485,11 +1540,28 @@ export default function RoutesPage() {
 
                                 <div className="min-w-0 flex-1">
                                   <div className="truncate text-sm font-semibold text-slate-900">
-                                    {item.customer.fullName}
+                                    {
+                                      stop.customer
+                                        .fullName
+                                    }
                                   </div>
+
                                   <div className="truncate text-xs text-slate-500">
-                                    {item.customer.postcode} · {item.treatmentName}
+                                    {
+                                      stop.customer
+                                        .postcode
+                                    }
+                                    {" · "}
+                                    {stop.treatmentNames.join(
+                                      " + ",
+                                    )}
                                   </div>
+
+                                  {stop.jobCount > 1 && (
+                                    <div className="mt-0.5 text-[11px] font-semibold text-blue-700">
+                                      {stop.jobCount} jobs at this customer stop
+                                    </div>
+                                  )}
                                 </div>
 
                                 <button
@@ -1497,12 +1569,13 @@ export default function RoutesPage() {
                                   onClick={() =>
                                     moveRouteCustomer(
                                       van.vanNumber,
-                                      item.customer.customerNumber,
+                                      stop.customer
+                                        .customerNumber,
                                       "up",
                                     )
                                   }
                                   disabled={index === 0}
-                                  aria-label={`Move ${item.customer.fullName} up`}
+                                  aria-label={`Move ${stop.customer.fullName} up`}
                                   title="Move up"
                                   className={`h-9 w-9 rounded-lg border text-base font-bold ${
                                     index === 0
@@ -1518,18 +1591,20 @@ export default function RoutesPage() {
                                   onClick={() =>
                                     moveRouteCustomer(
                                       van.vanNumber,
-                                      item.customer.customerNumber,
+                                      stop.customer
+                                        .customerNumber,
                                       "down",
                                     )
                                   }
                                   disabled={
                                     index ===
-                                    items.length - 1
+                                    stops.length - 1
                                   }
-                                  aria-label={`Move ${item.customer.fullName} down`}
+                                  aria-label={`Move ${stop.customer.fullName} down`}
                                   title="Move down"
                                   className={`h-9 w-9 rounded-lg border text-base font-bold ${
-                                    index === items.length - 1
+                                    index ===
+                                    stops.length - 1
                                       ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
                                       : "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
                                   }`}
@@ -1537,7 +1612,8 @@ export default function RoutesPage() {
                                   ↓
                                 </button>
                               </div>
-                            ))}
+                            ),
+                          )}
                         </div>
                       </div>
                     )}
@@ -2112,6 +2188,87 @@ export default function RoutesPage() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+function getRemainingRouteStops(
+  routeCustomers: RouteCustomer[],
+  vanNumber: number,
+) {
+  const stops = new Map<
+    string,
+    {
+      customer: StoredCustomer;
+      treatmentNames: string[];
+      jobCount: number;
+    }
+  >();
+
+  routeCustomers
+    .filter(
+      (item) =>
+        item.customer.vanNumber ===
+          vanNumber &&
+        !item.completed,
+    )
+    .forEach((item) => {
+      const customerNumber =
+        item.customer.customerNumber;
+
+      const existing =
+        stops.get(customerNumber);
+
+      if (existing) {
+        if (
+          !existing.treatmentNames.includes(
+            item.treatmentName,
+          )
+        ) {
+          existing.treatmentNames.push(
+            item.treatmentName,
+          );
+        }
+
+        existing.jobCount += 1;
+        return;
+      }
+
+      stops.set(customerNumber, {
+        customer: item.customer,
+        treatmentNames: [
+          item.treatmentName,
+        ],
+        jobCount: 1,
+      });
+    });
+
+  return Array.from(
+    stops.values(),
+  );
+}
+
+function isDateValue(
+  value: string,
+): value is string {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
+  const [year, month, day] =
+    value.split("-").map(Number);
+
+  const date =
+    new Date(year, month - 1, day);
+
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
   );
 }
 
