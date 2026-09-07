@@ -101,7 +101,7 @@ export default function AdditionalJobsPlannerPage() {
   const [bulkCustomerNumbers, setBulkCustomerNumbers] =
     useState<string[]>([]);
   const [bulkCustomerMode, setBulkCustomerMode] =
-    useState<"scheduled" | "all">("scheduled");
+    useState<"scheduled" | "all">("all");
 
   const allRows =
     useMemo<PlannerRow[]>(
@@ -1092,7 +1092,7 @@ export default function AdditionalJobsPlannerPage() {
                     Add work for multiple customers
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Choose a service and customers. When a working date is selected, GreenFlow shows the customers already scheduled for seasonal treatment on that day first, so you can add extra work without searching the full customer list.
+                    Choose a service, an optional working date and any active customer. A customer does not need to have seasonal work already booked on that date. Use the date filters below if you want to focus on customers already scheduled that day.
                   </p>
                 </div>
 
@@ -1139,7 +1139,7 @@ export default function AdditionalJobsPlannerPage() {
                         event.target.value,
                       );
                       setBulkCustomerMode(
-                        "scheduled",
+                        "all",
                       );
                       setBulkCustomerNumbers(
                         [],

@@ -191,6 +191,16 @@ export function CustomerProfileClient({
   ] = useState("");
 
   const [
+    editingAdditionalJobId,
+    setEditingAdditionalJobId,
+  ] = useState("");
+
+  const [
+    editingAdditionalJobPrice,
+    setEditingAdditionalJobPrice,
+  ] = useState("");
+
+  const [
     addingAction,
     setAddingAction,
   ] = useState(false);
@@ -733,6 +743,73 @@ function cancelEditing() {
     }, 4000);
   }
 
+  function beginEditingAdditionalJobPrice(
+    job: AdditionalCustomerJob,
+  ) {
+    setEditingAdditionalJobId(job.id);
+    setEditingAdditionalJobPrice(
+      job.price.toFixed(2),
+    );
+    setSavedMessage("");
+  }
+
+  function cancelEditingAdditionalJobPrice() {
+    setEditingAdditionalJobId("");
+    setEditingAdditionalJobPrice("");
+  }
+
+  function saveAdditionalJobPrice(
+    jobId: string,
+  ) {
+    const price = Number(
+      editingAdditionalJobPrice,
+    );
+
+    if (
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
+      setSavedMessage(
+        "Enter a valid price for the additional job.",
+      );
+      return;
+    }
+
+    const result =
+      updateCustomer({
+        ...currentCustomer,
+        additionalJobs:
+          currentCustomer.additionalJobs.map(
+            (item) =>
+              item.id === jobId
+                ? {
+                    ...item,
+                    price,
+                  }
+                : item,
+          ),
+      });
+
+    if (!result.success) {
+      setSavedMessage(
+        result.message,
+      );
+      return;
+    }
+
+    setEditingAdditionalJobId("");
+    setEditingAdditionalJobPrice("");
+    setSavedMessage(
+      `Additional job price updated to £${price.toFixed(
+        2,
+      )}.`,
+    );
+
+    window.setTimeout(() => {
+      setSavedMessage("");
+    }, 3500);
+  }
+
   function cancelAdditionalJob(
     jobId: string,
   ) {
@@ -1063,6 +1140,24 @@ function cancelEditing() {
               }
               onDeleteJob={
                 deleteAdditionalJob
+              }
+              editingJobId={
+                editingAdditionalJobId
+              }
+              editingPrice={
+                editingAdditionalJobPrice
+              }
+              onEditingPriceChange={
+                setEditingAdditionalJobPrice
+              }
+              onBeginEditPrice={
+                beginEditingAdditionalJobPrice
+              }
+              onSavePrice={
+                saveAdditionalJobPrice
+              }
+              onCancelEditPrice={
+                cancelEditingAdditionalJobPrice
               }
             />
           )}
@@ -2003,6 +2098,12 @@ function AdditionalJobsTab({
   onAddJob,
   onCancelJob,
   onDeleteJob,
+  editingJobId,
+  editingPrice,
+  onEditingPriceChange,
+  onBeginEditPrice,
+  onSavePrice,
+  onCancelEditPrice,
 }: {
   jobs: AdditionalCustomerJob[];
   onAddJob: () => void;
@@ -2012,6 +2113,18 @@ function AdditionalJobsTab({
   onDeleteJob: (
     jobId: string,
   ) => void;
+  editingJobId: string;
+  editingPrice: string;
+  onEditingPriceChange: (
+    value: string,
+  ) => void;
+  onBeginEditPrice: (
+    job: AdditionalCustomerJob,
+  ) => void;
+  onSavePrice: (
+    jobId: string,
+  ) => void;
+  onCancelEditPrice: () => void;
 }) {
   return (
     <div>
@@ -2074,13 +2187,73 @@ function AdditionalJobsTab({
                         : "Unscheduled"}
                     </span>
 
-                    <span>
-                      <strong>Price:</strong>{" "}
-                      £
-                      {job.price.toFixed(
-                        2,
-                      )}
-                    </span>
+                    {editingJobId ===
+                    job.id ? (
+                      <span className="flex flex-wrap items-center gap-2">
+                        <strong>Price:</strong>
+                        <span className="relative">
+                          <span className="pointer-events-none absolute left-2.5 top-1.5 font-semibold text-slate-500">
+                            £
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={
+                              editingPrice
+                            }
+                            onChange={(event) =>
+                              onEditingPriceChange(
+                                event.target.value,
+                              )
+                            }
+                            className="w-28 rounded-lg border border-slate-300 bg-white py-1.5 pl-7 pr-2 text-sm outline-none focus:border-[#338b45] focus:ring-2 focus:ring-green-100"
+                          />
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSavePrice(
+                              job.id,
+                            )
+                          }
+                          className="rounded-lg bg-[#176b37] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#125b2f]"
+                        >
+                          Save price
+                        </button>
+                        <button
+                          type="button"
+                          onClick={
+                            onCancelEditPrice
+                          }
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <span>
+                        <strong>Price:</strong>{" "}
+                        £
+                        {job.price.toFixed(
+                          2,
+                        )}
+                        {job.status !==
+                          "Completed" && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onBeginEditPrice(
+                                job,
+                              )
+                            }
+                            className="ml-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                          >
+                            Edit price
+                          </button>
+                        )}
+                      </span>
+                    )}
                   </div>
 
                   {job.notes && (
