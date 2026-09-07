@@ -2113,6 +2113,75 @@ function VisitCentrePageContent() {
             </Field>
           </header>
 
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Working day workflow
+                </div>
+
+                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                  {formatDateWithDay(selectedDate)}
+                </h2>
+
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Work through the saved route, record each visit outcome, then
+                  return to Dashboard for the end-of-day check.
+                </p>
+              </div>
+
+              <div className="text-xs font-semibold text-slate-500">
+                Stage 3 of 4
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <WorkingDayStage
+                number="1"
+                title="Review Jobs"
+                detail="Review the scheduled workload for this date."
+                href={`/jobs?date=${selectedDate}`}
+                state="complete"
+              />
+
+              <WorkingDayStage
+                number="2"
+                title="Groups & Routes"
+                detail="Review or adjust the saved working order."
+                href={`/routes?date=${selectedDate}`}
+                state="complete"
+              />
+
+              <WorkingDayStage
+                number="3"
+                title="Visit Centre"
+                detail={`${jobs.length} remaining · ${completedOnDate} completed`}
+                href={`/visit-centre?date=${selectedDate}${
+                  requestedGroup > 0
+                    ? `&group=${requestedGroup}`
+                    : ""
+                }${
+                  requestedVan > 0
+                    ? `&van=${requestedVan}`
+                    : ""
+                }`}
+                state="current"
+              />
+
+              <WorkingDayStage
+                number="4"
+                title="Close Day"
+                detail={
+                  jobs.length === 0
+                    ? "All visible visits are resolved. Review the end-of-day check."
+                    : `${jobs.length} visit${jobs.length === 1 ? "" : "s"} still visible before close.`
+                }
+                href="/"
+                state={jobs.length === 0 ? "next" : "later"}
+              />
+            </div>
+          </section>
+
           {seasonRolloverWarning && (
             <section
               role="alert"
@@ -3514,6 +3583,83 @@ function VisitCentrePageContent() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+function WorkingDayStage({
+  number,
+  title,
+  detail,
+  href,
+  state,
+}: {
+  number: string;
+  title: string;
+  detail: string;
+  href: string;
+  state: "complete" | "current" | "next" | "later";
+}) {
+  const styles =
+    state === "current"
+      ? "border-green-300 bg-green-50"
+      : state === "complete"
+        ? "border-slate-200 bg-white"
+        : state === "next"
+          ? "border-blue-200 bg-blue-50/60"
+          : "border-slate-200 bg-slate-50";
+
+  const badgeStyles =
+    state === "current"
+      ? "bg-[#176b37] text-white"
+      : state === "complete"
+        ? "bg-green-100 text-green-800"
+        : state === "next"
+          ? "bg-blue-100 text-blue-800"
+          : "bg-slate-200 text-slate-700";
+
+  const actionLabel =
+    state === "current"
+      ? "Current stage"
+      : state === "complete"
+        ? title === "Review Jobs"
+          ? "Back to Jobs"
+          : "Back to Groups & Routes"
+        : state === "next"
+          ? "Continue to Close Day"
+          : "Close Day when work is resolved";
+
+  return (
+    <Link
+      href={href}
+      className={`group rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${styles}`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${badgeStyles}`}
+        >
+          {state === "complete" ? "✓" : number}
+        </span>
+
+        <div className="min-w-0">
+          <div className="font-bold text-slate-950">
+            {title}
+          </div>
+
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {detail}
+          </p>
+
+          <div className="mt-3 text-xs font-black text-slate-700">
+            {actionLabel}
+            {state !== "current" && (
+              <span className="ml-1 inline-block transition group-hover:translate-x-0.5">
+                →
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </Link>
   );
 }
 
