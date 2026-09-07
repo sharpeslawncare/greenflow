@@ -311,14 +311,6 @@ function VisitCentrePageContent() {
     }
   }, [requestedDate]);
 
-  useEffect(() => {
-    const savedMixes = readStandardMixStore();
-    setStandardMix(
-      savedMixes[selectedDate] ?? emptyStandardMix,
-    );
-    setStandardMixReady(true);
-  }, [selectedDate]);
-
   const jobs =
     useMemo<VisitJob[]>(() => {
       const seasonalItems =
@@ -644,6 +636,60 @@ function VisitCentrePageContent() {
   const mixedTreatmentSelection =
     selectedTreatmentKeys.length > 1;
 
+  const selectedTreatmentName =
+    !mixedTreatmentSelection &&
+    selectedJobs.length > 0
+      ? selectedJobs[0].visit.treatmentName
+      : "";
+
+  const selectedTreatmentMixKey =
+    selectedTreatmentName
+      ? createTreatmentMixKey(
+          selectedDate,
+          selectedTreatmentName,
+        )
+      : "";
+
+  useEffect(() => {
+    const savedMixes =
+      readStandardMixStore();
+
+    if (!selectedTreatmentMixKey) {
+      setStandardMix(
+        emptyStandardMix,
+      );
+      setStandardMixReady(true);
+      setVisitProductMode(
+        "custom",
+      );
+      return;
+    }
+
+    const treatmentMix =
+      savedMixes[
+        selectedTreatmentMixKey
+      ];
+
+    /*
+     * Backwards compatibility:
+     * an older date-only mix can still be used until
+     * a treatment-specific mix is saved for this date.
+     */
+    const legacyDateMix =
+      savedMixes[selectedDate];
+
+    setStandardMix(
+      treatmentMix ??
+        legacyDateMix ??
+        emptyStandardMix,
+    );
+
+    setStandardMixReady(true);
+  }, [
+    selectedDate,
+    selectedTreatmentMixKey,
+  ]);
+
   const routeStopCustomerNumbers =
     Array.from(
       new Set(
@@ -677,6 +723,17 @@ function VisitCentrePageContent() {
   const herbicides = activeChemicals.filter((chemical) =>
     isProductType(chemical.type, "herbicide"),
   );
+
+  const customProductIds =
+    getMixProductIds({
+      fertiliserId,
+      herbicideId,
+      additionalProductIds:
+        additionalProducts.map(
+          (item) =>
+            item.chemicalId,
+        ),
+    });
 
   const effectiveFertiliserId =
     visitProductMode === "today"
@@ -900,6 +957,81 @@ function VisitCentrePageContent() {
     );
   }
 
+  function setCustomProductsFromIds(
+    productIds: string[],
+  ) {
+    const next =
+      createMixFromProductIds(
+        productIds,
+        activeChemicals,
+      );
+
+    setFertiliserId(
+      next.fertiliserId,
+    );
+    setHerbicideId(
+      next.herbicideId,
+    );
+    setAdditionalProducts(
+      next.additionalProductIds.map(
+        (chemicalId) => ({
+          id: createSelectionId(),
+          chemicalId,
+        }),
+      ),
+    );
+  }
+
+  function toggleCustomProduct(
+    chemicalId: string,
+  ) {
+    const nextIds =
+      customProductIds.includes(
+        chemicalId,
+      )
+        ? customProductIds.filter(
+            (id) =>
+              id !== chemicalId,
+          )
+        : [
+            ...customProductIds,
+            chemicalId,
+          ];
+
+    setCustomProductsFromIds(
+      nextIds,
+    );
+  }
+
+  function toggleStandardProduct(
+    chemicalId: string,
+  ) {
+    const currentIds =
+      getMixProductIds(
+        standardMix,
+      );
+
+    const nextIds =
+      currentIds.includes(
+        chemicalId,
+      )
+        ? currentIds.filter(
+            (id) =>
+              id !== chemicalId,
+          )
+        : [
+            ...currentIds,
+            chemicalId,
+          ];
+
+    setStandardMix(
+      createMixFromProductIds(
+        nextIds,
+        activeChemicals,
+      ),
+    );
+  }
+
   function updateStandardMix(
     updates: Partial<StandardMix>,
   ) {
@@ -967,8 +1099,17 @@ function VisitCentrePageContent() {
     const savedMixes =
       readStandardMixStore();
 
-    savedMixes[selectedDate] =
-      cleanedMix;
+    if (!selectedTreatmentMixKey) {
+      showMessage(
+        "Select visits from one treatment type before saving a treatment mix.",
+        "error",
+      );
+      return;
+    }
+
+    savedMixes[
+      selectedTreatmentMixKey
+    ] = cleanedMix;
 
     window.localStorage.setItem(
       STANDARD_MIX_STORAGE_KEY,
@@ -981,7 +1122,7 @@ function VisitCentrePageContent() {
     );
 
     showMessage(
-      `Today's mix saved and selected for ${formatDateWithDay(
+      `${selectedTreatmentName} mix saved for ${formatDateWithDay(
         selectedDate,
       )}.`,
     );
@@ -1016,7 +1157,7 @@ function VisitCentrePageContent() {
     );
 
     showMessage(
-      `Standard mix applied to ${selectedJobs.length} selected visit${
+      `${selectedTreatmentName || "Treatment"} mix applied to ${selectedJobs.length} selected visit${
         selectedJobs.length === 1
           ? ""
           : "s"
@@ -1028,7 +1169,17 @@ function VisitCentrePageContent() {
     const savedMixes =
       readStandardMixStore();
 
-    delete savedMixes[selectedDate];
+    if (!selectedTreatmentMixKey) {
+      showMessage(
+        "Select visits from one treatment type before clearing a treatment mix.",
+        "error",
+      );
+      return;
+    }
+
+    delete savedMixes[
+      selectedTreatmentMixKey
+    ];
 
     window.localStorage.setItem(
       STANDARD_MIX_STORAGE_KEY,
@@ -1044,7 +1195,7 @@ function VisitCentrePageContent() {
     );
 
     showMessage(
-      `Today's mix cleared for ${formatDateWithDay(
+      `${selectedTreatmentName} mix cleared for ${formatDateWithDay(
         selectedDate,
       )}.`,
     );
@@ -2586,136 +2737,116 @@ function VisitCentrePageContent() {
                   </Panel>
                 </section>
 
-                {outcome === "Completed" && standardMixReady && (
-                  <Panel title="Today’s Mix">
-                    <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-green-900">
-                            Products planned for {formatDateWithDay(selectedDate)}
-                          </div>
+                {outcome === "Completed" &&
+                  standardMixReady &&
+                  selectedJobs.length > 0 && (
+                  <Panel title="Treatment Mix">
+                    {mixedTreatmentSelection ? (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                        <div className="font-bold">
+                          Select one treatment type
+                        </div>
+                        <p className="mt-2 text-sm leading-6">
+                          Saved mixes are treatment-specific. Select only one treatment type to view or change its standard products.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="font-bold text-green-900">
+                                {selectedTreatmentName}
+                              </div>
 
-                          <p className="mt-1 text-sm leading-6 text-green-800">
-                            Set this once for the working day. Selected visits use it automatically unless you choose a custom mix below.
-                          </p>
+                              <p className="mt-1 text-sm leading-6 text-green-800">
+                                Choose the standard products you normally use for this treatment. Every active product in Chemical Centre is available here.
+                              </p>
+                            </div>
+
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-green-800">
+                              {standardMixProducts.length} product
+                              {standardMixProducts.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
                         </div>
 
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-green-800">
-                          {standardMixProducts.length} product
-                          {standardMixProducts.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                    </div>
+                        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {activeChemicals.map(
+                            (chemical) => {
+                              const selected =
+                                standardMixProductIds.includes(
+                                  chemical.id,
+                                );
 
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <Field label="Today’s fertiliser">
-                        <select
-                          value={standardMix.fertiliserId}
-                          onChange={(event) =>
-                            updateStandardMix({
-                              fertiliserId: event.target.value,
-                            })
-                          }
-                          className={inputClass}
-                        >
-                          <option value="">No fertiliser</option>
+                              return (
+                                <button
+                                  key={chemical.id}
+                                  type="button"
+                                  onClick={() =>
+                                    toggleStandardProduct(
+                                      chemical.id,
+                                    )
+                                  }
+                                  className={`rounded-xl border p-3 text-left transition ${
+                                    selected
+                                      ? "border-[#338b45] bg-green-50"
+                                      : "border-slate-200 bg-white hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="font-bold text-slate-900">
+                                        {chemical.name}
+                                      </div>
+                                      <div className="mt-1 text-xs text-slate-500">
+                                        {chemical.type}
+                                      </div>
+                                    </div>
 
-                          {fertilisers.map((chemical) => (
-                            <option key={chemical.id} value={chemical.id}>
-                              {chemical.name}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
+                                    <span
+                                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                                        selected
+                                          ? "bg-green-100 text-green-800"
+                                          : "bg-slate-100 text-slate-500"
+                                      }`}
+                                    >
+                                      {selected
+                                        ? "Selected"
+                                        : "Add"}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            },
+                          )}
+                        </div>
 
-                      <Field label="Today’s herbicide">
-                        <select
-                          value={standardMix.herbicideId}
-                          onChange={(event) =>
-                            updateStandardMix({
-                              herbicideId: event.target.value,
-                            })
-                          }
-                          className={inputClass}
-                        >
-                          <option value="">No herbicide</option>
-
-                          {herbicides.map((chemical) => (
-                            <option key={chemical.id} value={chemical.id}>
-                              {chemical.name}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                    </div>
-
-                    <div className="mt-4 space-y-3">
-                      {standardMix.additionalProductIds.map(
-                        (chemicalId, index) => (
-                          <div
-                            key={`${index}-${chemicalId}`}
-                            className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_auto] sm:items-end"
-                          >
-                            <Field label={`Today’s additional product ${index + 1}`}>
-                              <select
-                                value={chemicalId}
-                                onChange={(event) =>
-                                  updateStandardAdditionalProduct(
-                                    index,
-                                    event.target.value,
-                                  )
-                                }
-                                className={inputClass}
-                              >
-                                <option value="">Choose product</option>
-
-                                {activeChemicals.map((chemical) => (
-                                  <option key={chemical.id} value={chemical.id}>
-                                    {chemical.name} — {chemical.type}
-                                  </option>
-                                ))}
-                              </select>
-                            </Field>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removeStandardAdditionalProduct(index)
-                              }
-                              className="h-11 rounded-xl border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50"
-                            >
-                              Remove
-                            </button>
+                        {activeChemicals.length === 0 && (
+                          <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">
+                            No active products are available. Add products in Chemical Centre first.
                           </div>
-                        ),
-                      )}
-                    </div>
+                        )}
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={addStandardAdditionalProduct}
-                        className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
-                      >
-                        + Add another product
-                      </button>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={saveStandardMix}
+                            className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                          >
+                            Save {selectedTreatmentName} mix
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={saveStandardMix}
-                        className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
-                      >
-                        Save today’s mix
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={clearStandardMix}
-                        className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-                      >
-                        Clear today’s mix
-                      </button>
-                    </div>
+                          <button
+                            type="button"
+                            onClick={clearStandardMix}
+                            className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                          >
+                            Clear saved mix
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </Panel>
                 )}
 
@@ -2755,13 +2886,13 @@ function VisitCentrePageContent() {
                       <>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <ProductModeOption
-                        label="Use Today’s Mix"
+                        label="Use Saved Treatment Mix"
                         detail={
                           todayMixAvailable
                             ? `${standardMixProducts.length} saved product${
                                 standardMixProducts.length === 1 ? "" : "s"
-                              } will be used for every selected visit.`
-                            : "No mix has been saved for this working date."
+                              } will be used for every selected ${selectedTreatmentName} visit.`
+                            : `No saved mix exists for ${selectedTreatmentName || "this treatment"}.`
                         }
                         checked={
                           visitProductMode ===
@@ -2778,8 +2909,8 @@ function VisitCentrePageContent() {
                       />
 
                       <ProductModeOption
-                        label="Custom Products"
-                        detail="Choose different products for the currently selected visits."
+                        label="Choose Products Manually"
+                        detail="Choose from every active product in Chemical Centre for the selected visits."
                         checked={
                           visitProductMode ===
                           "custom"
@@ -2796,7 +2927,7 @@ function VisitCentrePageContent() {
                       todayMixAvailable && (
                         <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
                           <div className="font-bold text-green-950">
-                            Using Today’s Mix
+                            Using Saved Treatment Mix
                           </div>
 
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -2816,91 +2947,71 @@ function VisitCentrePageContent() {
 
                     {visitProductMode === "custom" && (
                       <>
-                        <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <Field label="Fertiliser">
-                            <select
-                              value={fertiliserId}
-                              onChange={(event) =>
-                                setFertiliserId(event.target.value)
-                              }
-                              className={inputClass}
-                            >
-                              <option value="">No fertiliser</option>
+                        <div className="mt-4">
+                          <div className="font-bold text-slate-900">
+                            Choose products
+                          </div>
+                          <p className="mt-1 text-sm text-slate-500">
+                            All active Chemical Centre products are available. Select one or several products for these visits.
+                          </p>
 
-                              {fertilisers.map((chemical) => (
-                                <option key={chemical.id} value={chemical.id}>
-                                  {chemical.name}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                            {activeChemicals.map(
+                              (chemical) => {
+                                const selected =
+                                  customProductIds.includes(
+                                    chemical.id,
+                                  );
 
-                          <Field label="Herbicide">
-                            <select
-                              value={herbicideId}
-                              onChange={(event) =>
-                                setHerbicideId(event.target.value)
-                              }
-                              className={inputClass}
-                            >
-                              <option value="">No herbicide</option>
+                                return (
+                                  <button
+                                    key={chemical.id}
+                                    type="button"
+                                    onClick={() =>
+                                      toggleCustomProduct(
+                                        chemical.id,
+                                      )
+                                    }
+                                    className={`rounded-xl border p-3 text-left transition ${
+                                      selected
+                                        ? "border-[#338b45] bg-green-50"
+                                        : "border-slate-200 bg-white hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <div className="font-bold text-slate-900">
+                                          {chemical.name}
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                          {chemical.type}
+                                        </div>
+                                      </div>
 
-                              {herbicides.map((chemical) => (
-                                <option key={chemical.id} value={chemical.id}>
-                                  {chemical.name}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                        </div>
+                                      <span
+                                        className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                                          selected
+                                            ? "bg-green-100 text-green-800"
+                                            : "bg-slate-100 text-slate-500"
+                                        }`}
+                                      >
+                                        {selected
+                                          ? "Selected"
+                                          : "Add"}
+                                      </span>
+                                    </div>
+                                  </button>
+                                );
+                              },
+                            )}
+                          </div>
 
-                        <div className="mt-4 space-y-3">
-                          {additionalProducts.map((selection, index) => (
-                            <div
-                              key={selection.id}
-                              className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_auto] sm:items-end"
-                            >
-                              <Field label={`Additional product ${index + 1}`}>
-                                <select
-                                  value={selection.chemicalId}
-                                  onChange={(event) =>
-                                    updateAdditionalProduct(
-                                      selection.id,
-                                      event.target.value,
-                                    )
-                                  }
-                                  className={inputClass}
-                                >
-                                  <option value="">Choose product</option>
-
-                                  {activeChemicals.map((chemical) => (
-                                    <option key={chemical.id} value={chemical.id}>
-                                      {chemical.name} — {chemical.type}
-                                    </option>
-                                  ))}
-                                </select>
-                              </Field>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeAdditionalProduct(selection.id)
-                                }
-                                className="h-11 rounded-xl border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50"
-                              >
-                                Remove
-                              </button>
+                          {activeChemicals.length === 0 && (
+                            <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">
+                              No active products are available. Add products in Chemical Centre first.
                             </div>
-                          ))}
+                          )}
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={addAdditionalProduct}
-                          className="mt-4 rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
-                        >
-                          + Add wetting agent, seaweed or another product
-                        </button>
                       </>
                     )}
 
@@ -3340,6 +3451,91 @@ function ReviewStat({
       <div className="mt-1 font-bold">{value}</div>
     </div>
   );
+}
+
+function createTreatmentMixKey(
+  date: string,
+  treatmentName: string,
+) {
+  return `${date}::${normaliseTreatmentName(
+    treatmentName,
+  )}`;
+}
+
+function getMixProductIds(
+  mix: StandardMix,
+) {
+  return Array.from(
+    new Set(
+      [
+        mix.fertiliserId,
+        mix.herbicideId,
+        ...mix.additionalProductIds,
+      ].filter(Boolean),
+    ),
+  );
+}
+
+function createMixFromProductIds(
+  productIds: string[],
+  chemicals: ChemicalRecord[],
+): StandardMix {
+  const uniqueIds =
+    Array.from(
+      new Set(
+        productIds.filter(Boolean),
+      ),
+    );
+
+  const fertiliserId =
+    uniqueIds.find((id) => {
+      const chemical =
+        chemicals.find(
+          (item) =>
+            item.id === id,
+        );
+
+      return chemical
+        ? isProductType(
+            chemical.type,
+            "fertiliser",
+          )
+        : false;
+    }) ?? "";
+
+  const herbicideId =
+    uniqueIds.find((id) => {
+      const chemical =
+        chemicals.find(
+          (item) =>
+            item.id === id,
+        );
+
+      return chemical
+        ? isProductType(
+            chemical.type,
+            "herbicide",
+          )
+        : false;
+    }) ?? "";
+
+  const primaryIds =
+    new Set(
+      [
+        fertiliserId,
+        herbicideId,
+      ].filter(Boolean),
+    );
+
+  return {
+    fertiliserId,
+    herbicideId,
+    additionalProductIds:
+      uniqueIds.filter(
+        (id) =>
+          !primaryIds.has(id),
+      ),
+  };
 }
 
 function readStandardMixStore(): StandardMixStore {
