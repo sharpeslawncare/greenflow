@@ -909,6 +909,45 @@ export default function DashboardPage() {
         ),
     ).size;
 
+  const selectedDateProblemRecords =
+    selectedDateTreatments.filter(
+      (treatment) =>
+        treatment.status !== "Completed" &&
+        treatment.status !== "Cancelled" &&
+        treatment.status !== "Rescheduled",
+    );
+
+  const selectedDateReschedulingCount =
+    selectedDateProblemRecords.filter(
+      (treatment) =>
+        treatment.status === "Needs Rescheduling",
+    ).length;
+
+  const selectedDateOtherProblemCount =
+    selectedDateProblemRecords.length -
+    selectedDateReschedulingCount;
+
+  const closeDayOutstandingCount =
+    remainingWorkCount +
+    selectedDateProblemRecords.length;
+
+  const selectedDateIsPast =
+    selectedDate < todayDate;
+
+  const selectedDateIsToday =
+    selectedDate === todayDate;
+
+  const closeDayStatus =
+    closeDayOutstandingCount === 0
+      ? selectedDateTotalWorkCount > 0
+        ? "Complete"
+        : "No work"
+      : selectedDateIsPast
+        ? "Needs review"
+        : selectedDateIsToday
+          ? "In progress"
+          : "Upcoming";
+
   const comingNextDays =
     useMemo(() => {
       const programmeByDate = programmes.flatMap(
@@ -1397,6 +1436,109 @@ export default function DashboardPage() {
               <span>
                 Aeration = 2 units · Scarification = 3 · Overseeding = 2
               </span>
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-700">
+                  Close the day
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  End-of-day check
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                  Check that the selected working date is operationally closed
+                  before moving on. GreenFlow highlights work still waiting for
+                  completion and recorded outcomes that need review.
+                </p>
+              </div>
+
+              <CloseDayStatusBadge status={closeDayStatus} />
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <CloseDayMetric
+                label="Planned"
+                value={String(selectedDateTotalWorkCount)}
+                detail="Recorded plus remaining work"
+              />
+
+              <CloseDayMetric
+                label="Completed"
+                value={String(completedOnSelectedDate)}
+                detail="Completed treatment records"
+                positive={
+                  completedOnSelectedDate > 0 &&
+                  remainingWorkCount === 0
+                }
+              />
+
+              <CloseDayMetric
+                label="Still to complete"
+                value={String(remainingWorkCount)}
+                detail="Scheduled work still open"
+                warning={remainingWorkCount > 0}
+              />
+
+              <CloseDayMetric
+                label="Needs rescheduling"
+                value={String(selectedDateReschedulingCount)}
+                detail="Recorded outcomes to move"
+                danger={selectedDateReschedulingCount > 0}
+              />
+
+              <CloseDayMetric
+                label="Other outcomes"
+                value={String(selectedDateOtherProblemCount)}
+                detail="Non-completed records to review"
+                warning={selectedDateOtherProblemCount > 0}
+              />
+            </div>
+
+            {closeDayOutstandingCount === 0 ? (
+              <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
+                {selectedDateTotalWorkCount > 0
+                  ? "This working day is clear: no scheduled work or recorded problem outcomes remain outstanding."
+                  : "There is no scheduled or recorded work to close for this date."}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4">
+                <div className="font-bold text-slate-950">
+                  {closeDayOutstandingCount} item
+                  {closeDayOutstandingCount === 1 ? "" : "s"} still need attention
+                </div>
+
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Complete remaining visits in Visit Centre. If a visit could
+                  not be completed, make sure its outcome is recorded and any
+                  required replacement date is handled in Jobs.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-indigo-200 pt-4">
+              <WorkflowLink
+                href={`/visit-centre?date=${selectedDate}`}
+                label="Finish in Visit Centre"
+              />
+              <WorkflowLink
+                href={`/jobs?date=${selectedDate}`}
+                label="Review Jobs"
+              />
+              {selectedDateReschedulingCount > 0 && (
+                <WorkflowLink
+                  href="/jobs?view=reschedule"
+                  label="Reschedule visits"
+                />
+              )}
+              <WorkflowLink
+                href="/actions"
+                label="Check Action Centre"
+              />
             </div>
           </section>
 
@@ -2678,6 +2820,84 @@ function SummaryPill({
       }`}
     >
       {label}: {value}
+    </span>
+  );
+}
+
+function CloseDayMetric({
+  label,
+  value,
+  detail,
+  warning = false,
+  danger = false,
+  positive = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+  danger?: boolean;
+  positive?: boolean;
+}) {
+  const styles = danger
+    ? "border-red-200 bg-red-50"
+    : warning
+      ? "border-amber-200 bg-amber-50"
+      : positive
+        ? "border-green-200 bg-green-50"
+        : "border-indigo-200 bg-white";
+
+  const valueStyle = danger
+    ? "text-red-800"
+    : warning
+      ? "text-amber-900"
+      : positive
+        ? "text-green-800"
+        : "text-slate-950";
+
+  return (
+    <div className={`rounded-xl border p-4 ${styles}`}>
+      <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">
+        {label}
+      </div>
+
+      <div className={`mt-1 text-xl font-black ${valueStyle}`}>
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs leading-5 text-slate-600">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function CloseDayStatusBadge({
+  status,
+}: {
+  status:
+    | "Complete"
+    | "No work"
+    | "Needs review"
+    | "In progress"
+    | "Upcoming";
+}) {
+  const styles =
+    status === "Complete"
+      ? "bg-green-100 text-green-800"
+      : status === "Needs review"
+        ? "bg-red-100 text-red-700"
+        : status === "In progress"
+          ? "bg-amber-100 text-amber-800"
+          : status === "Upcoming"
+            ? "bg-blue-100 text-blue-800"
+            : "bg-slate-100 text-slate-700";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-4 py-2 text-sm font-black ${styles}`}
+    >
+      {status}
     </span>
   );
 }
