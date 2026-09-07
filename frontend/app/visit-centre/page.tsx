@@ -846,6 +846,11 @@ function VisitCentrePageContent() {
     0,
   );
 
+  const totalSelectedInvoiceValue = selectedJobs.reduce(
+    (total, job) => total + job.price,
+    0,
+  );
+
   const combinedPreview = selectedProducts.map((chemical) => {
     const fullLawnCalculation =
       calculateApplication(
@@ -3187,11 +3192,13 @@ function VisitCentrePageContent() {
                   <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
                     <div>
                       <h2 className="text-2xl font-bold">
-                        Review bulk completion
+                        {selectedJobs.length === 1
+                          ? "Review completion"
+                          : "Review bulk completion"}
                       </h2>
 
                       <p className="mt-1 text-sm text-slate-500">
-                        Check the customers, outcome and products before GreenFlow creates the individual records.
+                        Check each visit, its invoice value, outcome and products before GreenFlow creates the individual records and invoices.
                       </p>
                     </div>
 
@@ -3208,11 +3215,31 @@ function VisitCentrePageContent() {
                   </div>
 
                   <div className="space-y-5 p-5">
-                    <div className="grid gap-3 sm:grid-cols-4">
-                      <ReviewStat label="Working date" value={formatDateWithDay(selectedDate)} />
-                      <ReviewStat label="Visits" value={String(selectedJobs.length)} />
-                      <ReviewStat label="Combined area" value={`${totalSelectedArea.toLocaleString("en-GB")} m²`} />
-                      <ReviewStat label="Outcome" value={outcome} />
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      <ReviewStat
+                        label="Working date"
+                        value={formatDateWithDay(selectedDate)}
+                      />
+                      <ReviewStat
+                        label="Visits"
+                        value={String(selectedJobs.length)}
+                      />
+                      <ReviewStat
+                        label="Combined area"
+                        value={`${totalSelectedArea.toLocaleString("en-GB")} m²`}
+                      />
+                      <ReviewStat
+                        label="Outcome"
+                        value={outcome}
+                      />
+                      <ReviewStat
+                        label="Invoice total"
+                        value={
+                          outcome === "Completed"
+                            ? `£${totalSelectedInvoiceValue.toFixed(2)}`
+                            : "—"
+                        }
+                      />
                     </div>
 
                     {reviewError && (
@@ -3276,28 +3303,65 @@ function VisitCentrePageContent() {
                           return (
                           <div
                             key={job.id}
-                            className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_120px_120px]"
+                            className="grid gap-3 px-4 py-3 text-sm sm:grid-cols-[1fr_110px_110px_120px]"
                           >
                             <div>
-                              <div className="font-bold">{job.customer.fullName}</div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="font-bold">
+                                  {job.customer.fullName}
+                                </div>
+
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                    job.source === "additional"
+                                      ? "bg-amber-100 text-amber-800"
+                                      : "bg-green-100 text-green-800"
+                                  }`}
+                                >
+                                  {job.source === "additional"
+                                    ? "Additional job"
+                                    : "Programme"}
+                                </span>
+                              </div>
+
                               <div className="mt-1 text-xs font-semibold text-[#176b37]">
                                 {job.visit.treatmentName}
                                 {customerJobs.length > 1
                                   ? ` · Stop ${stopNumber} · Visit ${visitNumber} of ${customerJobs.length}`
                                   : ""}
                               </div>
+
                               <div className="mt-1 text-xs text-slate-500">
                                 {job.customer.address}, {job.customer.postcode}
                               </div>
                             </div>
+
                             <div>
-                              <div className="text-xs font-semibold text-slate-500">Group</div>
-                              <div className="mt-1 font-semibold">{job.customer.groupNumber}</div>
+                              <div className="text-xs font-semibold text-slate-500">
+                                Group
+                              </div>
+                              <div className="mt-1 font-semibold">
+                                {job.customer.groupNumber}
+                              </div>
                             </div>
+
                             <div>
-                              <div className="text-xs font-semibold text-slate-500">Area</div>
+                              <div className="text-xs font-semibold text-slate-500">
+                                Area
+                              </div>
                               <div className="mt-1 font-semibold">
                                 {job.customer.lawnSize.toLocaleString("en-GB")} m²
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs font-semibold text-slate-500">
+                                Invoice value
+                              </div>
+                              <div className="mt-1 text-base font-bold text-slate-900">
+                                {outcome === "Completed"
+                                  ? `£${job.price.toFixed(2)}`
+                                  : "—"}
                               </div>
                             </div>
                           </div>
@@ -3305,6 +3369,30 @@ function VisitCentrePageContent() {
                         })}
                       </div>
                     </section>
+
+                    {outcome === "Completed" && (
+                      <section className="rounded-xl border border-green-200 bg-green-50 p-4">
+                        <div className="flex flex-wrap items-end justify-between gap-4">
+                          <div>
+                            <h3 className="font-bold text-green-950">
+                              Invoice check
+                            </h3>
+                            <p className="mt-1 text-sm text-green-800">
+                              GreenFlow will create one invoice for each completed visit using the values shown above.
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                              Total invoice value
+                            </div>
+                            <div className="mt-1 text-2xl font-bold text-green-950">
+                              £{totalSelectedInvoiceValue.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+                    )}
 
                     {outcome === "Completed" && (
                       <section className="rounded-xl border border-slate-200 p-4">
@@ -3391,7 +3479,7 @@ function VisitCentrePageContent() {
 
                   <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4">
                     <p className="text-sm text-slate-500">
-                      GreenFlow will create one separate treatment record and invoice for every selected completed visit.
+                      GreenFlow will create one separate treatment record and invoice for every selected completed visit at the values shown above.
                     </p>
 
                     <div className="flex gap-2">
