@@ -10,6 +10,7 @@ import {
   useCustomerStore,
 } from "@/components/customer-store";
 import {
+  type TreatmentApplication,
   type TreatmentRecord,
   useTreatmentStore,
 } from "@/components/treatment-store";
@@ -190,7 +191,7 @@ export function CustomerTreatmentHistory({
             </h2>
 
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Seasonal programme treatments and additional services are shown together in date order. Additional jobs keep their own agreed invoice value.
+              Seasonal programme treatments and additional services are shown together in date order. Completed records retain the actual saved product application details for this customer&apos;s lawn.
             </p>
           </div>
 
@@ -300,6 +301,11 @@ function TreatmentHistoryRow({
       new Set(products),
     );
 
+  const hasApplicationDetails =
+    completed &&
+    treatment.applications.length >
+      0;
+
   return (
     <article className="p-5 transition hover:bg-slate-50/70">
       <div className="grid gap-5 xl:grid-cols-[145px_minmax(230px,1fr)_minmax(200px,0.9fr)_140px_150px] xl:items-center">
@@ -387,7 +393,7 @@ function TreatmentHistoryRow({
               {treatment.treatmentAreaSquareMetres.toLocaleString(
                 "en-GB",
               )}{" "}
-              m² treated
+              m² lawn area
             </div>
           )}
         </div>
@@ -431,6 +437,74 @@ function TreatmentHistoryRow({
         </div>
       </div>
 
+      {hasApplicationDetails && (
+        <details className="mt-4 rounded-xl border border-green-200 bg-green-50/40 px-4 py-3">
+          <summary className="cursor-pointer text-sm font-bold text-green-900">
+            Chemical application record
+          </summary>
+
+          <div className="mt-4 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <ApplicationSummaryBox
+                label="Treatment date"
+                value={formatDate(
+                  getRecordDate(
+                    treatment,
+                  ),
+                )}
+              />
+
+              <ApplicationSummaryBox
+                label="Lawn area"
+                value={
+                  treatment.treatmentAreaSquareMetres >
+                  0
+                    ? `${treatment.treatmentAreaSquareMetres.toLocaleString(
+                        "en-GB",
+                      )} m²`
+                    : "Not recorded"
+                }
+              />
+
+              <ApplicationSummaryBox
+                label="Products"
+                value={String(
+                  treatment.applications.length,
+                )}
+              />
+
+              <ApplicationSummaryBox
+                label="Record"
+                value="Saved at completion"
+              />
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-2">
+              {treatment.applications.map(
+                (application) => (
+                  <ApplicationRecordCard
+                    key={
+                      application.id
+                    }
+                    application={
+                      application
+                    }
+                  />
+                ),
+              )}
+            </div>
+          </div>
+        </details>
+      )}
+
+      {completed &&
+        treatment.applications.length ===
+          0 && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+            No product application details were saved for this completed visit.
+          </div>
+        )}
+
       {treatment.notes.trim() && (
         <details className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
           <summary className="cursor-pointer text-xs font-bold text-slate-600">
@@ -443,6 +517,235 @@ function TreatmentHistoryRow({
         </details>
       )}
     </article>
+  );
+}
+
+function ApplicationRecordCard({
+  application,
+}: {
+  application: TreatmentApplication;
+}) {
+  const spotSpray =
+    application.applicationMethod ===
+    "Spot Spray";
+
+  const fullLawnSpray =
+    application.applicationMethod ===
+    "Full Lawn Spray";
+
+  const actualAmount =
+    application.actualProductRequired >
+    0
+      ? application.actualProductRequired
+      : application.productRequired;
+
+  const fullLawnAmount =
+    application.fullLawnProductRequired >
+    0
+      ? application.fullLawnProductRequired
+      : application.productRequired;
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-bold text-slate-950">
+            {application.productName ||
+              "Unnamed product"}
+          </div>
+
+          <div className="mt-1 text-xs font-semibold text-slate-500">
+            {application.productType ||
+              "Product"}
+          </div>
+        </div>
+
+        {spotSpray && (
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+            Spot Spray ·{" "}
+            {formatPercentage(
+              application.spotSprayPercentage,
+            )}
+          </span>
+        )}
+
+        {fullLawnSpray && (
+          <span className="rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-green-800">
+            Full Lawn Spray
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <ApplicationDetail
+          label="Application rate"
+          value={
+            application.applicationRate >
+              0 &&
+            application.applicationRateUnit
+              ? `${formatNumber(
+                  application.applicationRate,
+                )} ${application.applicationRateUnit}`
+              : "Not recorded"
+          }
+        />
+
+        <ApplicationDetail
+          label={
+            spotSpray
+              ? "Actual product applied"
+              : "Product applied"
+          }
+          value={
+            actualAmount > 0 &&
+            application.productUnit
+              ? formatApplicationAmount(
+                  actualAmount,
+                  application.productUnit,
+                )
+              : "Not recorded"
+          }
+        />
+
+        {spotSpray && (
+          <ApplicationDetail
+            label="Full-lawn equivalent"
+            value={
+              fullLawnAmount > 0 &&
+              application.productUnit
+                ? formatApplicationAmount(
+                    fullLawnAmount,
+                    application.productUnit,
+                  )
+                : "Not recorded"
+            }
+          />
+        )}
+
+        {spotSpray && (
+          <ApplicationDetail
+            label="Estimated lawn proportion"
+            value={formatPercentage(
+              application.spotSprayPercentage,
+            )}
+          />
+        )}
+
+        {application.waterRequiredLitres >
+          0 && (
+          <ApplicationDetail
+            label="Water required"
+            value={`${formatNumber(
+              application.waterRequiredLitres,
+            )} L`}
+          />
+        )}
+
+        {application.calibratedWaterVolumePerHectare >
+          0 && (
+          <ApplicationDetail
+            label="Water volume"
+            value={`${formatNumber(
+              application.calibratedWaterVolumePerHectare,
+            )} L/ha`}
+          />
+        )}
+
+        {application.productPerTank >
+          0 && (
+          <ApplicationDetail
+            label="Product per tank"
+            value={
+              application.productUnit
+                ? formatApplicationAmount(
+                    application.productPerTank,
+                    application.productUnit,
+                  )
+                : formatNumber(
+                    application.productPerTank,
+                  )
+            }
+          />
+        )}
+
+        {application.tankCapacityLitres >
+          0 && (
+          <ApplicationDetail
+            label="Tank capacity"
+            value={`${formatNumber(
+              application.tankCapacityLitres,
+            )} L`}
+          />
+        )}
+      </div>
+
+      {(application.activeIngredients ||
+        application.registrationNumber) && (
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {application.activeIngredients && (
+            <div className="text-xs leading-5 text-slate-600">
+              <strong className="text-slate-800">
+                Active ingredients:
+              </strong>{" "}
+              {
+                application.activeIngredients
+              }
+            </div>
+          )}
+
+          {application.registrationNumber && (
+            <div className="mt-1 text-xs leading-5 text-slate-600">
+              <strong className="text-slate-800">
+                Registration:
+              </strong>{" "}
+              {
+                application.registrationNumber
+              }
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ApplicationSummaryBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-green-200 bg-white px-3 py-2.5">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-green-700">
+        {label}
+      </div>
+
+      <div className="mt-1 text-sm font-bold text-slate-950">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ApplicationDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
+
+      <div className="mt-1 text-sm font-semibold text-slate-800">
+        {value}
+      </div>
+    </div>
   );
 }
 
@@ -603,4 +906,72 @@ function formatDate(
       day,
     ),
   );
+}
+
+function formatApplicationAmount(
+  amount: number,
+  unit: string,
+) {
+  if (
+    unit === "L" &&
+    amount < 1
+  ) {
+    return `${(amount * 1000).toFixed(
+      1,
+    )} ml`;
+  }
+
+  if (
+    unit === "kg" &&
+    amount < 1
+  ) {
+    return `${(amount * 1000).toFixed(
+      1,
+    )} g`;
+  }
+
+  if (
+    unit === "ml" ||
+    unit === "g"
+  ) {
+    return `${formatNumber(
+      amount,
+    )} ${unit}`;
+  }
+
+  return `${formatNumber(
+    amount,
+  )} ${unit}`;
+}
+
+function formatPercentage(
+  value: number,
+) {
+  if (
+    !Number.isFinite(value)
+  ) {
+    return "—";
+  }
+
+  return `${formatNumber(
+    value,
+  )}%`;
+}
+
+function formatNumber(
+  value: number,
+) {
+  if (
+    !Number.isFinite(value)
+  ) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 3,
+    },
+  ).format(value);
 }

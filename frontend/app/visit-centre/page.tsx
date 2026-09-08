@@ -134,7 +134,15 @@ const observationOptions = [
 const STANDARD_MIX_STORAGE_KEY =
   "greenflow-visit-centre-standard-mixes-v1";
 
-const SPOT_SPRAY_PERCENTAGE = 20;
+const DEFAULT_SPOT_SPRAY_PERCENTAGE = 10;
+
+const SPOT_SPRAY_PRESETS = [
+  5,
+  10,
+  15,
+  20,
+  25,
+] as const;
 
 const emptyStandardMix: StandardMix = {
   fertiliserId: "",
@@ -253,6 +261,18 @@ function VisitCentrePageContent() {
   const [herbicideId, setHerbicideId] = useState("");
   const [herbicideApplicationMethod, setHerbicideApplicationMethod] =
     useState<HerbicideApplicationMethod>("Full Lawn Spray");
+
+  const [
+    spotSprayPercentage,
+    setSpotSprayPercentage,
+  ] = useState(
+    DEFAULT_SPOT_SPRAY_PERCENTAGE,
+  );
+
+  const [
+    spotSprayOverrides,
+    setSpotSprayOverrides,
+  ] = useState<Record<string, number>>({});
 
   const [visitProductMode, setVisitProductMode] =
     useState<VisitProductMode>("today");
@@ -623,6 +643,25 @@ function VisitCentrePageContent() {
     selectedJobIds.includes(job.id),
   );
 
+  useEffect(() => {
+    const validIds = new Set(
+      jobs.map((job) => job.id),
+    );
+
+    setSpotSprayOverrides((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(
+          ([jobId]) => validIds.has(jobId),
+        ),
+      );
+
+      return Object.keys(next).length ===
+        Object.keys(current).length
+        ? current
+        : next;
+    });
+  }, [jobs]);
+
   const selectedTreatmentKeys = Array.from(
     new Set(
       selectedJobs.map((job) =>
@@ -798,6 +837,8 @@ function VisitCentrePageContent() {
       selectedProducts,
       herbicideApplicationMethod,
       spotSprayAvailable,
+      spotSprayPercentage,
+      spotSprayOverrides,
     );
 
   const reviewReorderWarnings =
@@ -864,6 +905,7 @@ function VisitCentrePageContent() {
         fullLawnCalculation,
         herbicideApplicationMethod,
         spotSprayAvailable,
+        spotSprayPercentage,
       );
 
     return {
@@ -923,6 +965,64 @@ function VisitCentrePageContent() {
     setSelectedJobIds(
       allSelected ? [] : jobs.map((job) => job.id),
     );
+  }
+
+  function prepareCompleteAll() {
+    if (jobs.length === 0) return;
+
+    const treatmentKeys = Array.from(
+      new Set(
+        jobs.map((job) =>
+          normaliseTreatmentName(
+            job.visit.treatmentName,
+          ),
+        ),
+      ),
+    );
+
+    setOutcome("Completed");
+    setSelectedJobIds(
+      jobs.map((job) => job.id),
+    );
+    setHerbicideApplicationMethod(
+      "Full Lawn Spray",
+    );
+    setSpotSprayPercentage(
+      DEFAULT_SPOT_SPRAY_PERCENTAGE,
+    );
+    setSpotSprayOverrides({});
+    setReviewOpen(false);
+    setReviewError("");
+
+    showMessage(
+      treatmentKeys.length > 1
+        ? "All remaining visits are selected, but they contain different treatment types. Complete one treatment type at a time so the correct product mix is recorded."
+        : `${jobs.length} remaining visit${jobs.length === 1 ? "" : "s"} selected as completed. Full lawn spray is assumed unless you mark a customer as a spot-spray exception.`,
+      treatmentKeys.length > 1
+        ? "error"
+        : "success",
+    );
+  }
+
+  function setCustomerFullLawn(jobId: string) {
+    setSpotSprayOverrides((current) => {
+      const next = { ...current };
+      delete next[jobId];
+      return next;
+    });
+  }
+
+  function setCustomerSpotSpray(
+    jobId: string,
+    percentage = DEFAULT_SPOT_SPRAY_PERCENTAGE,
+  ) {
+    setSpotSprayOverrides((current) => ({
+      ...current,
+      [jobId]:
+        normaliseSpotSprayPercentage(
+          percentage,
+        ),
+    }));
   }
 
   function toggleObservation(observation: string) {
@@ -1354,6 +1454,8 @@ function VisitCentrePageContent() {
       selectedProducts,
       herbicideApplicationMethod,
       spotSprayAvailable,
+      spotSprayPercentage,
+      spotSprayOverrides,
     );
 
     const stockProblem = findStockProblem(requirements);
@@ -1478,8 +1580,13 @@ function VisitCentrePageContent() {
               createApplicationForCustomer(
                 chemical,
                 job.customer.lawnSize,
-                herbicideApplicationMethod,
+                spotSprayOverrides[job.id] !==
+                  undefined
+                  ? "Spot Spray"
+                  : herbicideApplicationMethod,
                 spotSprayAvailable,
+                spotSprayOverrides[job.id] ??
+                  spotSprayPercentage,
               ),
             )
           : [];
@@ -2040,6 +2147,10 @@ function VisitCentrePageContent() {
     setFertiliserId("");
     setHerbicideId("");
     setHerbicideApplicationMethod("Full Lawn Spray");
+    setSpotSprayPercentage(
+      DEFAULT_SPOT_SPRAY_PERCENTAGE,
+    );
+    setSpotSprayOverrides({});
     setVisitProductMode(
       todayMixAvailable
         ? "today"
@@ -2112,75 +2223,6 @@ function VisitCentrePageContent() {
               </div>
             </Field>
           </header>
-
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Working day workflow
-                </div>
-
-                <h2 className="mt-1 text-lg font-bold text-slate-950">
-                  {formatDateWithDay(selectedDate)}
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Work through the saved route, record each visit outcome, then
-                  return to Dashboard for the end-of-day check.
-                </p>
-              </div>
-
-              <div className="text-xs font-semibold text-slate-500">
-                Stage 3 of 4
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <WorkingDayStage
-                number="1"
-                title="Review Jobs"
-                detail="Review the scheduled workload for this date."
-                href={`/jobs?date=${selectedDate}`}
-                state="complete"
-              />
-
-              <WorkingDayStage
-                number="2"
-                title="Groups & Routes"
-                detail="Review or adjust the saved working order."
-                href={`/routes?date=${selectedDate}`}
-                state="complete"
-              />
-
-              <WorkingDayStage
-                number="3"
-                title="Visit Centre"
-                detail={`${jobs.length} remaining · ${completedOnDate} completed`}
-                href={`/visit-centre?date=${selectedDate}${
-                  requestedGroup > 0
-                    ? `&group=${requestedGroup}`
-                    : ""
-                }${
-                  requestedVan > 0
-                    ? `&van=${requestedVan}`
-                    : ""
-                }`}
-                state="current"
-              />
-
-              <WorkingDayStage
-                number="4"
-                title="Close Day"
-                detail={
-                  jobs.length === 0
-                    ? "All visible visits are resolved. Review the end-of-day check."
-                    : `${jobs.length} visit${jobs.length === 1 ? "" : "s"} still visible before close.`
-                }
-                href={`/?date=${selectedDate}`}
-                state={jobs.length === 0 ? "next" : "later"}
-              />
-            </div>
-          </section>
 
           {seasonRolloverWarning && (
             <section
@@ -2521,6 +2563,31 @@ function VisitCentrePageContent() {
               </div>
             </div>
           </section>
+
+          {jobs.length > 0 && (
+            <section className="mb-4 rounded-2xl border border-green-300 bg-green-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+                    End-of-day shortcut
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-green-950">
+                    Did the day go as planned?
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-green-800">
+                    Select every remaining visit as completed in one click. Full lawn is assumed, then you only change the customers who were spot sprayed before confirming.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={prepareCompleteAll}
+                  className="rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#125b2f]"
+                >
+                  ✓ Complete all remaining
+                </button>
+              </div>
+            </section>
+          )}
 
           <form onSubmit={saveVisits}>
             <section className="grid gap-4 xl:grid-cols-[390px_1fr]">
@@ -3117,7 +3184,7 @@ function VisitCentrePageContent() {
 
                             <ApplicationMethodOption
                               label="Spot spray"
-                              detail={`${SPOT_SPRAY_PERCENTAGE}% of normal herbicide usage.`}
+                              detail={`${spotSprayPercentage}% of normal herbicide usage.`}
                               checked={
                                 herbicideApplicationMethod ===
                                 "Spot Spray"
@@ -3129,6 +3196,86 @@ function VisitCentrePageContent() {
                               }
                             />
                           </div>
+
+                          {herbicideApplicationMethod ===
+                            "Spot Spray" && (
+                            <div className="mt-4 rounded-xl border border-green-200 bg-white p-4">
+                              <div className="flex flex-wrap items-end justify-between gap-3">
+                                <div>
+                                  <div className="font-bold text-slate-900">
+                                    Estimated area being spot treated
+                                  </div>
+
+                                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                                    Choose the approximate percentage of each selected lawn actually receiving herbicide. GreenFlow keeps the full lawn area on the customer record, but only records and deducts this reduced product quantity.
+                                  </p>
+                                </div>
+
+                                <div className="text-right">
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Selected
+                                  </div>
+                                  <div className="mt-1 text-2xl font-bold text-green-900">
+                                    {spotSprayPercentage}%
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {SPOT_SPRAY_PRESETS.map(
+                                  (percentage) => (
+                                    <button
+                                      key={percentage}
+                                      type="button"
+                                      onClick={() =>
+                                        setSpotSprayPercentage(
+                                          percentage,
+                                        )
+                                      }
+                                      className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
+                                        spotSprayPercentage ===
+                                        percentage
+                                          ? "border-[#176b37] bg-green-50 text-[#176b37]"
+                                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      {percentage}%
+                                    </button>
+                                  ),
+                                )}
+                              </div>
+
+                              <div className="mt-4 max-w-[220px]">
+                                <Field label="Custom percentage">
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="100"
+                                      step="1"
+                                      value={
+                                        spotSprayPercentage
+                                      }
+                                      onChange={(event) =>
+                                        setSpotSprayPercentage(
+                                          normaliseSpotSprayPercentage(
+                                            Number(
+                                              event.target.value,
+                                            ),
+                                          ),
+                                        )
+                                      }
+                                      className={`${inputClass} pr-10`}
+                                    />
+
+                                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-bold text-slate-500">
+                                      %
+                                    </span>
+                                  </div>
+                                </Field>
+                              </div>
+                            </div>
+                          )}
                         </section>
                       )}
 
@@ -3138,6 +3285,110 @@ function VisitCentrePageContent() {
                         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                           Spot spray is available only when all selected visits are Spring, Summer or Autumn weed-and-feed treatments.
                         </div>
+                      )}
+
+                    {effectiveHerbicideId &&
+                      spotSprayAvailable &&
+                      selectedJobs.length > 1 && (
+                        <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                          <div>
+                            <div className="font-bold text-blue-950">
+                              Customer spray exceptions
+                            </div>
+                            <p className="mt-1 text-sm leading-6 text-blue-800">
+                              Full lawn is the normal assumption. Only change customers who actually received a spot spray.
+                            </p>
+                          </div>
+
+                          <div className="mt-4 space-y-2">
+                            {selectedJobs.map((job) => {
+                              const exceptionPercentage =
+                                spotSprayOverrides[job.id];
+                              const isSpot =
+                                exceptionPercentage !== undefined;
+
+                              return (
+                                <div key={job.id} className="rounded-xl border border-blue-200 bg-white p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <div className="font-bold text-slate-900">
+                                        {job.customer.fullName}
+                                      </div>
+                                      <div className="mt-0.5 text-xs text-slate-500">
+                                        {job.customer.lawnSize.toLocaleString("en-GB")} m²
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setCustomerFullLawn(job.id)}
+                                        className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                                          !isSpot
+                                            ? "border-green-600 bg-green-600 text-white"
+                                            : "border-slate-300 bg-white text-slate-700"
+                                        }`}
+                                      >
+                                        Full lawn
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setCustomerSpotSpray(job.id)}
+                                        className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                                          isSpot
+                                            ? "border-blue-600 bg-blue-600 text-white"
+                                            : "border-slate-300 bg-white text-slate-700"
+                                        }`}
+                                      >
+                                        Spot spray
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {isSpot && (
+                                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                                      <span className="text-xs font-bold text-slate-600">
+                                        Approx. lawn sprayed:
+                                      </span>
+                                      {SPOT_SPRAY_PRESETS.map((percentage) => (
+                                        <button
+                                          key={percentage}
+                                          type="button"
+                                          onClick={() => setCustomerSpotSpray(job.id, percentage)}
+                                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${
+                                            exceptionPercentage === percentage
+                                              ? "border-blue-600 bg-blue-600 text-white"
+                                              : "border-slate-300 bg-white text-slate-700"
+                                          }`}
+                                        >
+                                          {percentage}%
+                                        </button>
+                                      ))}
+                                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                        Custom
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={100}
+                                          step={1}
+                                          value={exceptionPercentage}
+                                          onChange={(event) =>
+                                            setCustomerSpotSpray(
+                                              job.id,
+                                              Number(event.target.value),
+                                            )
+                                          }
+                                          className="w-20 rounded-lg border border-slate-300 px-2 py-1.5"
+                                        />
+                                        %
+                                      </label>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </section>
                       )}
 
                     {combinedPreview.length > 0 && (
@@ -3190,7 +3441,7 @@ function VisitCentrePageContent() {
                                     "Spot Spray" &&
                                   spotSprayAvailable && (
                                     <div className="mt-3 text-xs text-slate-500">
-                                      Spot-spray quantity shown above. Full-lawn equivalent:{" "}
+                                      {spotSprayPercentage}% spot-spray quantity shown above. Full-lawn equivalent:{" "}
                                       <strong>
                                         {formatApplicationAmount(
                                           fullLawnCalculation.productRequired,
@@ -3468,9 +3719,13 @@ function VisitCentrePageContent() {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <h3 className="font-bold">Products to record</h3>
 
-                          {herbicideId && spotSprayAvailable && (
+                          {effectiveHerbicideId && spotSprayAvailable && (
                             <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
                               Herbicide: {herbicideApplicationMethod}
+                              {herbicideApplicationMethod ===
+                              "Spot Spray"
+                                ? ` · ${spotSprayPercentage}%`
+                                : ""}
                             </span>
                           )}
                         </div>
@@ -3511,7 +3766,7 @@ function VisitCentrePageContent() {
                                     "Spot Spray" &&
                                   spotSprayAvailable && (
                                     <div className="mt-2 text-xs text-slate-500">
-                                      Full-lawn equivalent:{" "}
+                                      {spotSprayPercentage}% spot spray · Full-lawn equivalent:{" "}
                                       <strong>
                                         {formatApplicationAmount(
                                           fullLawnCalculation.productRequired,
@@ -3583,83 +3838,6 @@ function VisitCentrePageContent() {
         </div>
       </main>
     </AppShell>
-  );
-}
-
-function WorkingDayStage({
-  number,
-  title,
-  detail,
-  href,
-  state,
-}: {
-  number: string;
-  title: string;
-  detail: string;
-  href: string;
-  state: "complete" | "current" | "next" | "later";
-}) {
-  const styles =
-    state === "current"
-      ? "border-green-300 bg-green-50"
-      : state === "complete"
-        ? "border-slate-200 bg-white"
-        : state === "next"
-          ? "border-blue-200 bg-blue-50/60"
-          : "border-slate-200 bg-slate-50";
-
-  const badgeStyles =
-    state === "current"
-      ? "bg-[#176b37] text-white"
-      : state === "complete"
-        ? "bg-green-100 text-green-800"
-        : state === "next"
-          ? "bg-blue-100 text-blue-800"
-          : "bg-slate-200 text-slate-700";
-
-  const actionLabel =
-    state === "current"
-      ? "Current stage"
-      : state === "complete"
-        ? title === "Review Jobs"
-          ? "Back to Jobs"
-          : "Back to Groups & Routes"
-        : state === "next"
-          ? "Continue to Close Day"
-          : "Close Day when work is resolved";
-
-  return (
-    <Link
-      href={href}
-      className={`group rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${styles}`}
-    >
-      <div className="flex items-start gap-3">
-        <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${badgeStyles}`}
-        >
-          {state === "complete" ? "✓" : number}
-        </span>
-
-        <div className="min-w-0">
-          <div className="font-bold text-slate-950">
-            {title}
-          </div>
-
-          <p className="mt-1 text-xs leading-5 text-slate-600">
-            {detail}
-          </p>
-
-          <div className="mt-3 text-xs font-black text-slate-700">
-            {actionLabel}
-            {state !== "current" && (
-              <span className="ml-1 inline-block transition group-hover:translate-x-0.5">
-                →
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </Link>
   );
 }
 
@@ -3811,6 +3989,8 @@ function aggregateProductRequirements(
   herbicideApplicationMethod:
     HerbicideApplicationMethod,
   spotSprayAvailable: boolean,
+  spotSprayPercentage: number,
+  spotSprayOverrides: Record<string, number> = {},
 ): ProductRequirement[] {
   return products.map((chemical) => {
     const calculations = jobs.map((job) => {
@@ -3820,11 +4000,18 @@ function aggregateProductRequirements(
           job.customer.lawnSize,
         );
 
+      const customerSpotPercentage =
+        spotSprayOverrides[job.id];
+
       return applyHerbicideApplicationMethod(
         chemical,
         fullLawnCalculation,
-        herbicideApplicationMethod,
+        customerSpotPercentage !== undefined
+          ? "Spot Spray"
+          : herbicideApplicationMethod,
         spotSprayAvailable,
+        customerSpotPercentage ??
+          spotSprayPercentage,
       );
     });
 
@@ -3979,6 +4166,7 @@ function createApplicationForCustomer(
   herbicideApplicationMethod:
     HerbicideApplicationMethod,
   spotSprayAvailable: boolean,
+  spotSprayPercentage: number,
 ): TreatmentApplication {
   const fullLawnCalculation =
     calculateApplication(
@@ -3992,6 +4180,7 @@ function createApplicationForCustomer(
       fullLawnCalculation,
       herbicideApplicationMethod,
       spotSprayAvailable,
+      spotSprayPercentage,
     );
 
   const herbicide =
@@ -4032,7 +4221,9 @@ function createApplicationForCustomer(
       herbicide &&
       applicationMethod ===
         "Spot Spray"
-        ? SPOT_SPRAY_PERCENTAGE
+        ? normaliseSpotSprayPercentage(
+            spotSprayPercentage,
+          )
         : 100,
 
     calibratedWaterVolumePerHectare:
@@ -4170,6 +4361,7 @@ function applyHerbicideApplicationMethod(
   herbicideApplicationMethod:
     HerbicideApplicationMethod,
   spotSprayAvailable: boolean,
+  spotSprayPercentage: number,
 ): ApplicationCalculation {
   const spotSpray =
     spotSprayAvailable &&
@@ -4185,8 +4377,9 @@ function applyHerbicideApplicationMethod(
   }
 
   const factor =
-    SPOT_SPRAY_PERCENTAGE /
-    100;
+    normaliseSpotSprayPercentage(
+      spotSprayPercentage,
+    ) / 100;
 
   return {
     ...fullLawnCalculation,
@@ -4528,6 +4721,22 @@ function isProductType(value: string, expected: string) {
     .trim()
     .toLowerCase()
     .includes(expected);
+}
+
+function normaliseSpotSprayPercentage(
+  value: number,
+) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_SPOT_SPRAY_PERCENTAGE;
+  }
+
+  return Math.min(
+    100,
+    Math.max(
+      1,
+      Math.round(value),
+    ),
+  );
 }
 
 function roundToThreeDecimals(value: number) {

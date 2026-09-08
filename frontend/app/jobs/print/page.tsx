@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -13,7 +13,6 @@ import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
 import {
   type CustomerProgramme,
-  type ProgrammeVisit,
   useProgrammeStore,
 } from "@/components/programme-store";
 import {
@@ -34,8 +33,9 @@ import {
 
 type PrintJob = {
   id: string;
-  programme: CustomerProgramme;
-  visit: ProgrammeVisit;
+  source: "programme" | "additional";
+  treatmentName: string;
+  price: number;
   customer: ReturnType<
     typeof useCustomerStore
   >["customers"][number];
@@ -113,8 +113,8 @@ function DailyCustomerSheetsPageContent() {
 
   const jobs =
     useMemo<PrintJob[]>(() => {
-      const items = programmes
-        .flatMap((programme) => {
+      const programmeItems =
+        programmes.flatMap((programme) => {
           const customer =
             customers.find(
               (item) =>
@@ -140,29 +140,62 @@ function DailyCustomerSheetsPageContent() {
                     "Planned"),
             )
             .map((visit) => ({
-              id: `${programme.id}-${visit.id}`,
-              programme,
-              visit,
+              id: `programme-${programme.id}-${visit.id}`,
+              source:
+                "programme" as const,
+              treatmentName:
+                visit.treatmentName,
+              price:
+                customer.treatmentPrice,
               customer,
             }));
-        })
-        .filter(
-          (job) =>
-            (requestedGroup <= 0 ||
-              job.customer
-                .groupNumber ===
-                requestedGroup) &&
-            (requestedVan <= 0 ||
-              job.customer.vanNumber ===
-                requestedVan),
-        )
-        ;
+        });
+
+      const additionalItems =
+        customers.flatMap((customer) => {
+          if (
+            customer.status !== "Active"
+          ) {
+            return [];
+          }
+
+          return (
+            customer.additionalJobs ?? []
+          )
+            .filter(
+              (job) =>
+                job.scheduledDate ===
+                  selectedDate &&
+                job.status === "Scheduled",
+            )
+            .map((job) => ({
+              id: `additional-${customer.customerNumber}-${job.id}`,
+              source:
+                "additional" as const,
+              treatmentName:
+                job.treatmentName,
+              price: job.price,
+              customer,
+            }));
+        });
+
+      const items = [
+        ...programmeItems,
+        ...additionalItems,
+      ].filter(
+        (job) =>
+          (requestedGroup <= 0 ||
+            job.customer.groupNumber ===
+              requestedGroup) &&
+          (requestedVan <= 0 ||
+            job.customer.vanNumber ===
+              requestedVan),
+      );
 
       return sortBySavedRoute(
         items,
         selectedDate,
       );
-
     }, [
       programmes,
       customers,
@@ -211,11 +244,10 @@ function DailyCustomerSheetsPageContent() {
 
   return (
     <>
-      <AppShell>
-        <style jsx global>{`
+      <style jsx global>{`
         @page {
           size: A4 portrait;
-          margin: 8mm;
+          margin: 10mm;
         }
 
         .customer-sheet-print {
@@ -239,7 +271,7 @@ function DailyCustomerSheetsPageContent() {
 
           .customer-sheet-print {
             display: block !important;
-            width: 194mm !important;
+            width: 188mm !important;
             margin: 0 auto !important;
             padding: 0 !important;
             background: white !important;
@@ -248,10 +280,10 @@ function DailyCustomerSheetsPageContent() {
           .customer-sheet-page {
             display: block !important;
             box-sizing: border-box !important;
-            width: 194mm !important;
-            height: 281mm !important;
-            min-height: 281mm !important;
-            max-height: 281mm !important;
+            width: 188mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: 276mm !important;
             margin: 0 !important;
             padding: 0 !important;
             overflow: hidden !important;
@@ -283,7 +315,9 @@ function DailyCustomerSheetsPageContent() {
         }
       `}</style>
 
-      <main className="customer-sheet-screen p-5 md:p-7">
+      <div className="customer-sheet-screen">
+        <AppShell>
+          <main className="p-5 md:p-7">
         <div className="mx-auto max-w-5xl">
           <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -409,14 +443,13 @@ function DailyCustomerSheetsPageContent() {
 
                       <span className="font-semibold">
                         {
-                          job.visit
-                            .treatmentName
+                          job.treatmentName
                         }
                       </span>
 
                       <span className="font-bold">
                         £
-                        {job.customer.treatmentPrice.toFixed(
+                        {job.price.toFixed(
                           2,
                         )}
                       </span>
@@ -427,16 +460,18 @@ function DailyCustomerSheetsPageContent() {
             )}
           </section>
         </div>
-      </main>
-
-      </AppShell>
+          </main>
+        </AppShell>
+      </div>
 
       <div className="customer-sheet-print">
         {jobs.map((job) => {
           const nextVisit =
-            getNextProgrammeVisit(
-              job.programme,
-              job.visit,
+            getNextProgrammeVisitForCustomer(
+              programmes,
+              job.customer
+                .customerNumber,
+              selectedDate,
             );
 
           const customerAddress =
@@ -448,7 +483,7 @@ function DailyCustomerSheetsPageContent() {
           const treatmentWording =
             documentWording[
               getTreatmentDocumentWordingKey(
-                job.visit.treatmentName,
+                job.treatmentName,
               )
             ];
 
@@ -752,7 +787,7 @@ function DailyCustomerSheetsPageContent() {
                     }}
                   >
                     £
-                    {job.customer.treatmentPrice.toFixed(
+                    {job.price.toFixed(
                       2,
                     )}
                   </div>
@@ -928,16 +963,26 @@ function PrintHeading({
   );
 }
 
-function getNextProgrammeVisit(
-  programme: CustomerProgramme,
-  currentVisit: ProgrammeVisit,
+function getNextProgrammeVisitForCustomer(
+  programmes: CustomerProgramme[],
+  customerNumber: string,
+  selectedDate: string,
 ) {
   return (
-    programme.visits
+    programmes
+      .filter(
+        (programme) =>
+          programme.customerNumber ===
+          customerNumber,
+      )
+      .flatMap(
+        (programme) =>
+          programme.visits,
+      )
       .filter(
         (visit) =>
           visit.scheduledDate >
-            currentVisit.scheduledDate &&
+            selectedDate &&
           (visit.status ===
             "Scheduled" ||
             visit.status ===

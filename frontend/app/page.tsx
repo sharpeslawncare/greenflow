@@ -1376,6 +1376,10 @@ export default function DashboardPage() {
                 label="Visit Centre"
               />
               <WorkflowLink
+                href={`/daily-paperwork?date=${selectedDate}`}
+                label="Print day's paperwork"
+              />
+              <WorkflowLink
                 href="/actions"
                 label="Action Centre"
               />
@@ -1415,6 +1419,10 @@ export default function DashboardPage() {
                 <WorkflowLink
                   href={`/visit-centre?date=${selectedDate}`}
                   label="Visit Centre"
+                />
+                <WorkflowLink
+                  href={`/daily-paperwork?date=${selectedDate}`}
+                  label="Print paperwork"
                 />
               </div>
             </div>
@@ -1654,6 +1662,10 @@ export default function DashboardPage() {
                 href="/actions"
                 label="Check Action Centre"
               />
+              <WorkflowLink
+                href={`/quickbooks-export?date=${selectedDate}`}
+                label="QuickBooks CSV"
+              />
             </div>
           </section>
 
@@ -1788,12 +1800,21 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              <Link
-                href={`/communications?date=${tomorrowDate}`}
-                className="inline-flex h-11 items-center rounded-xl bg-blue-700 px-5 text-sm font-bold text-white transition hover:bg-blue-800"
-              >
-                Prepare tomorrow&apos;s reminders
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/daily-paperwork?date=${tomorrowDate}`}
+                  className="inline-flex h-11 items-center rounded-xl border border-blue-300 bg-white px-5 text-sm font-bold text-blue-800 transition hover:bg-blue-100"
+                >
+                  Print tomorrow&apos;s paperwork
+                </Link>
+
+                <Link
+                  href={`/communications?date=${tomorrowDate}`}
+                  className="inline-flex h-11 items-center rounded-xl bg-blue-700 px-5 text-sm font-bold text-white transition hover:bg-blue-800"
+                >
+                  Prepare tomorrow&apos;s reminders
+                </Link>
+              </div>
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   type ReactNode,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -85,6 +86,25 @@ type ProductSummary = {
   reorderLevel: number | null;
 };
 
+type StockReconciliationRow = {
+  productId: string;
+  productName: string;
+  productType: string;
+
+  applicationBaseAmount: number;
+  stockBaseAmount: number;
+  baseUnit: "g" | "ml" | "";
+
+  differenceBaseAmount: number;
+  status:
+    | "Matched"
+    | "Mismatch"
+    | "No stock movement"
+    | "No application record";
+};
+
+const STOCK_RECONCILIATION_TOLERANCE_BASE = 1;
+
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
@@ -92,11 +112,15 @@ export default function ChemicalUsagePage() {
   const {
     treatments,
     ready: treatmentsReady,
+    updateTreatment,
   } = useTreatmentStore();
 
   const {
     chemicals,
+    stockMovements,
     ready: chemicalsReady,
+    updateChemical,
+    recordStockMovement,
   } = useChemicalStore();
 
   const {
@@ -127,6 +151,23 @@ export default function ChemicalUsagePage() {
 
   const [message, setMessage] =
     useState("");
+
+  const [
+    correctionOpen,
+    setCorrectionOpen,
+  ] = useState(false);
+
+  const [
+    correctionMethod,
+    setCorrectionMethod,
+  ] = useState<
+    "Full Lawn Spray" | "Spot Spray"
+  >("Full Lawn Spray");
+
+  const [
+    correctionPercentage,
+    setCorrectionPercentage,
+  ] = useState(10);
 
   const usageRows =
     useMemo<UsageRow[]>(() => {
@@ -407,6 +448,328 @@ export default function ChemicalUsagePage() {
       chemicals,
     ]);
 
+  /*
+   * Stock reconciliation deliberately follows the date and product
+   * filters, but not the free-text search. A customer/search filter
+   * would only show part of a day's applications and would therefore
+   * create a false mismatch against the full Visit Centre stock movement.
+   */
+  const reconciliationApplicationRows =
+    useMemo<UsageRow[]>(() => {
+      return treatments
+        .filter(
+          (treatment) =>
+            treatment.status ===
+            "Completed",
+        )
+        .flatMap((treatment) => {
+          const date =
+            getUsageDate(treatment);
+
+          if (
+            (dateFrom &&
+              date < dateFrom) ||
+            (dateTo &&
+              date > dateTo)
+          ) {
+            return [];
+          }
+
+          const customer =
+            customers.find(
+              (item) =>
+                item.customerNumber ===
+                treatment.customerNumber,
+            );
+
+          return getTreatmentApplications(
+            treatment,
+          )
+            .filter(
+              (application) =>
+                Boolean(
+                  application.productName,
+                ) &&
+                (application.actualProductRequired ||
+                  application.productRequired) >
+                  0,
+            )
+            .filter(
+              (application) =>
+                productId === "all" ||
+                application.productId ===
+                  productId,
+            )
+            .map((application) =>
+              createUsageRow(
+                treatment,
+                application,
+                customer?.fullName ??
+                  treatment.customerNumber,
+              ),
+            );
+        });
+    }, [
+      treatments,
+      customers,
+      dateFrom,
+      dateTo,
+      productId,
+    ]);
+
+  const reconciliationRows =
+    useMemo<
+      StockReconciliationRow[]
+    >(() => {
+      const applicationTotals =
+        new Map<
+          string,
+          {
+            productName: string;
+            productType: string;
+            amount: number;
+            baseUnit: "g" | "ml" | "";
+          }
+        >();
+
+      for (
+        const row of
+        reconciliationApplicationRows
+      ) {
+        if (!row.productId) {
+          continue;
+        }
+
+        const baseUnit =
+          getBaseUnit(row.productUnit);
+
+        if (!baseUnit) {
+          continue;
+        }
+
+        const actualAmount =
+          row.actualProductRequired ||
+          row.productRequired;
+
+        const current =
+          applicationTotals.get(
+            row.productId,
+          );
+
+        applicationTotals.set(
+          row.productId,
+          {
+            productName:
+              row.productName,
+            productType:
+              row.productType,
+            amount:
+              (current?.amount ?? 0) +
+              convertToBaseUnit(
+                actualAmount,
+                row.productUnit,
+              ),
+            baseUnit:
+              current?.baseUnit ??
+              baseUnit,
+          },
+        );
+      }
+
+      const stockTotals =
+        new Map<
+          string,
+          {
+            amount: number;
+            baseUnit: "g" | "ml" | "";
+          }
+        >();
+
+      for (
+        const movement of stockMovements
+      ) {
+        const visitCentreUsage =
+          movement.type === "Usage" &&
+          movement.source ===
+            "Visit Centre";
+
+        const applicationCorrection =
+          movement.type ===
+            "Adjustment" &&
+          movement.reference.startsWith(
+            "Application correction",
+          );
+
+        if (
+          !visitCentreUsage &&
+          !applicationCorrection
+        ) {
+          continue;
+        }
+
+        if (
+          (dateFrom &&
+            movement.date <
+              dateFrom) ||
+          (dateTo &&
+            movement.date >
+              dateTo)
+        ) {
+          continue;
+        }
+
+        if (
+          productId !== "all" &&
+          movement.chemicalId !==
+            productId
+        ) {
+          continue;
+        }
+
+        const baseUnit =
+          getBaseUnit(
+            movement.physicalUnit,
+          );
+
+        if (!baseUnit) {
+          continue;
+        }
+
+        const current =
+          stockTotals.get(
+            movement.chemicalId,
+          );
+
+        stockTotals.set(
+          movement.chemicalId,
+          {
+            amount:
+              (current?.amount ?? 0) +
+              convertToBaseUnit(
+                -movement.physicalAmount,
+                movement.physicalUnit,
+              ),
+            baseUnit:
+              current?.baseUnit ??
+              baseUnit,
+          },
+        );
+      }
+
+      const productIds =
+        new Set([
+          ...applicationTotals.keys(),
+          ...stockTotals.keys(),
+        ]);
+
+      return Array.from(productIds)
+        .map((chemicalId) => {
+          const application =
+            applicationTotals.get(
+              chemicalId,
+            );
+
+          const stock =
+            stockTotals.get(
+              chemicalId,
+            );
+
+          const chemical =
+            chemicals.find(
+              (item) =>
+                item.id ===
+                chemicalId,
+            );
+
+          const baseUnit =
+            application?.baseUnit ??
+            stock?.baseUnit ??
+            getBaseUnit(
+              chemical?.packUnit ??
+                "",
+            );
+
+          const applicationAmount =
+            application?.amount ?? 0;
+
+          const stockAmount =
+            stock?.amount ?? 0;
+
+          const difference =
+            stockAmount -
+            applicationAmount;
+
+          let status:
+            StockReconciliationRow["status"];
+
+          if (
+            application &&
+            !stock
+          ) {
+            status =
+              "No stock movement";
+          } else if (
+            !application &&
+            stock
+          ) {
+            status =
+              "No application record";
+          } else if (
+            Math.abs(difference) <=
+            STOCK_RECONCILIATION_TOLERANCE_BASE
+          ) {
+            status = "Matched";
+          } else {
+            status = "Mismatch";
+          }
+
+          return {
+            productId:
+              chemicalId,
+            productName:
+              application
+                ?.productName ??
+              chemical?.name ??
+              chemicalId,
+            productType:
+              application
+                ?.productType ??
+              chemical?.type ??
+              "",
+            applicationBaseAmount:
+              applicationAmount,
+            stockBaseAmount:
+              stockAmount,
+            baseUnit,
+            differenceBaseAmount:
+              difference,
+            status,
+          };
+        })
+        .sort((first, second) =>
+          first.productName.localeCompare(
+            second.productName,
+          ),
+        );
+    }, [
+      reconciliationApplicationRows,
+      stockMovements,
+      chemicals,
+      dateFrom,
+      dateTo,
+      productId,
+    ]);
+
+  const reconciliationMatchedCount =
+    reconciliationRows.filter(
+      (row) =>
+        row.status === "Matched",
+    ).length;
+
+  const reconciliationIssueCount =
+    reconciliationRows.length -
+    reconciliationMatchedCount;
+
   const selectedRow =
     usageRows.find(
       (row) =>
@@ -415,6 +778,61 @@ export default function ChemicalUsagePage() {
     ) ??
     usageRows[0] ??
     null;
+
+  const selectedTreatment =
+    selectedRow
+      ? treatments.find(
+          (treatment) =>
+            treatment.id ===
+            selectedRow.treatmentId,
+        ) ?? null
+      : null;
+
+  const selectedApplication =
+    selectedTreatment &&
+    selectedRow
+      ? getTreatmentApplications(
+          selectedTreatment,
+        ).find(
+          (application) =>
+            application.id ===
+            selectedRow.applicationId,
+        ) ?? null
+      : null;
+
+  const selectedApplicationCorrectable =
+    Boolean(
+      selectedRow &&
+        selectedApplication &&
+        selectedRow.productType
+          .toLowerCase()
+          .includes("herbicide") &&
+        selectedRow.fullLawnProductRequired >
+          0,
+    );
+
+  useEffect(() => {
+    setCorrectionOpen(false);
+
+    if (!selectedRow) {
+      return;
+    }
+
+    const method =
+      selectedRow.applicationMethod ===
+      "Spot Spray"
+        ? "Spot Spray"
+        : "Full Lawn Spray";
+
+    setCorrectionMethod(method);
+    setCorrectionPercentage(
+      method === "Spot Spray"
+        ? normaliseCorrectionPercentage(
+            selectedRow.spotSprayPercentage,
+          )
+        : 10,
+    );
+  }, [selectedRow?.id]);
 
   const totalApplications =
     usageRows.length;
@@ -485,6 +903,316 @@ export default function ChemicalUsagePage() {
     );
   }
 
+  function saveApplicationCorrection() {
+    if (
+      !selectedRow ||
+      !selectedTreatment ||
+      !selectedApplication ||
+      !selectedApplicationCorrectable
+    ) {
+      showMessage(
+        "This application cannot be corrected from Chemical Usage.",
+      );
+      return;
+    }
+
+    const fullLawnAmount =
+      selectedApplication.fullLawnProductRequired >
+      0
+        ? selectedApplication.fullLawnProductRequired
+        : selectedApplication.actualProductRequired ||
+          selectedApplication.productRequired;
+
+    if (fullLawnAmount <= 0) {
+      showMessage(
+        "GreenFlow does not have a saved full-lawn quantity for this application.",
+      );
+      return;
+    }
+
+    const percentage =
+      correctionMethod ===
+      "Spot Spray"
+        ? normaliseCorrectionPercentage(
+            correctionPercentage,
+          )
+        : 100;
+
+    const targetActual =
+      roundToSixDecimals(
+        fullLawnAmount *
+          (percentage / 100),
+      );
+
+    const currentActual =
+      selectedApplication.actualProductRequired ||
+      selectedApplication.productRequired;
+
+    const quantityDifference =
+      targetActual -
+      currentActual;
+
+    const chemical =
+      chemicals.find(
+        (item) =>
+          item.id ===
+          selectedApplication.productId,
+      );
+
+    let nextChemicalStock:
+      number | null = null;
+
+    let stockDifferenceInPackUnit:
+      number | null = null;
+
+    if (
+      Math.abs(quantityDifference) >
+      0.0000001
+    ) {
+      if (!chemical) {
+        showMessage(
+          "The linked Chemical Centre product could not be found, so GreenFlow will not change the historical application without also correcting stock.",
+        );
+        return;
+      }
+
+      if (
+        !Number.isFinite(
+          chemical.packSize,
+        ) ||
+        chemical.packSize <= 0
+      ) {
+        showMessage(
+          `${chemical.name} does not have a valid pack size, so the stock correction cannot be calculated.`,
+        );
+        return;
+      }
+
+      stockDifferenceInPackUnit =
+        convertChemicalAmount(
+          quantityDifference,
+          selectedApplication.productUnit,
+          chemical.packUnit,
+        );
+
+      if (
+        stockDifferenceInPackUnit ===
+        null
+      ) {
+        showMessage(
+          `GreenFlow cannot convert ${selectedApplication.productUnit} to ${chemical.packUnit} for ${chemical.name}. No correction has been saved.`,
+        );
+        return;
+      }
+
+      const packsDifference =
+        stockDifferenceInPackUnit /
+        chemical.packSize;
+
+      nextChemicalStock =
+        roundToSixDecimals(
+          chemical.currentStock -
+            packsDifference,
+        );
+
+      if (
+        nextChemicalStock <
+        -0.000001
+      ) {
+        showMessage(
+          `There is not enough ${chemical.name} in stock to increase the recorded usage by ${formatProductAmount(
+            Math.abs(
+              quantityDifference,
+            ),
+            selectedApplication.productUnit,
+          )}. No correction has been saved.`,
+        );
+        return;
+      }
+
+      nextChemicalStock =
+        Math.max(
+          0,
+          nextChemicalStock,
+        );
+    }
+
+    const currentRatio =
+      fullLawnAmount > 0
+        ? currentActual /
+          fullLawnAmount
+        : 1;
+
+    const targetRatio =
+      percentage / 100;
+
+    const scaleSnapshotValue = (
+      value: number,
+    ) => {
+      if (
+        !Number.isFinite(value) ||
+        value <= 0
+      ) {
+        return 0;
+      }
+
+      if (currentRatio > 0) {
+        return (
+          value *
+          (targetRatio /
+            currentRatio)
+        );
+      }
+
+      return value * targetRatio;
+    };
+
+    const correctedApplication:
+      TreatmentApplication = {
+      ...selectedApplication,
+      applicationMethod:
+        correctionMethod,
+      spotSprayPercentage:
+        percentage,
+      productRequired:
+        targetActual,
+      actualProductRequired:
+        targetActual,
+      waterRequiredLitres:
+        roundToSixDecimals(
+          scaleSnapshotValue(
+            selectedApplication.waterRequiredLitres,
+          ),
+        ),
+      tankFills:
+        roundToSixDecimals(
+          scaleSnapshotValue(
+            selectedApplication.tankFills,
+          ),
+        ),
+      estimatedProductCost:
+        roundToTwoDecimals(
+          scaleSnapshotValue(
+            selectedApplication.estimatedProductCost,
+          ),
+        ),
+    };
+
+    const previousMethod =
+      selectedApplication.applicationMethod ===
+      "Spot Spray"
+        ? `Spot Spray ${formatPercentage(
+            selectedApplication.spotSprayPercentage,
+          )}`
+        : "Full Lawn Spray";
+
+    const nextMethod =
+      correctionMethod ===
+      "Spot Spray"
+        ? `Spot Spray ${formatPercentage(
+            percentage,
+          )}`
+        : "Full Lawn Spray";
+
+    const correctionNote =
+      `Application corrected ${toDateValue(
+        new Date(),
+      )}: ${selectedApplication.productName} · ${previousMethod} → ${nextMethod} · actual quantity ${formatProductAmount(
+        currentActual,
+        selectedApplication.productUnit,
+      )} → ${formatProductAmount(
+        targetActual,
+        selectedApplication.productUnit,
+      )}.`;
+
+    const updatedTreatment:
+      TreatmentRecord = {
+      ...selectedTreatment,
+      applications:
+        selectedTreatment.applications.map(
+          (application) =>
+            application.id ===
+            selectedApplication.id
+              ? correctedApplication
+              : application,
+        ),
+      notes: appendCorrectionNote(
+        selectedTreatment.notes,
+        correctionNote,
+      ),
+    };
+
+    const treatmentResult =
+      updateTreatment(
+        updatedTreatment,
+      );
+
+    if (!treatmentResult.success) {
+      showMessage(
+        treatmentResult.message,
+      );
+      return;
+    }
+
+    if (
+      chemical &&
+      nextChemicalStock !== null &&
+      stockDifferenceInPackUnit !==
+        null &&
+      Math.abs(
+        stockDifferenceInPackUnit,
+      ) > 0.0000001
+    ) {
+      updateChemical({
+        ...chemical,
+        currentStock:
+          nextChemicalStock,
+      });
+
+      const packsDifference =
+        stockDifferenceInPackUnit /
+        chemical.packSize;
+
+      recordStockMovement({
+        chemicalId:
+          chemical.id,
+        type: "Adjustment",
+        packQuantity:
+          -roundToThreeDecimals(
+            packsDifference,
+          ),
+        physicalAmount:
+          -roundToThreeDecimals(
+            stockDifferenceInPackUnit,
+          ),
+        physicalUnit:
+          chemical.packUnit,
+        balanceAfterPacks:
+          roundToThreeDecimals(
+            nextChemicalStock,
+          ),
+        date:
+          selectedRow.date,
+        reference:
+          `Application correction · ${selectedRow.customerNumber}`,
+        notes:
+          `${selectedRow.customerName} · ${selectedRow.treatmentName} · ${previousMethod} → ${nextMethod}.`,
+        source: "Stock Page",
+      });
+    }
+
+    setCorrectionOpen(false);
+
+    showMessage(
+      quantityDifference === 0
+        ? "Application record corrected. No stock adjustment was required."
+        : `Application corrected and stock adjusted by ${formatSignedProductAmount(
+            -quantityDifference,
+            selectedApplication.productUnit,
+          )}.`,
+    );
+  }
+
   function exportCsv() {
     if (
       usageRows.length === 0
@@ -507,6 +1235,10 @@ export default function ChemicalUsagePage() {
       "Area m2",
       "Product Required",
       "Product Unit",
+      "Application Method",
+      "Spot Spray Percentage",
+      "Full Lawn Equivalent",
+      "Actual Product Used",
       "Water Litres",
       "Tank Fills",
       "Estimated Product Cost",
@@ -527,6 +1259,15 @@ export default function ChemicalUsagePage() {
           row.areaSquareMetres,
           row.productRequired,
           row.productUnit,
+          row.applicationMethod,
+          row.applicationMethod === "Spot Spray"
+            ? row.spotSprayPercentage
+            : "",
+          row.applicationMethod === "Spot Spray"
+            ? row.fullLawnProductRequired
+            : "",
+          row.actualProductRequired ||
+            row.productRequired,
           row.waterRequiredLitres,
           row.tankFills,
           row.estimatedProductCost,
@@ -790,6 +1531,157 @@ export default function ChemicalUsagePage() {
             </div>
           </section>
 
+          <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold">
+                  Stock reconciliation
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                  Compares the actual product quantities saved against completed customer treatments with the Usage movements automatically deducted by Visit Centre for the selected date range.
+                </p>
+
+                {search.trim() && (
+                  <p className="mt-2 text-xs font-semibold text-amber-700">
+                    The free-text search is not applied to this audit, so a customer search cannot create a false stock mismatch.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {reconciliationRows.length ===
+                0 ? (
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
+                    No usage to reconcile
+                  </span>
+                ) : (
+                  <>
+                    <span className="rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-800">
+                      {reconciliationMatchedCount} matched
+                    </span>
+
+                    {reconciliationIssueCount >
+                      0 && (
+                      <span className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800">
+                        {reconciliationIssueCount} need review
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {reconciliationRows.length ===
+            0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">
+                There are no completed application records or Visit Centre usage movements inside the selected dates.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-[1.4fr_150px_150px_150px_150px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                  <span>Product</span>
+                  <span>Customer records</span>
+                  <span>Stock deducted</span>
+                  <span>Difference</span>
+                  <span>Status</span>
+                </div>
+
+                <div>
+                  {reconciliationRows.map(
+                    (row) => {
+                      const applicationDisplay =
+                        formatBaseAmount(
+                          row.applicationBaseAmount,
+                          row.baseUnit,
+                        );
+
+                      const stockDisplay =
+                        formatBaseAmount(
+                          row.stockBaseAmount,
+                          row.baseUnit,
+                        );
+
+                      const differenceDisplay =
+                        formatBaseAmount(
+                          Math.abs(
+                            row.differenceBaseAmount,
+                          ),
+                          row.baseUnit,
+                        );
+
+                      return (
+                        <div
+                          key={
+                            row.productId
+                          }
+                          className="grid grid-cols-[1.4fr_150px_150px_150px_150px] items-center gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-0"
+                        >
+                          <div>
+                            <div className="font-bold text-slate-900">
+                              {
+                                row.productName
+                              }
+                            </div>
+
+                            <div className="mt-1 text-xs text-slate-500">
+                              {
+                                row.productType ||
+                                "Uncategorised"
+                              }
+                            </div>
+                          </div>
+
+                          <span className="font-semibold">
+                            {formatSummaryAmount(
+                              applicationDisplay.amount,
+                              applicationDisplay.unit,
+                            )}
+                          </span>
+
+                          <span className="font-semibold">
+                            {formatSummaryAmount(
+                              stockDisplay.amount,
+                              stockDisplay.unit,
+                            )}
+                          </span>
+
+                          <span
+                            className={`font-semibold ${
+                              row.status ===
+                              "Matched"
+                                ? "text-slate-500"
+                                : "text-amber-800"
+                            }`}
+                          >
+                            {row.status ===
+                            "Matched"
+                              ? "—"
+                              : `${
+                                  row.differenceBaseAmount >
+                                  0
+                                    ? "Stock over by "
+                                    : "Stock short by "
+                                }${formatSummaryAmount(
+                                  differenceDisplay.amount,
+                                  differenceDisplay.unit,
+                                )}`}
+                          </span>
+
+                          <ReconciliationStatusBadge
+                            status={
+                              row.status
+                            }
+                          />
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+
           <section className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -992,8 +1884,13 @@ export default function ChemicalUsagePage() {
                         <DetailItem
                           label="Application method"
                           value={
-                            selectedRow.applicationMethod ||
-                            "Not applicable"
+                            selectedRow.applicationMethod ===
+                            "Spot Spray"
+                              ? `Spot Spray · ${formatPercentage(
+                                  selectedRow.spotSprayPercentage,
+                                )}`
+                              : selectedRow.applicationMethod ||
+                                "Not applicable"
                           }
                         />
 
@@ -1020,6 +1917,16 @@ export default function ChemicalUsagePage() {
                             selectedRow.productUnit,
                           )}
                         />
+
+                        {selectedRow.applicationMethod ===
+                          "Spot Spray" && (
+                          <DetailItem
+                            label="Spot-spray percentage"
+                            value={formatPercentage(
+                              selectedRow.spotSprayPercentage,
+                            )}
+                          />
+                        )}
 
                         {selectedRow.applicationMethod ===
                           "Spot Spray" && (
@@ -1076,6 +1983,195 @@ export default function ChemicalUsagePage() {
                         />
                       </DetailGrid>
                     </Section>
+
+                    {selectedApplicationCorrectable && (
+                      <Section title="Correct application">
+                        {!correctionOpen ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="max-w-xl text-sm leading-6 text-slate-600">
+                              Use this only when the completed record was entered incorrectly. GreenFlow will update the customer&apos;s application record and make the matching stock adjustment.
+                            </p>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCorrectionOpen(
+                                  true,
+                                )
+                              }
+                              className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 transition hover:bg-amber-100"
+                            >
+                              Correct application
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                              <div className="font-bold text-slate-900">
+                                Currently recorded
+                              </div>
+
+                              <div className="mt-1 text-slate-600">
+                                {selectedRow.applicationMethod ===
+                                "Spot Spray"
+                                  ? `Spot Spray · ${formatPercentage(
+                                      selectedRow.spotSprayPercentage,
+                                    )}`
+                                  : "Full Lawn Spray"}{" "}
+                                ·{" "}
+                                {formatProductAmount(
+                                  selectedRow.actualProductRequired ||
+                                    selectedRow.productRequired,
+                                  selectedRow.productUnit,
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCorrectionMethod(
+                                    "Full Lawn Spray",
+                                  )
+                                }
+                                className={`rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${
+                                  correctionMethod ===
+                                  "Full Lawn Spray"
+                                    ? "border-green-600 bg-green-50 text-green-900"
+                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                }`}
+                              >
+                                Full Lawn Spray
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCorrectionMethod(
+                                    "Spot Spray",
+                                  )
+                                }
+                                className={`rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${
+                                  correctionMethod ===
+                                  "Spot Spray"
+                                    ? "border-blue-600 bg-blue-50 text-blue-900"
+                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                }`}
+                              >
+                                Spot Spray
+                              </button>
+                            </div>
+
+                            {correctionMethod ===
+                              "Spot Spray" && (
+                              <div className="mt-4">
+                                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Approx. lawn sprayed
+                                </div>
+
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {[5, 10, 15, 20, 25].map(
+                                    (percentage) => (
+                                      <button
+                                        key={
+                                          percentage
+                                        }
+                                        type="button"
+                                        onClick={() =>
+                                          setCorrectionPercentage(
+                                            percentage,
+                                          )
+                                        }
+                                        className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                                          correctionPercentage ===
+                                          percentage
+                                            ? "border-blue-600 bg-blue-600 text-white"
+                                            : "border-slate-300 bg-white text-slate-700"
+                                        }`}
+                                      >
+                                        {
+                                          percentage
+                                        }
+                                        %
+                                      </button>
+                                    ),
+                                  )}
+
+                                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                    Custom
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={100}
+                                      step={1}
+                                      value={
+                                        correctionPercentage
+                                      }
+                                      onChange={(
+                                        event,
+                                      ) =>
+                                        setCorrectionPercentage(
+                                          normaliseCorrectionPercentage(
+                                            Number(
+                                              event
+                                                .target
+                                                .value,
+                                            ),
+                                          ),
+                                        )
+                                      }
+                                      className="w-20 rounded-lg border border-slate-300 px-2 py-2"
+                                    />
+                                    %
+                                  </label>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                              Corrected quantity:{" "}
+                              <strong>
+                                {formatProductAmount(
+                                  selectedRow.fullLawnProductRequired *
+                                    (correctionMethod ===
+                                    "Spot Spray"
+                                      ? normaliseCorrectionPercentage(
+                                          correctionPercentage,
+                                        ) / 100
+                                      : 1),
+                                  selectedRow.productUnit,
+                                )}
+                              </strong>
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={
+                                  saveApplicationCorrection
+                                }
+                                className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#125b2f]"
+                              >
+                                Save correction
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCorrectionOpen(
+                                    false,
+                                  )
+                                }
+                                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </Section>
+                    )}
 
                     <Link
                       href={`/customers/${selectedRow.customerNumber}`}
@@ -1194,9 +2290,12 @@ export default function ChemicalUsagePage() {
                                   : "bg-green-100 text-green-800"
                               }`}
                             >
-                              {
-                                row.applicationMethod
-                              }
+                              {row.applicationMethod ===
+                              "Spot Spray"
+                                ? `Spot Spray · ${formatPercentage(
+                                    row.spotSprayPercentage,
+                                  )}`
+                                : row.applicationMethod}
                             </span>
                           )}
                         </div>
@@ -1211,7 +2310,8 @@ export default function ChemicalUsagePage() {
 
                       <span>
                         {formatProductAmount(
-                          row.productRequired,
+                          row.actualProductRequired ||
+                            row.productRequired,
                           row.productUnit,
                         )}
                       </span>
@@ -1457,6 +2557,139 @@ function formatProductAmount(
   )} ${unit}`;
 }
 
+function normaliseCorrectionPercentage(
+  value: number,
+) {
+  if (!Number.isFinite(value)) {
+    return 10;
+  }
+
+  return Math.min(
+    100,
+    Math.max(
+      1,
+      Math.round(value),
+    ),
+  );
+}
+
+function convertChemicalAmount(
+  amount: number,
+  fromUnit: string,
+  toUnit: string,
+): number | null {
+  if (fromUnit === toUnit) {
+    return amount;
+  }
+
+  if (
+    fromUnit === "ml" &&
+    toUnit === "L"
+  ) {
+    return amount / 1000;
+  }
+
+  if (
+    fromUnit === "L" &&
+    toUnit === "ml"
+  ) {
+    return amount * 1000;
+  }
+
+  if (
+    fromUnit === "g" &&
+    toUnit === "kg"
+  ) {
+    return amount / 1000;
+  }
+
+  if (
+    fromUnit === "kg" &&
+    toUnit === "g"
+  ) {
+    return amount * 1000;
+  }
+
+  return null;
+}
+
+function appendCorrectionNote(
+  existing: string,
+  note: string,
+) {
+  const cleanExisting =
+    existing.trim();
+
+  return cleanExisting
+    ? `${cleanExisting}\n${note}`
+    : note;
+}
+
+function formatSignedProductAmount(
+  amount: number,
+  unit: string,
+) {
+  const prefix =
+    amount > 0
+      ? "+"
+      : amount < 0
+        ? "−"
+        : "";
+
+  return `${prefix}${formatProductAmount(
+    Math.abs(amount),
+    unit,
+  )}`;
+}
+
+function roundToSixDecimals(
+  value: number,
+) {
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        1000000,
+    ) / 1000000
+  );
+}
+
+function roundToThreeDecimals(
+  value: number,
+) {
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        1000,
+    ) / 1000
+  );
+}
+
+function roundToTwoDecimals(
+  value: number,
+) {
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        100,
+    ) / 100
+  );
+}
+
+function formatPercentage(
+  value: number,
+) {
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+
+  return `${value.toFixed(
+    value % 1 === 0 ? 0 : 1,
+  )}%`;
+}
+
 function csvValue(
   value:
     | string
@@ -1524,6 +2757,28 @@ function formatDate(
       year: "numeric",
     },
   ).format(parseDate(value));
+}
+
+function ReconciliationStatusBadge({
+  status,
+}: {
+  status:
+    StockReconciliationRow["status"];
+}) {
+  const className =
+    status === "Matched"
+      ? "bg-green-100 text-green-800"
+      : status === "Mismatch"
+        ? "bg-amber-100 text-amber-800"
+        : "bg-red-100 text-red-800";
+
+  return (
+    <span
+      className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${className}`}
+    >
+      {status}
+    </span>
+  );
 }
 
 function Field({

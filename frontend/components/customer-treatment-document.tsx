@@ -1,4 +1,4 @@
-"use client";
+
 
 import type {
   CSSProperties,
@@ -72,8 +72,8 @@ export function CustomerTreatmentDocumentPrintStyles() {
 
         .customer-treatment-document {
           box-sizing: border-box !important;
-          width: 190mm !important;
-          max-width: 190mm !important;
+          width: 188mm !important;
+          max-width: 188mm !important;
           min-height: 0 !important;
           margin: 0 auto !important;
           padding: 0 !important;
