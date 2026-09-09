@@ -173,6 +173,9 @@ export default function VisitCentrePage() {
 
 function VisitCentrePageContent() {
   const searchParams = useSearchParams();
+
+  const closeWorkflow =
+    searchParams.get("workflow") === "close";
   const requestedDate = searchParams.get("date");
   const requestedCustomer = searchParams.get("customer");
 
@@ -2179,7 +2182,7 @@ function VisitCentrePageContent() {
           <header className="mb-4 flex flex-wrap items-end justify-between gap-4">
             <div>
               <Link
-                href="/jobs"
+                href={`/jobs?date=${selectedDate}`}
                 className="text-sm font-semibold text-[#176b37] hover:underline"
               >
                 ← Back to Jobs
@@ -2223,6 +2226,59 @@ function VisitCentrePageContent() {
               </div>
             </Field>
           </header>
+
+          {closeWorkflow && (
+            <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                    End-of-day workflow
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">
+                    Step 1 of 4 · Complete today&apos;s work
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                    Record the day&apos;s normal outcome here, then move through chemicals, QuickBooks and final close.
+                  </p>
+                </div>
+
+                {jobs.length > 0 && (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800">
+                    {jobs.length} visit{jobs.length === 1 ? "" : "s"} remaining
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <WorkflowProgressCard number="1" title="Complete work" state="current" />
+                <WorkflowProgressCard number="2" title="Check chemicals" state={jobs.length === 0 ? "next" : "later"} />
+                <WorkflowProgressCard number="3" title="QuickBooks" state="later" />
+                <WorkflowProgressCard number="4" title="Close day" state="later" />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                <div>
+                  <div className="font-bold text-green-950">
+                    {jobs.length === 0 ? "All scheduled work has an outcome" : "Complete the remaining work"}
+                  </div>
+                  <div className="mt-1 text-sm text-green-800">
+                    {jobs.length === 0
+                      ? "The next step is the day&apos;s chemical and stock check."
+                      : "Use Complete All for the normal day, then adjust only the exceptions."}
+                  </div>
+                </div>
+
+                {jobs.length === 0 && (
+                  <Link
+                    href={`/chemical-usage?date=${selectedDate}&workflow=close`}
+                    className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                  >
+                    Next: Check chemical usage →
+                  </Link>
+                )}
+              </div>
+            </section>
+          )}
 
           {seasonRolloverWarning && (
             <section
@@ -2525,12 +2581,21 @@ function VisitCentrePageContent() {
                   </Link>
                 )}
 
-                <Link
-                  href="/chemical-usage"
-                  className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
-                >
-                  Review product usage
-                </Link>
+                {jobs.length === 0 ? (
+                  <Link
+                    href={`/chemical-usage?date=${selectedDate}&workflow=close`}
+                    className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                  >
+                    Next: Check chemical usage →
+                  </Link>
+                ) : (
+                  <Link
+                    href={`/chemical-usage?date=${selectedDate}`}
+                    className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+                  >
+                    Review product usage
+                  </Link>
+                )}
               </div>
             </section>
           )}
@@ -4748,6 +4813,56 @@ function roundToThreeDecimals(value: number) {
 function roundToTwoDecimals(value: number) {
   return (
     Math.round((value + Number.EPSILON) * 100) / 100
+  );
+}
+
+function WorkflowProgressCard({
+  number,
+  title,
+  state,
+}: {
+  number: string;
+  title: string;
+  state: "done" | "current" | "next" | "later";
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        state === "done"
+          ? "border-green-200 bg-green-50"
+          : state === "current"
+            ? "border-[#338b45] bg-green-50"
+            : state === "next"
+              ? "border-blue-200 bg-blue-50"
+              : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+            state === "done" || state === "current"
+              ? "bg-[#176b37] text-white"
+              : state === "next"
+                ? "bg-blue-700 text-white"
+                : "bg-slate-200 text-slate-600"
+          }`}
+        >
+          {state === "done" ? "✓" : number}
+        </span>
+        <div>
+          <div className="text-sm font-bold text-slate-950">{title}</div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-500">
+            {state === "done"
+              ? "Done"
+              : state === "current"
+                ? "Current step"
+                : state === "next"
+                  ? "Next"
+                  : "Later"}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

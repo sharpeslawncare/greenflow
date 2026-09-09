@@ -56,6 +56,8 @@ type UpcomingWork = {
   jobType: "programme" | "additional";
   preferredContact: CommunicationChannel;
   destination: string;
+  lockedGate: boolean;
+  dogOnProperty: boolean;
 };
 
 const STORAGE_KEY =
@@ -111,6 +113,9 @@ export default function CommunicationsPage() {
   const [selectedKeys, setSelectedKeys] =
     useState<string[]>([]);
 
+  const [preparationWorkflow, setPreparationWorkflow] =
+    useState(false);
+
   useEffect(() => {
     try {
       const saved =
@@ -156,6 +161,9 @@ export default function CommunicationsPage() {
     const requestedDate =
       params.get("date");
 
+    const requestedWorkflow =
+      params.get("workflow");
+
     if (requestedCustomer) {
       setCustomerFilter(
         requestedCustomer,
@@ -170,6 +178,10 @@ export default function CommunicationsPage() {
         requestedDate,
       );
     }
+
+    setPreparationWorkflow(
+      requestedWorkflow === "prepare",
+    );
 
     setRecordsReady(true);
   }, []);
@@ -254,6 +266,10 @@ export default function CommunicationsPage() {
                     getDestination(
                       customer,
                     ),
+                  lockedGate:
+                    Boolean(customer.lockedGate),
+                  dogOnProperty:
+                    Boolean(customer.dogOnProperty),
                 }),
               );
           },
@@ -303,6 +319,10 @@ export default function CommunicationsPage() {
                     getDestination(
                       customer,
                     ),
+                  lockedGate:
+                    Boolean(customer.lockedGate),
+                  dogOnProperty:
+                    Boolean(customer.dogOnProperty),
                 }),
               );
           },
@@ -482,6 +502,23 @@ export default function CommunicationsPage() {
       (record) =>
         record.status ===
         "Sent",
+    ).length;
+
+  const accessAttentionCount =
+    dateCandidates.filter(
+      (item) =>
+        item.lockedGate ||
+        item.dogOnProperty,
+    ).length;
+
+  const dealtWithForDateCount =
+    dateCandidates.filter((item) =>
+      hasExistingReminder(records, item),
+    ).length;
+
+  const missingContactForDateCount =
+    dateCandidates.filter(
+      (item) => !item.destination,
     ).length;
 
   const ready =
@@ -695,26 +732,24 @@ export default function CommunicationsPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-[#176b37]">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
                 Customer communications
-              </p>
-
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Visit Notifications
               </h1>
-
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Prepare and track customer reminders from the work already scheduled in GreenFlow.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Deal with access reminders for the selected working day, then keep the communication record accurate.
               </p>
             </div>
 
             <Link
-              href="/jobs"
+              href={`/?date=${workingDate}`}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Open scheduled jobs
+              ← Dashboard
             </Link>
           </header>
 
@@ -724,175 +759,69 @@ export default function CommunicationsPage() {
             </div>
           )}
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard
-              label="Upcoming work"
-              value={String(
-                reminderCandidates.length,
-              )}
-              detail="Matching scheduled visits"
-            />
+          {preparationWorkflow && (
+            <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                    Prepare the working day
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">
+                    Step 1 of 3 · Contact access customers
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                    Review the customers who need access reminders for {formatDateWithDay(workingDate)}.
+                  </p>
+                </div>
+              </div>
 
-            <SummaryCard
-              label="Queued"
-              value={String(
-                queuedCount,
-              )}
-              detail="Waiting to be contacted"
-            />
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <WorkflowProgressCard number="1" title="Contact customers" state="current" />
+                <WorkflowProgressCard number="2" title="Check route" state="later" />
+                <WorkflowProgressCard number="3" title="Print pack" state="later" />
+              </div>
 
-            <SummaryCard
-              label="Sent"
-              value={String(
-                sentCount,
-              )}
-              detail="Marked as sent"
-            />
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                <div>
+                  <div className="font-bold text-green-950">
+                    {accessAttentionCount === 0
+                      ? "No access alerts on this working day"
+                      : `${accessAttentionCount} customer${accessAttentionCount === 1 ? "" : "s"} with an access alert`}
+                  </div>
+                  <div className="mt-1 text-sm text-green-800">
+                    When the customers you need to contact are dealt with, continue to the saved route.
+                  </div>
+                </div>
 
-            <SummaryCard
-              label="Customer filter"
-              value={
-                customerFilter ||
-                "All"
-              }
-              detail={
-                customerFilter
-                  ? "Customer-specific view"
-                  : "All active customers"
-              }
-            />
-          </section>
-
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="grid gap-3 md:grid-cols-[1fr_220px_220px_auto] md:items-end">
-              <Field label="Search">
-                <input
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(
-                      event.target.value,
-                    )
-                  }
-                  placeholder="Customer, number or treatment"
-                  className={inputClass}
-                />
-              </Field>
-
-              <Field label="Customer">
-                <select
-                  value={
-                    customerFilter
-                  }
-                  onChange={(event) =>
-                    setCustomerFilter(
-                      event.target.value,
-                    )
-                  }
-                  className={inputClass}
+                <Link
+                  href={`/routes?date=${workingDate}&workflow=prepare`}
+                  className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#125b2f]"
                 >
-                  <option value="">
-                    All customers
-                  </option>
+                  Next: Check route →
+                </Link>
+              </div>
+            </section>
+          )}
 
-                  {customers
-                    .filter(
-                      (customer) =>
-                        customer.status ===
-                        "Active",
-                    )
-                    .map(
-                      (customer) => (
-                        <option
-                          key={
-                            customer.customerNumber
-                          }
-                          value={
-                            customer.customerNumber
-                          }
-                        >
-                          {
-                            customer.customerNumber
-                          }{" "}
-                          ·{" "}
-                          {
-                            customer.fullName
-                          }
-                        </option>
-                      ),
-                    )}
-                </select>
-              </Field>
-
-              <Field label="History status">
-                <select
-                  value={
-                    statusFilter
-                  }
-                  onChange={(event) =>
-                    setStatusFilter(
-                      event.target
-                        .value as
-                        | "All"
-                        | CommunicationStatus,
-                    )
-                  }
-                  className={inputClass}
-                >
-                  <option value="All">
-                    All statuses
-                  </option>
-                  <option value="Queued">
-                    Queued
-                  </option>
-                  <option value="Sent">
-                    Sent
-                  </option>
-                  <option value="Failed">
-                    Failed
-                  </option>
-                  <option value="Cancelled">
-                    Cancelled
-                  </option>
-                </select>
-              </Field>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setCustomerFilter("");
-                  setStatusFilter(
-                    "All",
-                  );
-                }}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-              >
-                Clear filters
-              </button>
-            </div>
-          </section>
-
-          <section className="mt-4 rounded-2xl border border-green-200 bg-green-50/60 p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-green-950">
-                  Daily reminder batch
-                </h2>
-                <p className="mt-1 text-sm text-green-800">
-                  Choose a working date, review the customers due that day, then queue the selected reminders together.
-                </p>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Working date
+                </div>
+                <div className="mt-1 text-xl font-bold text-slate-950">
+                  {formatDateWithDay(workingDate)}
+                </div>
               </div>
 
               <div className="min-w-[240px]">
-                <Field label="Working date">
+                <Field label="Change date">
                   <input
                     type="date"
                     value={workingDate}
                     min={getTodayDateValue()}
                     onChange={(event) => {
-                      setWorkingDate(
-                        event.target.value,
-                      );
+                      setWorkingDate(event.target.value);
                       setSelectedKeys([]);
                     }}
                     className={inputClass}
@@ -901,53 +830,60 @@ export default function CommunicationsPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-green-200 bg-white p-4">
-              <div className="text-sm text-slate-700">
-                <strong>{dateCandidates.length}</strong>{" "}
-                scheduled ·{" "}
-                <strong>{selectableDateCandidates.length}</strong>{" "}
-                available to queue ·{" "}
-                <strong>{selectedDateCandidates.length}</strong>{" "}
-                selected
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                label="Scheduled"
+                value={String(dateCandidates.length)}
+                detail="Visits on this working date"
+              />
+              <SummaryCard
+                label="Access alerts"
+                value={String(accessAttentionCount)}
+                detail="Locked gate or dog alert"
+              />
+              <SummaryCard
+                label="Already dealt with"
+                value={String(dealtWithForDateCount)}
+                detail="Reminder queued or sent"
+              />
+              <SummaryCard
+                label="Missing contact"
+                value={String(missingContactForDateCount)}
+                detail="Needs customer detail updated"
+              />
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-green-200 bg-green-50/60 p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                  Working-day contacts
+                </div>
+                <h2 className="mt-1 text-lg font-bold text-green-950">
+                  Who needs contacting?
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm text-green-800">
+                  Access warnings are shown prominently. You can still queue any other scheduled customer when needed.
+                </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={selectAllForDate}
-                  disabled={
-                    selectableDateCandidates.length ===
-                    0
-                  }
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={selectableDateCandidates.length === 0}
+                  className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Select all available
                 </button>
-
                 <button
                   type="button"
-                  onClick={clearSelection}
-                  disabled={
-                    selectedKeys.length ===
-                    0
-                  }
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={queueSelectedReminders}
+                  disabled={selectedDateCandidates.length === 0}
+                  className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  Clear selection
-                </button>
-
-                <button
-                  type="button"
-                  onClick={
-                    queueSelectedReminders
-                  }
-                  disabled={
-                    selectedDateCandidates.length ===
-                    0
-                  }
-                  className="rounded-lg bg-[#176b37] px-4 py-2 text-xs font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  Queue selected reminders
+                  Queue selected ({selectedDateCandidates.length})
                 </button>
               </div>
             </div>
@@ -958,84 +894,174 @@ export default function CommunicationsPage() {
                   No scheduled visits are due on {formatDateWithDay(workingDate)}.
                 </EmptyState>
               ) : (
-                dateCandidates.map((item) => {
-                  const existing =
-                    hasExistingReminder(
-                      records,
-                      item,
-                    );
+                [...dateCandidates]
+                  .sort((first, second) => {
+                    const firstAlert =
+                      first.lockedGate || first.dogOnProperty ? 1 : 0;
+                    const secondAlert =
+                      second.lockedGate || second.dogOnProperty ? 1 : 0;
+                    return secondAlert - firstAlert;
+                  })
+                  .map((item) => {
+                    const existing =
+                      hasExistingReminder(records, item);
+                    const missingContact = !item.destination;
+                    const selectable = !existing && !missingContact;
+                    const accessAlert =
+                      item.lockedGate || item.dogOnProperty;
 
-                  const missingContact =
-                    !item.destination;
+                    return (
+                      <label
+                        key={item.key}
+                        className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${
+                          accessAlert
+                            ? "border-amber-300 bg-amber-50"
+                            : selectable
+                              ? "cursor-pointer border-green-200 bg-white"
+                              : "border-slate-200 bg-slate-50"
+                        } ${selectable ? "cursor-pointer" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedKeys.includes(item.key)}
+                          disabled={!selectable}
+                          onChange={() => toggleSelected(item.key)}
+                          className="h-4 w-4 accent-[#176b37]"
+                        />
 
-                  const selectable =
-                    !existing &&
-                    !missingContact;
+                        <div className="min-w-[200px] flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              href={`/customers/${item.customerNumber}`}
+                              onClick={(event) => event.stopPropagation()}
+                              className="font-bold text-slate-950 hover:text-[#176b37] hover:underline"
+                            >
+                              {item.customerName}
+                            </Link>
+                            {item.lockedGate && (
+                              <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-900">
+                                Locked gate
+                              </span>
+                            )}
+                            {item.dogOnProperty && (
+                              <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-900">
+                                Dog on property
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            Customer {item.customerNumber} · {item.treatmentName}
+                          </div>
+                        </div>
 
-                  return (
-                    <label
-                      key={item.key}
-                      className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${
-                        selectable
-                          ? "cursor-pointer border-green-200 bg-white"
-                          : "border-slate-200 bg-slate-50"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedKeys.includes(
-                          item.key,
+                        <WorkTypeBadge type={item.jobType} />
+
+                        <div className="min-w-[180px] text-sm">
+                          <span className="font-semibold">
+                            {item.preferredContact}
+                          </span>
+                          <span className="text-slate-500">
+                            {" · "}
+                            {item.destination || "No contact detail"}
+                          </span>
+                        </div>
+
+                        {existing ? (
+                          <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
+                            Already queued/sent
+                          </span>
+                        ) : missingContact ? (
+                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
+                            Missing contact detail
+                          </span>
+                        ) : accessAlert ? (
+                          <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-900">
+                            Access reminder
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-800">
+                            Optional reminder
+                          </span>
                         )}
-                        disabled={!selectable}
-                        onChange={() =>
-                          toggleSelected(
-                            item.key,
-                          )
-                        }
-                        className="h-4 w-4 accent-[#176b37]"
-                      />
-
-                      <div className="min-w-[180px] flex-1">
-                        <div className="font-bold text-slate-900">
-                          {item.customerName}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          Customer {item.customerNumber} · {item.treatmentName}
-                        </div>
-                      </div>
-
-                      <WorkTypeBadge
-                        type={item.jobType}
-                      />
-
-                      <div className="min-w-[180px] text-sm">
-                        <span className="font-semibold">
-                          {item.preferredContact}
-                        </span>
-                        <span className="text-slate-500">
-                          {" · "}
-                          {item.destination ||
-                            "No contact detail"}
-                        </span>
-                      </div>
-
-                      {existing ? (
-                        <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
-                          Already queued/sent
-                        </span>
-                      ) : missingContact ? (
-                        <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
-                          Missing contact detail
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-800">
-                          Ready
-                        </span>
-                      )}
-                    </label>
-                  );
-                })
+                      </label>
+                    );
+                  })
               )}
+            </div>
+
+            {selectedKeys.length > 0 && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-xs font-bold text-slate-600 hover:underline"
+                >
+                  Clear selection
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="grid gap-3 md:grid-cols-[1fr_220px_220px_auto] md:items-end">
+              <Field label="Search records">
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Customer, number or treatment"
+                  className={inputClass}
+                />
+              </Field>
+
+              <Field label="Customer">
+                <select
+                  value={customerFilter}
+                  onChange={(event) => setCustomerFilter(event.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">All customers</option>
+                  {customers
+                    .filter((customer) => customer.status === "Active")
+                    .map((customer) => (
+                      <option
+                        key={customer.customerNumber}
+                        value={customer.customerNumber}
+                      >
+                        {customer.customerNumber} · {customer.fullName}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+
+              <Field label="History status">
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(
+                      event.target.value as "All" | CommunicationStatus,
+                    )
+                  }
+                  className={inputClass}
+                >
+                  <option value="All">All statuses</option>
+                  <option value="Queued">Queued</option>
+                  <option value="Sent">Sent</option>
+                  <option value="Failed">Failed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </Field>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setCustomerFilter("");
+                  setStatusFilter("All");
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+              >
+                Clear filters
+              </button>
             </div>
           </section>
 
@@ -1050,7 +1076,7 @@ export default function CommunicationsPage() {
                 </p>
               </div>
 
-              <div className="max-h-[68vh] overflow-y-auto p-4">
+              <div className="p-4">
                 {reminderCandidates.length ===
                 0 ? (
                   <EmptyState>
@@ -1169,7 +1195,7 @@ export default function CommunicationsPage() {
                 </p>
               </div>
 
-              <div className="max-h-[68vh] overflow-y-auto p-4">
+              <div className="p-4">
                 {filteredRecords.length ===
                 0 ? (
                   <EmptyState>
@@ -1319,9 +1345,8 @@ export default function CommunicationsPage() {
             </article>
           </section>
 
-          <section className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-            <strong>Stage 1:</strong>{" "}
-            GreenFlow prepares and records the reminders, but it does not yet send SMS or email externally. That keeps the customer record accurate while we decide later whether you actually need an SMS/email provider integration.
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+            GreenFlow prepares and records reminders here. SMS and email are opened in your normal phone or email app, so a communication is only marked sent when you confirm it.
           </section>
         </div>
       </main>
@@ -1729,6 +1754,48 @@ function StatusBadge({
     >
       {status}
     </span>
+  );
+}
+
+function WorkflowProgressCard({
+  number,
+  title,
+  state,
+}: {
+  number: string;
+  title: string;
+  state: "done" | "current" | "later";
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        state === "done"
+          ? "border-green-200 bg-green-50"
+          : state === "current"
+            ? "border-[#338b45] bg-green-50"
+            : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+            state === "done"
+              ? "bg-[#176b37] text-white"
+              : state === "current"
+                ? "bg-[#176b37] text-white"
+                : "bg-slate-200 text-slate-600"
+          }`}
+        >
+          {state === "done" ? "✓" : number}
+        </span>
+        <div>
+          <div className="text-sm font-bold text-slate-950">{title}</div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-500">
+            {state === "done" ? "Done" : state === "current" ? "Current step" : "Next"}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

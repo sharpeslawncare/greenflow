@@ -575,210 +575,197 @@ function JobsPageContent() {
 
       <main className="jobs-screen p-5 md:p-7">
         <div className="mx-auto max-w-[1500px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
-
-              <h1 className="mt-2 text-3xl font-bold">
-                Today&apos;s Jobs
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Schedule
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+                Jobs
               </h1>
-
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Review the scheduled
-                workload, notify customers,
-                open the Visit Centre and
-                print a compact working job
-                sheet for the selected day.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Review the selected working day in saved route order, then move into route planning or Visit Centre.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="block">
-                <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Working date
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={
-                      selectedDate
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setSelectedDate(
-                        event.target
-                          .value,
-                      )
-                    }
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedDate(
-                        getTodayDateValue(),
-                      )
-                    }
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-                  >
-                    Today
-                  </button>
-                </div>
-              </label>
-
-              <button
-                type="button"
-                onClick={() =>
-                  window.print()
-                }
-                disabled={
-                  scheduledJobs.length ===
-                  0
-                }
-                className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
-              >
-                Print Daily Job Sheet
-              </button>
-
-              <Link
-                href={`/jobs/print?date=${selectedDate}${
-                  requestedGroup > 0
-                    ? `&group=${requestedGroup}`
-                    : ""
-                }${
-                  requestedVan > 0
-                    ? `&van=${requestedVan}`
-                    : ""
-                }`}
-                className={`rounded-xl border border-[#338b45] bg-white px-5 py-2.5 text-sm font-bold text-[#176b37] hover:bg-green-50 ${
-                  scheduledJobs.length === 0
-                    ? "pointer-events-none opacity-50"
-                    : ""
-                }`}
-              >
-                Print Customer Sheets
-              </Link>
-
-              <Link
-                href="/additional-jobs"
-                className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
-              >
-                Additional Jobs Planner
-              </Link>
-
-              <Link
-                href={`/communications?date=${selectedDate}`}
-                className={`rounded-xl border border-violet-300 bg-violet-50 px-5 py-2.5 text-sm font-bold text-violet-800 hover:bg-violet-100 ${
-                  scheduledJobs.length === 0
-                    ? "pointer-events-none opacity-50"
-                    : ""
-                }`}
-              >
-                Notify Customers
-              </Link>
-
-              <Link
-                href={`/routes?date=${selectedDate}`}
-                className="rounded-xl border border-blue-300 bg-blue-50 px-5 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100"
-              >
-                Manage Route Order
-              </Link>
-
-              <Link
-                href={`/visit-centre?date=${selectedDate}${
-                  requestedGroup > 0
-                    ? `&group=${requestedGroup}`
-                    : ""
-                }${
-                  requestedVan > 0
-                    ? `&van=${requestedVan}`
-                    : ""
-                }`}
-                className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
-              >
-                Open Visit Centre
-              </Link>
-            </div>
+            <Link
+              href={`/?date=${selectedDate}`}
+              className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              ← Dashboard
+            </Link>
           </header>
 
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Working day workflow
+                  Working date
                 </div>
-
-                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                <div className="mt-1 text-xl font-bold text-slate-950">
                   {formatDateWithDay(selectedDate)}
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Move through the day in order: review the jobs, set the route,
-                  complete visits, then return to Dashboard to close the day.
-                </p>
+                </div>
               </div>
 
-              <div className="text-xs font-semibold text-slate-500">
-                Stage 1 of 4
+              <div className="flex flex-wrap items-end gap-2">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => setSelectedDate(event.target.value)}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(getTodayDateValue())}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Today
+                </button>
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <WorkingDayStage
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                label="Remaining jobs"
+                value={String(scheduledJobs.length)}
+                detail="Programme + Additional Jobs"
+              />
+              <SummaryCard
+                label="Completed"
+                value={String(completedTreatments.length)}
+                detail="Treatment records on this date"
+              />
+              <SummaryCard
+                label="Remaining area"
+                value={`${totalArea.toLocaleString("en-GB")} m²`}
+                detail="Scheduled lawn area"
+              />
+              <SummaryCard
+                label="Remaining value"
+                value={`£${expectedRevenue.toFixed(2)}`}
+                detail="Scheduled work"
+              />
+            </div>
+          </section>
+
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                  Working day
+                </div>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  Review the day
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                  Jobs are already shown in the saved route order. Check the day, adjust the route if needed, then complete the work in Visit Centre.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <JobsWorkflowCard
                 number="1"
-                title="Review Jobs"
+                title="Review jobs"
                 detail={`${scheduledJobs.length} remaining · ${completedTreatments.length} completed`}
-                href={`/jobs?date=${selectedDate}${
-                  requestedGroup > 0
-                    ? `&group=${requestedGroup}`
-                    : ""
-                }${
-                  requestedVan > 0
-                    ? `&van=${requestedVan}`
-                    : ""
-                }`}
                 state="current"
               />
-
-              <WorkingDayStage
+              <JobsWorkflowCard
                 number="2"
-                title="Groups & Routes"
-                detail="Set and confirm the working order."
+                title="Check route"
+                detail="Change the saved working order only if needed."
+                state="next"
                 href={`/routes?date=${selectedDate}`}
-                state="next"
               />
-
-              <WorkingDayStage
+              <JobsWorkflowCard
                 number="3"
-                title="Visit Centre"
-                detail="Record outcomes and complete the work."
-                href={`/visit-centre?date=${selectedDate}${
-                  requestedGroup > 0
-                    ? `&group=${requestedGroup}`
-                    : ""
-                }${
-                  requestedVan > 0
-                    ? `&van=${requestedVan}`
-                    : ""
-                }`}
-                state="next"
-              />
-
-              <WorkingDayStage
-                number="4"
-                title="Close Day"
-                detail="Return to Dashboard for the end-of-day check."
-                href={`/?date=${selectedDate}`}
+                title="Complete work"
+                detail="Record the day's outcomes in Visit Centre."
                 state="later"
+                href={`/visit-centre?date=${selectedDate}${
+                  requestedGroup > 0 ? `&group=${requestedGroup}` : ""
+                }${requestedVan > 0 ? `&van=${requestedVan}` : ""}`}
               />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
+              <div>
+                <div className="font-bold text-green-950">
+                  {scheduledJobs.length === 0
+                    ? "No remaining scheduled work"
+                    : `${scheduledJobs.length} job${scheduledJobs.length === 1 ? "" : "s"} ready`}
+                </div>
+                <div className="mt-1 text-sm text-green-800">
+                  {scheduledJobs.length === 0
+                    ? "This working date has no outstanding scheduled jobs."
+                    : "Continue to the route if it needs checking, or go straight to Visit Centre when the order is already right."}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/routes?date=${selectedDate}`}
+                  className="inline-flex items-center rounded-xl border border-green-300 bg-white px-4 py-3 text-sm font-bold text-green-800 hover:bg-green-100"
+                >
+                  Check route
+                </Link>
+                <Link
+                  href={`/visit-centre?date=${selectedDate}${
+                    requestedGroup > 0 ? `&group=${requestedGroup}` : ""
+                  }${requestedVan > 0 ? `&van=${requestedVan}` : ""}`}
+                  className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                >
+                  Open Visit Centre →
+                </Link>
+              </div>
+            </div>
+          </section>
+
+          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Day tools
+                </div>
+                <div className="mt-1 text-sm text-slate-600">
+                  Printing, customer reminders and Additional Jobs stay available without competing with the main workflow.
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/jobs/print?date=${selectedDate}${
+                    requestedGroup > 0 ? `&group=${requestedGroup}` : ""
+                  }${requestedVan > 0 ? `&van=${requestedVan}` : ""}`}
+                  className={`rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 ${
+                    scheduledJobs.length === 0 ? "pointer-events-none opacity-50" : ""
+                  }`}
+                >
+                  Customer sheets
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  disabled={scheduledJobs.length === 0}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Daily job sheet
+                </button>
+                <Link
+                  href={`/communications?date=${selectedDate}`}
+                  className={`rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 ${
+                    scheduledJobs.length === 0 ? "pointer-events-none opacity-50" : ""
+                  }`}
+                >
+                  Customer reminders
+                </Link>
+                <Link
+                  href="/additional-jobs"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Additional Jobs
+                </Link>
+              </div>
             </div>
           </section>
 
@@ -1123,81 +1110,13 @@ function JobsPageContent() {
             </section>
           )}
 
-          {scheduledJobs.length > 0 && (
-            <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-                    Route order
-                  </div>
-
-                  <h2 className="mt-1 text-lg font-bold text-blue-950">
-                    Set the working order for this day
-                  </h2>
-
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-blue-900">
-                    Use Groups &amp; Routes to arrange customers in the order you
-                    want to visit them. Your saved order for{" "}
-                    <strong>
-                      {formatDateWithDay(
-                        selectedDate,
-                      )}
-                    </strong>{" "}
-                    is then used when the day&apos;s work is opened in the Visit
-                    Centre.
-                  </p>
-                </div>
-
-                <Link
-                  href={`/routes?date=${selectedDate}`}
-                  className="inline-flex rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800"
-                >
-                  Manage route order
-                </Link>
-              </div>
-            </section>
-          )}
-
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard
-              label="Scheduled"
-              value={String(
-                scheduledJobs.length,
-              )}
-              detail={formatDateWithDay(
-                selectedDate,
-              )}
-            />
-
-            <SummaryCard
-              label="Completed"
-              value={String(
-                completedTreatments.length,
-              )}
-              detail="Treatment records on this date"
-            />
-
-            <SummaryCard
-              label="Lawn area"
-              value={`${totalArea.toLocaleString(
-                "en-GB",
-              )} m²`}
-              detail="Remaining scheduled work"
-            />
-
-            <SummaryCard
-              label="Expected revenue"
-              value={`£${expectedRevenue.toFixed(
-                2,
-              )}`}
-              detail="Remaining scheduled work"
-            />
-          </section>
-
           <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
               <div>
-                <h2 className="text-xl font-bold">
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                  Route-ordered schedule
+                </div>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
                   Daily workload
                 </h2>
 
@@ -1296,12 +1215,24 @@ function JobsPageContent() {
                           }
                         </span>
 
-                        <span className="font-semibold">
-                          {
-                            job.visit
-                              .treatmentName
-                          }
-                        </span>
+                        <div>
+                          <div className="font-semibold">
+                            {job.visit.treatmentName}
+                          </div>
+                          <div className="mt-1">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                job.source === "additional"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-green-100 text-green-800"
+                              }`}
+                            >
+                              {job.source === "additional"
+                                ? "Additional Job"
+                                : "Programme"}
+                            </span>
+                          </div>
+                        </div>
 
                         <span>
                           {job.customer.lawnSize.toLocaleString(
@@ -1501,72 +1432,58 @@ function JobsPageContent() {
   );
 }
 
-function WorkingDayStage({
+function JobsWorkflowCard({
   number,
   title,
   detail,
-  href,
   state,
+  href,
 }: {
   number: string;
   title: string;
   detail: string;
-  href: string;
   state: "current" | "next" | "later";
+  href?: string;
 }) {
-  const styles =
-    state === "current"
-      ? "border-green-300 bg-green-50"
-      : state === "next"
-        ? "border-blue-200 bg-blue-50/60"
-        : "border-slate-200 bg-slate-50";
-
-  const badgeStyles =
-    state === "current"
-      ? "bg-[#176b37] text-white"
-      : state === "next"
-        ? "bg-blue-100 text-blue-800"
-        : "bg-slate-200 text-slate-700";
-
-  const actionLabel =
-    state === "current"
-      ? "Current stage"
-      : state === "next"
-        ? "Open stage"
-        : "Open Dashboard";
-
-  return (
-    <Link
-      href={href}
-      className={`group rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${styles}`}
+  const content = (
+    <div
+      className={`h-full rounded-xl border p-3 ${
+        state === "current"
+          ? "border-[#338b45] bg-green-50"
+          : state === "next"
+            ? "border-blue-200 bg-blue-50"
+            : "border-slate-200 bg-slate-50"
+      }`}
     >
       <div className="flex items-start gap-3">
         <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${badgeStyles}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+            state === "current"
+              ? "bg-[#176b37] text-white"
+              : state === "next"
+                ? "bg-blue-700 text-white"
+                : "bg-slate-200 text-slate-600"
+          }`}
         >
           {number}
         </span>
-
         <div className="min-w-0">
-          <div className="font-bold text-slate-950">
-            {title}
+          <div className="text-sm font-bold text-slate-950">{title}</div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-500">
+            {state === "current" ? "Current step" : state === "next" ? "Next" : "Then"}
           </div>
-
-          <p className="mt-1 text-xs leading-5 text-slate-600">
-            {detail}
-          </p>
-
-          <div className="mt-3 text-xs font-black text-slate-700">
-            {actionLabel}
-            {state !== "current" && (
-              <span className="ml-1 inline-block transition group-hover:translate-x-0.5">
-                →
-              </span>
-            )}
-          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-600">{detail}</p>
         </div>
       </div>
+    </div>
+  );
+
+  return href ? (
+    <Link href={href} className="block transition hover:-translate-y-0.5 hover:shadow-sm">
+      {content}
     </Link>
+  ) : (
+    content
   );
 }
 

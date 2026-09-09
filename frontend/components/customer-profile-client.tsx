@@ -933,126 +933,136 @@ function cancelEditing() {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-9rem)] min-h-[590px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {savedMessage && (
           <div className="border-b border-green-200 bg-green-50 px-5 py-3 text-sm font-semibold text-green-800">
             {savedMessage}
           </div>
         )}
 
-        <section className="border-b border-slate-200 px-5 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-bold tracking-tight">
+        <section className="border-b border-slate-200 px-5 py-5 md:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-5">
+            <div className="min-w-0">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Customer account
+              </div>
+
+              <div className="mt-1 flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">
                   {customer.fullName}
                 </h1>
 
-                <StatusBadge
-                  status={
-                    customer.status
-                  }
-                />
+                <StatusBadge status={customer.status} />
 
                 <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800">
-                  Group{" "}
-                  {
-                    customer.groupNumber
-                  }
+                  Group {customer.groupNumber}
                 </span>
+
+                {customer.lockedGate && (
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
+                    Locked gate
+                  </span>
+                )}
+
+                {customer.dogOnProperty && (
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
+                    Dog on property
+                  </span>
+                )}
               </div>
 
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                <span>Customer #{customer.customerNumber}</span>
                 <span>
-                  Customer #
-                  {
-                    customer.customerNumber
-                  }
-                </span>
-
-                <span>
-                  {customer.address},{" "}
-                  {customer.postcode}
+                  {customer.address}, {customer.postcode}
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-7 gap-y-2 text-right sm:grid-cols-4">
-              <HeaderStat
+            <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:min-w-[560px] lg:grid-cols-4">
+              <CustomerHeadlineStat
                 label="Next visit"
                 value={
                   nextOverallVisit
-                    ? formatDate(
-                        nextOverallVisit.date,
-                      )
+                    ? formatDate(nextOverallVisit.date)
                     : "None scheduled"
                 }
+                detail={nextOverallVisit?.label ?? "No work booked"}
                 highlight
               />
 
-              <HeaderStat
+              <CustomerHeadlineStat
                 label="Last completed"
                 value={
                   lastCompletedTreatment
-                    ? formatDate(
-                        getTreatmentDate(
-                          lastCompletedTreatment,
-                        ),
-                      )
+                    ? formatDate(getTreatmentDate(lastCompletedTreatment))
                     : "No history"
+                }
+                detail={
+                  lastCompletedTreatment?.treatmentName ??
+                  "No completed treatment"
                 }
               />
 
-              <HeaderStat
-                label="Price"
-                value={`£${customer.treatmentPrice.toFixed(
-                  2,
-                )}`}
+              <CustomerHeadlineStat
+                label="Standard price"
+                value={`£${customer.treatmentPrice.toFixed(2)}`}
+                detail="Including VAT"
               />
 
-              <HeaderStat
+              <CustomerHeadlineStat
                 label="Lawn"
-                value={`${customer.lawnSize.toLocaleString(
-                  "en-GB",
-                )} m²`}
+                value={`${customer.lawnSize.toLocaleString("en-GB")} m²`}
+                detail={`Van ${customer.vanNumber}`}
               />
             </div>
           </div>
         </section>
 
-        <section className="border-b border-slate-200 bg-slate-50 px-5 py-3">
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={
-                nextOverallVisit
-                  ? `/jobs?date=${nextOverallVisit.date}`
-                  : "/jobs"
-              }
-              className="rounded-lg bg-[#176b37] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#125b2f]"
-            >
-              Open jobs
-            </Link>
+        <section className="border-b border-slate-200 bg-slate-50 px-5 py-3 md:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={
+                  nextOverallVisit
+                    ? `/jobs?date=${nextOverallVisit.date}`
+                    : "/jobs"
+                }
+                className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#125b2f]"
+              >
+                Open jobs
+              </Link>
 
-            <button
-              type="button"
-              onClick={openActionModal}
-              className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-semibold text-green-800 transition hover:bg-green-50"
-            >
-              + New action
-            </button>
+              <button
+                type="button"
+                onClick={openActionModal}
+                className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-bold text-green-800 transition hover:bg-green-50"
+              >
+                + New action
+              </button>
 
-            <button
-              type="button"
-              onClick={beginEditing}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-100"
-            >
-              Edit customer
-            </button>
+              <button
+                type="button"
+                onClick={beginEditing}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+              >
+                Edit customer
+              </button>
+            </div>
 
+            {openCustomerActions.length > 0 && (
+              <Link
+                href="?tab=actions"
+                onClick={() => setActiveTab("actions")}
+                className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
+              >
+                {openCustomerActions.length} open action{openCustomerActions.length === 1 ? "" : "s"} →
+              </Link>
+            )}
           </div>
         </section>
 
-        <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 px-5">
+        <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-5 md:px-6">
           {tabs.map((tab) => (
             <Link
               key={tab.id}
@@ -1062,7 +1072,7 @@ function cancelEditing() {
                   tab.id,
                 )
               }
-              className={`border-b-2 px-4 py-3 text-sm font-semibold transition ${
+              className={`whitespace-nowrap border-b-2 px-4 py-3.5 text-sm font-semibold transition ${
                 activeTab === tab.id
                   ? "border-[#176b37] text-[#176b37]"
                   : "border-transparent text-slate-500 hover:text-slate-800"
@@ -1073,17 +1083,21 @@ function cancelEditing() {
           ))}
         </nav>
 
-        <section className="min-h-0 flex-1 overflow-auto p-5">
+        <section className="p-5 md:p-6">
           {activeTab ===
             "overview" && (
             <OverviewTab
               customer={customer}
               nextVisit={
-                nextProgrammeVisit
-                  ? formatDate(
-                      nextProgrammeVisit.scheduledDate,
-                    )
+                nextOverallVisit
+                  ? formatDate(nextOverallVisit.date)
                   : "None scheduled"
+              }
+              nextVisitLabel={
+                nextOverallVisit?.label ?? "No work booked"
+              }
+              openActionCount={
+                openCustomerActions.length
               }
               lastVisit={
                 lastCompletedTreatment
@@ -2383,138 +2397,194 @@ function suggestedAdditionalJobPrice(
 function OverviewTab({
   customer,
   nextVisit,
+  nextVisitLabel,
   lastVisit,
   hasProgramme,
+  openActionCount,
   treatmentPrice,
   aerationPrice,
   scarificationPrice,
 }: {
   customer: StoredCustomer;
   nextVisit: string;
+  nextVisitLabel: string;
   lastVisit: string;
   hasProgramme: boolean;
+  openActionCount: number;
   treatmentPrice: number;
   aerationPrice: number;
   scarificationPrice: number;
 }) {
+  const hasAccessAlert =
+    customer.lockedGate || customer.dogOnProperty;
+
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <CompactCard title="Contact">
-        <CompactRow
-          label="Mobile"
-          value={
-            customer.mobilePhone ||
-            "Not recorded"
-          }
-        />
+    <div className="space-y-5">
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-950">
+            At a glance
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            The information you are most likely to need when dealing with this customer.
+          </p>
+        </div>
 
-        <CompactRow
-          label="Home"
-          value={
-            customer.homePhone ||
-            "Not recorded"
-          }
-        />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <CompactCard title="Next work">
+            <CompactRow label="Date" value={nextVisit} />
+            <CompactRow label="Treatment" value={nextVisitLabel} />
+            <CompactRow label="Last completed" value={lastVisit} />
+            <CompactRow
+              label="Programme"
+              value={hasProgramme ? "Active" : "Not assigned"}
+            />
+          </CompactCard>
 
-        <CompactRow
-          label="Email"
-          value={
-            customer.email ||
-            "Not recorded"
-          }
-        />
+          <CompactCard title="Contact">
+            <CompactRow
+              label="Mobile"
+              value={customer.mobilePhone || "Not recorded"}
+            />
+            <CompactRow
+              label="Email"
+              value={customer.email || "Not recorded"}
+            />
+            <CompactRow
+              label="Preferred"
+              value={customer.preferredContact}
+            />
+            <CompactRow
+              label="Open actions"
+              value={openActionCount === 0 ? "None" : String(openActionCount)}
+            />
+          </CompactCard>
 
-        <CompactRow
-          label="Preferred"
-          value={
-            customer.preferredContact
-          }
-        />
-      </CompactCard>
+          <CompactCard title="Property & access">
+            <CompactRow
+              label="Lawn size"
+              value={`${customer.lawnSize.toLocaleString("en-GB")} m²`}
+            />
+            <CompactRow
+              label="Group"
+              value={`Group ${customer.groupNumber}`}
+            />
+            <AlertRow label="Locked gate" active={customer.lockedGate} />
+            <AlertRow label="Dog on property" active={customer.dogOnProperty} />
+          </CompactCard>
+        </div>
+      </section>
 
-      <CompactCard title="Scheduling">
-        <CompactRow
-          label="Assigned group"
-          value={`Group ${customer.groupNumber}`}
-        />
+      {hasAccessAlert && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">
+            Access reminder
+          </div>
+          <div className="mt-1 font-bold text-amber-950">
+            Check access before the next visit
+          </div>
+          <p className="mt-1 text-sm leading-6 text-amber-800">
+            {customer.lockedGate && customer.dogOnProperty
+              ? "This customer has a locked-gate alert and a dog-on-property alert."
+              : customer.lockedGate
+                ? "This customer has a locked-gate alert."
+                : "This customer has a dog-on-property alert."}
+          </p>
+        </section>
+      )}
 
-        <CompactRow
-          label="Next visit"
-          value={nextVisit}
-        />
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-950">
+            Account details
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Core scheduling and pricing information. Use Edit customer when these details change.
+          </p>
+        </div>
 
-        <CompactRow
-          label="Last completed"
-          value={lastVisit}
-        />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <CompactCard title="Scheduling">
+            <CompactRow
+              label="Assigned group"
+              value={`Group ${customer.groupNumber}`}
+            />
+            <CompactRow
+              label="Van"
+              value={`Van ${customer.vanNumber}`}
+            />
+            <CompactRow
+              label="Eligibility"
+              value={
+                customer.programmeStartDate
+                  ? formatDate(customer.programmeStartDate)
+                  : "Established customer"
+              }
+            />
+            <AlertRow
+              label="Inherited programme"
+              active={hasProgramme}
+              positive
+            />
+          </CompactCard>
 
-        <CompactRow
-          label="Eligibility"
-          value={
-            customer.programmeStartDate
-              ? formatDate(
-                  customer.programmeStartDate,
-                )
-              : "Established customer"
-          }
-        />
-      </CompactCard>
+          <CompactCard title="Contact details">
+            <CompactRow
+              label="Home phone"
+              value={customer.homePhone || "Not recorded"}
+            />
+            <CompactRow
+              label="Mobile"
+              value={customer.mobilePhone || "Not recorded"}
+            />
+            <CompactRow
+              label="Email"
+              value={customer.email || "Not recorded"}
+            />
+            <CompactRow
+              label="Preferred"
+              value={customer.preferredContact}
+            />
+          </CompactCard>
+        </div>
+      </section>
 
-      <CompactCard title="Property and alerts">
-        <CompactRow
-          label="Lawn size"
-          value={`${customer.lawnSize.toLocaleString(
-            "en-GB",
-          )} m²`}
-        />
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-950">
+            Pricing
+          </h2>
+        </div>
 
-        <CompactRow
-          label="Van"
-          value={`Van ${customer.vanNumber}`}
-        />
-
-        <AlertRow
-          label="Locked gate"
-          active={
-            customer.lockedGate
-          }
-        />
-
-        <AlertRow
-          label="Dog on property"
-          active={
-            customer.dogOnProperty
-          }
-        />
-
-        <AlertRow
-          label="Inherited programme"
-          active={hasProgramme}
-          positive
-        />
-      </CompactCard>
-
-      <div className="lg:col-span-3">
         <div className="grid gap-4 sm:grid-cols-3">
           <PriceCard
             title="Standard treatment"
             price={treatmentPrice}
             detail="Base price including VAT"
           />
-
           <PriceCard
             title="Aeration"
             price={aerationPrice}
             detail="Treatment price ×2"
           />
-
           <PriceCard
             title="Scarification"
             price={scarificationPrice}
             detail="Treatment price ×3"
           />
         </div>
-      </div>
+      </section>
+
+      {customer.notes && (
+        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+            Customer note
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+            {customer.notes}
+          </p>
+        </section>
+      )}
     </div>
   );
 }
@@ -3141,6 +3211,42 @@ function CheckboxField({
         className="h-5 w-5"
       />
     </label>
+  );
+}
+
+function CustomerHeadlineStat({
+  label,
+  value,
+  detail,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border px-3.5 py-3 ${
+        highlight
+          ? "border-green-200 bg-green-50"
+          : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+      <div
+        className={`mt-1 text-sm font-bold ${
+          highlight ? "text-[#176b37]" : "text-slate-950"
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-1 truncate text-xs text-slate-500" title={detail}>
+        {detail}
+      </div>
+    </div>
   );
 }
 

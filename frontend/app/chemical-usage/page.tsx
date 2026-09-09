@@ -153,6 +153,11 @@ export default function ChemicalUsagePage() {
     useState("");
 
   const [
+    closeWorkflow,
+    setCloseWorkflow,
+  ] = useState(false);
+
+  const [
     correctionOpen,
     setCorrectionOpen,
   ] = useState(false);
@@ -168,6 +173,32 @@ export default function ChemicalUsagePage() {
     correctionPercentage,
     setCorrectionPercentage,
   ] = useState(10);
+
+  useEffect(() => {
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    const requestedDate =
+      params.get("date") ?? "";
+
+    const requestedWorkflow =
+      params.get("workflow") ?? "";
+
+    if (
+      /^\d{4}-\d{2}-\d{2}$/.test(
+        requestedDate,
+      )
+    ) {
+      setDateFrom(requestedDate);
+      setDateTo(requestedDate);
+    }
+
+    setCloseWorkflow(
+      requestedWorkflow === "close",
+    );
+  }, []);
 
   const usageRows =
     useMemo<UsageRow[]>(() => {
@@ -1213,6 +1244,79 @@ export default function ChemicalUsagePage() {
     );
   }
 
+  function continueToQuickBooks() {
+    if (reconciliationIssueCount > 0) {
+      showMessage(
+        `Resolve the ${reconciliationIssueCount} stock reconciliation issue${
+          reconciliationIssueCount === 1
+            ? ""
+            : "s"
+        } before continuing to QuickBooks.`,
+      );
+      return;
+    }
+
+    const workingDate =
+      dateFrom === dateTo
+        ? dateFrom
+        : "";
+
+    if (!workingDate) {
+      showMessage(
+        "Choose one working day before continuing to QuickBooks.",
+      );
+      return;
+    }
+
+    try {
+      const storageKey =
+        "greenflow-close-day-v1";
+
+      const raw =
+        window.localStorage.getItem(
+          storageKey,
+        );
+
+      const parsed = raw
+        ? JSON.parse(raw)
+        : {};
+
+      const existing =
+        parsed &&
+        typeof parsed === "object" &&
+        parsed[workingDate] &&
+        typeof parsed[workingDate] ===
+          "object"
+          ? parsed[workingDate]
+          : {};
+
+      const next = {
+        ...(parsed &&
+        typeof parsed === "object"
+          ? parsed
+          : {}),
+        [workingDate]: {
+          ...existing,
+          chemicalsChecked: true,
+          closed: false,
+          updatedAt:
+            new Date().toISOString(),
+        },
+      };
+
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify(next),
+      );
+    } catch {
+      // The chemical audit itself is still valid even if the browser
+      // cannot persist the Dashboard convenience flag.
+    }
+
+    window.location.href =
+      `/quickbooks-export?date=${workingDate}&workflow=close`;
+  }
+
   function exportCsv() {
     if (
       usageRows.length === 0
@@ -1349,7 +1453,11 @@ export default function ChemicalUsagePage() {
           <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
               <Link
-                href="/"
+                href={
+                  dateFrom === dateTo
+                    ? `/?date=${dateFrom}`
+                    : "/"
+                }
                 className="text-sm font-semibold text-[#176b37] hover:underline"
               >
                 ← Dashboard
@@ -1384,6 +1492,65 @@ export default function ChemicalUsagePage() {
               </button>
             </div>
           </header>
+
+          {closeWorkflow && (
+            <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                    End-of-day workflow
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">
+                    Step 2 of 4 · Check chemical usage
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                    Confirm the saved customer applications agree with the stock deducted for this working day.
+                  </p>
+                </div>
+
+                <Link
+                  href={`/visit-centre?date=${dateFrom === dateTo ? dateFrom : dateTo}&workflow=close`}
+                  className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  ← Back
+                </Link>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <WorkflowProgressCard number="1" title="Complete work" state="done" />
+                <WorkflowProgressCard number="2" title="Check chemicals" state="current" />
+                <WorkflowProgressCard number="3" title="QuickBooks" state={reconciliationIssueCount === 0 && dateFrom === dateTo ? "next" : "later"} />
+                <WorkflowProgressCard number="4" title="Close day" state="later" />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                <div>
+                  <div className="font-bold text-green-950">Stock reconciliation</div>
+                  <div className="mt-1 text-sm text-green-800">
+                    {reconciliationRows.length === 0
+                      ? "No product usage needs reconciling for this day."
+                      : reconciliationIssueCount === 0
+                        ? `${reconciliationMatchedCount} product${reconciliationMatchedCount === 1 ? "" : "s"} matched.`
+                        : `${reconciliationIssueCount} product${reconciliationIssueCount === 1 ? "" : "s"} need review before continuing.`}
+                  </div>
+                </div>
+
+                {reconciliationIssueCount === 0 && dateFrom === dateTo ? (
+                  <button
+                    type="button"
+                    onClick={continueToQuickBooks}
+                    className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                  >
+                    Check complete · Next: QuickBooks →
+                  </button>
+                ) : (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800">
+                    {dateFrom !== dateTo ? "Select one working day" : `${reconciliationIssueCount} need review`}
+                  </span>
+                )}
+              </div>
+            </section>
+          )}
 
           {message && (
             <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
@@ -2778,6 +2945,56 @@ function ReconciliationStatusBadge({
     >
       {status}
     </span>
+  );
+}
+
+function WorkflowProgressCard({
+  number,
+  title,
+  state,
+}: {
+  number: string;
+  title: string;
+  state: "done" | "current" | "next" | "later";
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        state === "done"
+          ? "border-green-200 bg-green-50"
+          : state === "current"
+            ? "border-[#338b45] bg-green-50"
+            : state === "next"
+              ? "border-blue-200 bg-blue-50"
+              : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+            state === "done" || state === "current"
+              ? "bg-[#176b37] text-white"
+              : state === "next"
+                ? "bg-blue-700 text-white"
+                : "bg-slate-200 text-slate-600"
+          }`}
+        >
+          {state === "done" ? "✓" : number}
+        </span>
+        <div>
+          <div className="text-sm font-bold text-slate-950">{title}</div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-500">
+            {state === "done"
+              ? "Done"
+              : state === "current"
+                ? "Current step"
+                : state === "next"
+                  ? "Next"
+                  : "Later"}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

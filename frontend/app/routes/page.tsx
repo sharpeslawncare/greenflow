@@ -52,6 +52,9 @@ export default function RoutesPage() {
   const requestedDate =
     searchParams.get("date") ?? "";
 
+  const preparationWorkflow =
+    searchParams.get("workflow") === "prepare";
+
   const initialDate =
     isDateValue(requestedDate)
       ? requestedDate
@@ -1240,6 +1243,53 @@ export default function RoutesPage() {
             </div>
           </header>
 
+          {preparationWorkflow && (
+            <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                    Prepare the working day
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">
+                    Step 2 of 3 · Check route
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                    Put customers in the order you want to visit them, then continue to the route-ordered customer sheets.
+                  </p>
+                </div>
+
+                <Link
+                  href={`/communications?date=${selectedDate}&workflow=prepare`}
+                  className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  ← Back
+                </Link>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <WorkflowProgressCard number="1" title="Contact customers" state="done" />
+                <WorkflowProgressCard number="2" title="Check route" state="current" />
+                <WorkflowProgressCard number="3" title="Print pack" state="later" />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                <div>
+                  <div className="font-bold text-green-950">Route looking right?</div>
+                  <div className="mt-1 text-sm text-green-800">
+                    Continue to the complete customer pack in this exact saved order.
+                  </div>
+                </div>
+
+                <Link
+                  href={`/jobs/print?date=${selectedDate}&workflow=prepare`}
+                  className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                >
+                  Next: Print customer sheets →
+                </Link>
+              </div>
+            </section>
+          )}
+
           <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -2249,6 +2299,46 @@ export default function RoutesPage() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+function WorkflowProgressCard({
+  number,
+  title,
+  state,
+}: {
+  number: string;
+  title: string;
+  state: "done" | "current" | "later";
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        state === "done"
+          ? "border-green-200 bg-green-50"
+          : state === "current"
+            ? "border-[#338b45] bg-green-50"
+            : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+            state === "done" || state === "current"
+              ? "bg-[#176b37] text-white"
+              : "bg-slate-200 text-slate-600"
+          }`}
+        >
+          {state === "done" ? "✓" : number}
+        </span>
+        <div>
+          <div className="text-sm font-bold text-slate-950">{title}</div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-500">
+            {state === "done" ? "Done" : state === "current" ? "Current step" : "Next"}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -94,6 +94,10 @@ function DailyCustomerSheetsPageContent() {
   const requestedDate =
     searchParams.get("date");
 
+  const preparationWorkflow =
+    searchParams.get("workflow") ===
+    "prepare";
+
   const requestedGroup =
     Number(
       searchParams.get("group") ??
@@ -322,26 +326,44 @@ function DailyCustomerSheetsPageContent() {
           <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
               <Link
-                href={`/jobs?date=${selectedDate}${
-                  requestedGroup > 0
-                    ? `&group=${requestedGroup}`
-                    : ""
-                }${
-                  requestedVan > 0
-                    ? `&van=${requestedVan}`
-                    : ""
-                }`}
+                href={
+                  preparationWorkflow
+                    ? `/routes?date=${selectedDate}&workflow=prepare${
+                        requestedGroup > 0
+                          ? `&group=${requestedGroup}`
+                          : ""
+                      }${
+                        requestedVan > 0
+                          ? `&van=${requestedVan}`
+                          : ""
+                      }`
+                    : `/jobs?date=${selectedDate}${
+                        requestedGroup > 0
+                          ? `&group=${requestedGroup}`
+                          : ""
+                      }${
+                        requestedVan > 0
+                          ? `&van=${requestedVan}`
+                          : ""
+                      }`
+                }
                 className="text-sm font-semibold text-[#176b37] hover:underline"
               >
-                ← Back to Today&apos;s Jobs
+                {preparationWorkflow
+                  ? "← Back to Check Route"
+                  : "← Back to Today's Jobs"}
               </Link>
 
               <h1 className="mt-2 text-3xl font-bold">
-                Customer Sheets
+                {preparationWorkflow
+                  ? "Print Working Day Pack"
+                  : "Customer Sheets"}
               </h1>
 
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Print one customer-facing treatment and invoice information sheet for every scheduled visit on the selected day.
+                {preparationWorkflow
+                  ? "Your customer paperwork is already arranged in the saved route order. One print action produces the complete pack for the working day."
+                  : "Print one customer-facing treatment and invoice information sheet for every scheduled visit on the selected day."}
               </p>
             </div>
 
@@ -355,12 +377,73 @@ function DailyCustomerSheetsPageContent() {
               }
               className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              Print {jobs.length} Customer Sheet
-              {jobs.length === 1
-                ? ""
-                : "s"}
+              {preparationWorkflow
+                ? `Print Complete Pack (${jobs.length})`
+                : `Print ${jobs.length} Customer Sheet${
+                    jobs.length === 1 ? "" : "s"
+                  }`}
             </button>
           </header>
+
+          {preparationWorkflow && (
+            <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                    Prepare the working day
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">
+                    Step 3 of 3 · Print customer pack
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                    Programme visits and Additional Jobs are combined in the saved route order for {formatDateWithDay(selectedDate)}.
+                  </p>
+                </div>
+
+                <Link
+                  href={`/routes?date=${selectedDate}&workflow=prepare`}
+                  className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  ← Back
+                </Link>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <WorkflowProgressCard number="1" title="Contact customers" state="done" />
+                <WorkflowProgressCard number="2" title="Check route" state="done" />
+                <WorkflowProgressCard number="3" title="Print pack" state="current" />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                <div>
+                  <div className="font-bold text-green-950">
+                    {jobs.length} customer sheet{jobs.length === 1 ? "" : "s"} ready
+                  </div>
+                  <div className="mt-1 text-sm text-green-800">
+                    Print the pack, then mark tomorrow&apos;s preparation complete.
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    disabled={jobs.length === 0}
+                    className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    Print Complete Pack ({jobs.length})
+                  </button>
+
+                  <Link
+                    href={`/?date=${selectedDate}`}
+                    className="inline-flex items-center rounded-xl border border-green-300 bg-white px-4 py-3 text-sm font-bold text-green-800 hover:bg-green-100"
+                  >
+                    Preparation complete →
+                  </Link>
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -840,6 +923,46 @@ function DailyCustomerSheetsPageContent() {
         })}
       </div>
     </>
+  );
+}
+
+function WorkflowProgressCard({
+  number,
+  title,
+  state,
+}: {
+  number: string;
+  title: string;
+  state: "done" | "current" | "later";
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        state === "done"
+          ? "border-green-200 bg-green-50"
+          : state === "current"
+            ? "border-[#338b45] bg-green-50"
+            : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+            state === "done" || state === "current"
+              ? "bg-[#176b37] text-white"
+              : "bg-slate-200 text-slate-600"
+          }`}
+        >
+          {state === "done" ? "✓" : number}
+        </span>
+        <div>
+          <div className="text-sm font-bold text-slate-950">{title}</div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-500">
+            {state === "done" ? "Done" : state === "current" ? "Current step" : "Next"}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

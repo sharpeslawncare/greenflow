@@ -231,6 +231,40 @@ export default function ChemicalsPage() {
       0,
     );
 
+  const recentStockMovements = [...stockMovements]
+    .sort((first, second) => {
+      const firstTime = new Date(
+        first.createdAt || first.date,
+      ).getTime();
+      const secondTime = new Date(
+        second.createdAt || second.date,
+      ).getTime();
+
+      return secondTime - firstTime;
+    })
+    .slice(0, 6);
+
+  const selectedChemicalMovements =
+    selectedChemical
+      ? [...stockMovements]
+          .filter(
+            (movement) =>
+              movement.chemicalId ===
+              selectedChemical.id,
+          )
+          .sort((first, second) => {
+            const firstTime = new Date(
+              first.createdAt || first.date,
+            ).getTime();
+            const secondTime = new Date(
+              second.createdAt || second.date,
+            ).getTime();
+
+            return secondTime - firstTime;
+          })
+          .slice(0, 5)
+      : [];
+
   const calculation:
     | ApplicationCalculation
     | null = selectedChemical
@@ -627,58 +661,39 @@ export default function ChemicalsPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1650px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
-
-              <h1 className="mt-2 text-3xl font-bold">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Products & stock
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Chemical Centre
               </h1>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Manage product labels,
-                active ingredients,
-                equipment calibration,
-                COSHH information and
-                application calculations.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Keep the product library accurate, see the stock position at a glance and maintain the application settings used by Visit Centre.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <Link
+                href="/"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                ← Dashboard
+              </Link>
               <button
                 type="button"
-                onClick={
-                  restoreDemoData
-                }
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+                onClick={createChemical}
+                className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
-                Restore demo chemicals
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  createChemical
-                }
-                className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
-              >
-                + Add chemical
+                + Add product
               </button>
             </div>
           </header>
 
           {message && (
             <div
-              role={
-                messageTone === "error"
-                  ? "alert"
-                  : "status"
-              }
+              role={messageTone === "error" ? "alert" : "status"}
               className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
                 messageTone === "error"
                   ? "border-red-200 bg-red-50 text-red-800"
@@ -691,44 +706,167 @@ export default function ChemicalsPage() {
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
-              label="Active chemicals"
-              value={String(
-                activeChemicals.length,
-              )}
-              detail="Available for treatments"
+              label="Active products"
+              value={String(activeChemicals.length)}
+              detail="Available in Visit Centre"
             />
-
             <SummaryCard
               label="Low stock"
-              value={String(
-                lowStockChemicals.length,
-              )}
-              detail="At or below reorder level"
-              warning={
-                lowStockChemicals.length >
-                0
+              value={String(lowStockChemicals.length)}
+              detail={
+                lowStockChemicals.length === 0
+                  ? "Nothing currently needs attention"
+                  : "At or below reorder level"
               }
+              warning={lowStockChemicals.length > 0}
             />
-
             <SummaryCard
-              label="Herbicides"
+              label="Product types"
               value={String(
-                herbicideCount,
+                new Set(
+                  activeChemicals.map(
+                    (chemical) => chemical.type,
+                  ),
+                ).size,
               )}
-              detail="Active selective products"
+              detail={`${herbicideCount} active herbicide${herbicideCount === 1 ? "" : "s"}`}
             />
-
             <SummaryCard
               label="Estimated stock value"
-              value={`£${totalStockValue.toFixed(
-                2,
-              )}`}
-              detail="Stock units × pack cost"
+              value={`£${totalStockValue.toFixed(2)}`}
+              detail="Current packs × pack cost"
             />
+          </section>
+
+          {lowStockChemicals.length > 0 && (
+            <section className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">
+                    Needs attention
+                  </div>
+                  <h2 className="mt-1 text-lg font-bold text-red-950">
+                    Low stock
+                  </h2>
+                  <p className="mt-1 text-sm text-red-800">
+                    These active products are at or below their saved reorder level.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStockFilter("Low stock")}
+                  className="rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-800 hover:bg-red-100"
+                >
+                  Show low stock only
+                </button>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {lowStockChemicals.map((chemical) => (
+                  <button
+                    key={chemical.id}
+                    type="button"
+                    onClick={() => selectChemical(chemical)}
+                    className="rounded-xl border border-red-200 bg-white px-3 py-2 text-left hover:bg-red-100"
+                  >
+                    <span className="font-bold text-red-950">
+                      {chemical.name}
+                    </span>
+                    <span className="ml-2 text-sm text-red-700">
+                      {chemical.currentStock} pack{chemical.currentStock === 1 ? "" : "s"} · reorder {chemical.reorderLevel}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Stock activity
+                </div>
+                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                  Recent movements
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  A quick view of the latest deliveries, treatment usage and stock adjustments.
+                </p>
+              </div>
+
+              <Link
+                href="/chemical-usage"
+                className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-bold text-[#176b37] hover:bg-green-50"
+              >
+                Open Chemical Usage
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {recentStockMovements.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500 md:col-span-2 xl:col-span-3">
+                  No stock movements have been recorded yet.
+                </div>
+              ) : (
+                recentStockMovements.map((movement) => {
+                  const chemical = chemicals.find(
+                    (item) =>
+                      item.id === movement.chemicalId,
+                  );
+
+                  return (
+                    <div
+                      key={movement.id}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-slate-950">
+                            {chemical?.name || "Unknown product"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {formatShortDate(movement.date)} · {movement.type}
+                          </div>
+                        </div>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                            movement.type === "Delivery"
+                              ? "bg-green-100 text-green-800"
+                              : movement.type === "Usage"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {formatSignedMovement(movement.physicalAmount, movement.physicalUnit)}
+                        </span>
+                      </div>
+                      {(movement.reference || movement.notes) && (
+                        <div className="mt-2 text-xs leading-5 text-slate-600">
+                          {movement.reference || movement.notes}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </section>
 
           <section className="mt-4 grid gap-4 xl:grid-cols-[360px_1fr]">
             <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-4">
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                  Product library
+                </div>
+                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                  Products
+                </h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Select a product to review or edit its stock, label and application settings.
+                </p>
+              </div>
+
               <Field label="Search products">
                 <input
                   value={search}
@@ -801,7 +939,7 @@ export default function ChemicalsPage() {
                 </Field>
               </div>
 
-              <div className="mt-4 max-h-[67vh] space-y-2 overflow-y-auto pr-1">
+              <div className="mt-4 space-y-2">
                 {filteredChemicals.length ===
                 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
@@ -985,6 +1123,69 @@ export default function ChemicalsPage() {
 </div> 
                     </div>
                   </article>
+
+                  <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <ResultBox
+                      label="Current stock"
+                      value={`${selectedChemical.currentStock} pack${selectedChemical.currentStock === 1 ? "" : "s"}`}
+                      detail={`Reorder at ${selectedChemical.reorderLevel}`}
+                    />
+                    <ResultBox
+                      label="Pack"
+                      value={`${selectedChemical.packSize} ${selectedChemical.packUnit}`}
+                      detail={`£${selectedChemical.costPerPack.toFixed(2)} per pack`}
+                    />
+                    <ResultBox
+                      label="Application rate"
+                      value={`${selectedChemical.applicationRate} ${selectedChemical.applicationRateUnit}`}
+                      detail={selectedChemical.type}
+                    />
+                    <ResultBox
+                      label="Recent movements"
+                      value={String(selectedChemicalMovements.length)}
+                      detail="Latest stock records shown below"
+                    />
+                  </section>
+
+                  {selectedChemicalMovements.length > 0 && (
+                    <Panel>
+                      <SectionHeading
+                        title="Recent stock history"
+                        description="The latest stock movements recorded against this product."
+                      />
+                      <div className="mt-4 divide-y divide-slate-200">
+                        {selectedChemicalMovements.map((movement) => (
+                          <div
+                            key={movement.id}
+                            className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                          >
+                            <div>
+                              <div className="font-semibold text-slate-900">
+                                {movement.type}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {formatShortDate(movement.date)}
+                                {movement.reference ? ` · ${movement.reference}` : ""}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-slate-950">
+                                {formatSignedMovement(
+                                  movement.physicalAmount,
+                                  movement.physicalUnit,
+                                )}
+                              </div>
+                              {movement.notes && (
+                                <div className="mt-1 max-w-md text-xs text-slate-500">
+                                  {movement.notes}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+                  )}
 
                   <section className="grid gap-4 lg:grid-cols-2">
                     <Panel>
@@ -1725,15 +1926,22 @@ export default function ChemicalsPage() {
                   </section>
 
                   <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <button
-                      type="button"
-                      onClick={
-                        removeChemical
-                      }
-                      className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-                    >
-                      Delete permanently
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={restoreDemoData}
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        Restore demo chemicals
+                      </button>
+                      <button
+                        type="button"
+                        onClick={removeChemical}
+                        className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                      >
+                        Delete permanently
+                      </button>
+                    </div>
 
                     <button
                       type="submit"
@@ -1933,6 +2141,48 @@ function roundToTwoDecimals(
         100,
     ) / 100
   );
+}
+
+function formatShortDate(
+  value: string,
+) {
+  if (!value) {
+    return "No date";
+  }
+
+  const date = new Date(
+    `${value}T12:00:00`,
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    },
+  ).format(date);
+}
+
+function formatSignedMovement(
+  amount: number,
+  unit: string,
+) {
+  const prefix = amount > 0 ? "+" : "";
+  const absoluteAmount = Math.abs(amount);
+
+  const display =
+    absoluteAmount >= 100
+      ? absoluteAmount.toFixed(0)
+      : absoluteAmount >= 10
+        ? absoluteAmount.toFixed(1)
+        : absoluteAmount.toFixed(3);
+
+  return `${prefix}${Number(display)} ${unit}`;
 }
 
 function formatDateTime(
