@@ -225,39 +225,36 @@ function DocumentsPageContent() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1750px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Customer paperwork
+              </div>
 
-              <h1 className="mt-2 text-3xl font-bold">
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Documents
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
                 {selectedCustomer
-                  ? `Treatment reports, invoices and visit records for ${selectedCustomer.fullName}.`
-                  : "Treatment reports, invoices and visit-outcome records for seasonal programme work and additional jobs."}
+                  ? `Reports, invoices and visit records for ${selectedCustomer.fullName}.`
+                  : "Find completed treatment reports, invoices and visit-outcome records for programme work and Additional Jobs."}
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/treatments"
-                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold hover:bg-slate-50"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Treatment Records
               </Link>
 
               <Link
                 href="/jobs"
-                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
-                Open Jobs
+                Schedule
               </Link>
             </div>
           </header>
@@ -286,7 +283,7 @@ function DocumentsPageContent() {
                     href={`/customers/${selectedCustomer.customerNumber}?tab=documents`}
                     className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
                   >
-                    Return to customer
+                    Open customer account
                   </Link>
                 )}
 
@@ -294,7 +291,7 @@ function DocumentsPageContent() {
                   href="/documents"
                   className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
                 >
-                  Show all documents
+                  All documents
                 </Link>
               </div>
             </section>
@@ -304,37 +301,49 @@ function DocumentsPageContent() {
             <SummaryCard
               label="Completed"
               value={String(completedCount)}
-              detail="Reports and invoices"
+              detail="Completed customer documents"
             />
 
             <SummaryCard
               label="Programme"
               value={String(programmeCount)}
-              detail="Completed seasonal visits"
+              detail="Standard programme work"
             />
 
             <SummaryCard
               label="Additional jobs"
               value={String(additionalCount)}
-              detail="Completed extra services"
+              detail="Completed additional work"
               highlight={additionalCount > 0}
             />
 
             <SummaryCard
               label="Invoiced value"
               value={`£${invoicedValue.toFixed(2)}`}
-              detail="Completed treatment records"
+              detail="Value of completed work"
             />
 
             <SummaryCard
               label="Needs rescheduling"
               value={String(reschedulingCount)}
-              detail="Visit outcome records"
+              detail="Visits needing a new date"
               warning={reschedulingCount > 0}
             />
           </section>
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-4">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                Document search
+              </div>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Find customer paperwork
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-slate-500">
+                Filter the saved visit records, then open the customer-facing report, invoice or visit outcome you need.
+              </p>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_190px_190px_160px_160px_auto] xl:items-end">
               <Field label="Search documents">
                 <input
@@ -436,6 +445,29 @@ function DocumentsPageContent() {
           </section>
 
           <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 p-5">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                  Document library
+                </div>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  {filteredTreatments.length} document{filteredTreatments.length === 1 ? "" : "s"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Customer-facing documents are generated from the saved visit outcome.
+                </p>
+              </div>
+
+              {customerNumber && selectedCustomer && (
+                <Link
+                  href={`/customers/${selectedCustomer.customerNumber}?tab=documents`}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Open customer account
+                </Link>
+              )}
+            </div>
+
             <div className="overflow-x-auto">
               <div className="min-w-[1260px]">
                 <div className="grid grid-cols-[110px_80px_1.1fr_1.35fr_130px_1.1fr_145px_145px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -449,7 +481,7 @@ function DocumentsPageContent() {
                   <span>Document</span>
                 </div>
 
-                <div className="max-h-[62vh] overflow-y-auto">
+                <div>
                   {filteredTreatments.length ===
                   0 ? (
                     <div className="p-12 text-center">

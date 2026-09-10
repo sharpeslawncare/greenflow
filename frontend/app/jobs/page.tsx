@@ -32,6 +32,7 @@ import {
 import {
   useRouteOrderStore,
 } from "@/components/route-order-store";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 export default function JobsPage() {
   return (
@@ -878,7 +879,7 @@ function JobsPageContent() {
                                 Failed visit
                               </div>
                               <div className="mt-1 font-bold text-amber-950">
-                                {treatment.treatmentName}
+                                {formatProgrammeTreatmentLabel(treatment.treatmentName)}
                               </div>
                               <div className="mt-0.5 text-xs text-amber-800">
                                 Original date:{" "}
@@ -900,7 +901,7 @@ function JobsPageContent() {
                                   <>
                                     Linked programme visit:{" "}
                                     <strong>
-                                      {automaticLinked.visit.treatmentName}
+                                      {formatProgrammeTreatmentLabel(automaticLinked.visit.treatmentName)}
                                     </strong>
                                     {" · "}
                                     currently{" "}
@@ -972,7 +973,7 @@ function JobsPageContent() {
                                             key={`${programme.id}::${visit.id}`}
                                             value={`${programme.id}::${visit.id}`}
                                           >
-                                            Round {visit.visitNumber} · {visit.treatmentName} · {formatDateWithDay(visit.scheduledDate)} · {visit.status}
+                                            Round {visit.visitNumber} · {formatProgrammeTreatmentLabel(visit.treatmentName)} · {formatDateWithDay(visit.scheduledDate)} · {visit.status}
                                           </option>
                                         ),
                                       )}
@@ -1217,7 +1218,7 @@ function JobsPageContent() {
 
                         <div>
                           <div className="font-semibold">
-                            {job.visit.treatmentName}
+                            {formatProgrammeTreatmentLabel(job.visit.treatmentName)}
                           </div>
                           <div className="mt-1">
                             <span

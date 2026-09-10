@@ -46,20 +46,8 @@ const tabs: Array<{
   label: string;
 }> = [
   {
-    id: "maintenance",
-    label: "Operational",
-  },
-  {
-    id: "health",
-    label: "System Health",
-  },
-  {
-    id: "backups",
-    label: "Backup & Restore",
-  },
-  {
     id: "business",
-    label: "Business details",
+    label: "Business",
   },
   {
     id: "invoices",
@@ -67,11 +55,11 @@ const tabs: Array<{
   },
   {
     id: "wording",
-    label: "Treatment wording",
+    label: "Treatments",
   },
   {
     id: "communications",
-    label: "Customer communications",
+    label: "Communications",
   },
   {
     id: "advisories",
@@ -80,6 +68,18 @@ const tabs: Array<{
   {
     id: "branding",
     label: "Branding",
+  },
+  {
+    id: "backups",
+    label: "Backup & Restore",
+  },
+  {
+    id: "health",
+    label: "System Health",
+  },
+  {
+    id: "maintenance",
+    label: "Maintenance",
   },
   {
     id: "fleet",
@@ -139,7 +139,7 @@ export default function SettingsPage() {
   } = useChemicalStore();
 
   const [activeTab, setActiveTab] =
-    useState<SettingsTab>("maintenance");
+    useState<SettingsTab>("business");
 
   const [message, setMessage] =
     useState("");
@@ -650,38 +650,49 @@ export default function SettingsPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1500px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Back to dashboard
-              </Link>
-
-              <h1 className="text-3xl font-bold">
-              Maintenance
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                GreenFlow setup
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+                Settings
               </h1>
-
-            <p className="mt-2 text-slate-500">
-             System administration, operational resets, backups and diagnostic tools.
-            </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Manage Sharpes Lawn Care details,
-                invoice wording, customer advice and
-                GreenFlow branding.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Manage the business details and wording used every day. Backup, diagnostics and reset tools are available when you need them, without getting in the way of normal setup.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={restoreDefaults}
-              className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+            <Link
+              href="/"
+              className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Restore default settings
-            </button>
+              ← Dashboard
+            </Link>
           </header>
+
+          <section className="mb-4 grid gap-3 md:grid-cols-3">
+            <SettingsOverviewCard
+              label="Business setup"
+              title={settings.business.businessName || "Business details"}
+              detail="Contact details, invoices and customer-facing branding"
+            />
+            <SettingsOverviewCard
+              label="Treatment setup"
+              title={`${settings.treatmentLibrary.length} treatment types`}
+              detail="Treatment wording, advice and customer communications"
+            />
+            <SettingsOverviewCard
+              label="Data protection"
+              title={lastBackupAt ? "Backup recorded" : "Backup recommended"}
+              detail={
+                lastBackupAt
+                  ? `Last backup ${formatBackupDate(lastBackupAt)}`
+                  : "Create a backup before major changes or resets"
+              }
+              warning={!lastBackupAt}
+            />
+          </section>
 
           {message && (
             <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
@@ -690,6 +701,18 @@ export default function SettingsPage() {
           )}
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-4">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                Settings area
+              </div>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Choose what you want to change
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Everyday business settings come first. Backup, health and maintenance tools are grouped later in the navigation.
+              </p>
+            </div>
+
             <nav className="flex overflow-x-auto border-b border-slate-200 bg-slate-50 px-3">
               {tabs.map((tab) => (
                 <button
@@ -727,6 +750,7 @@ export default function SettingsPage() {
                   stockMovementCount={
                     stockMovements.length
                   }
+                  onRestoreDefaults={restoreDefaults}
                 />
               )}
 
@@ -874,18 +898,57 @@ export default function SettingsPage() {
 
             <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm">
               <span className="text-slate-500">
-                Changes are saved automatically in
-                this browser.
+                Changes are saved automatically in this browser.
               </span>
 
               <span className="font-semibold text-green-700">
-                Settings active
+                Settings saved automatically
               </span>
             </footer>
           </section>
         </div>
       </main>
     </AppShell>
+  );
+}
+
+function SettingsOverviewCard({
+  label,
+  title,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  title: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 shadow-sm ${
+        warning
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div
+        className={`text-xs font-bold uppercase tracking-[0.12em] ${
+          warning ? "text-amber-700" : "text-slate-500"
+        }`}
+      >
+        {label}
+      </div>
+      <div className="mt-2 text-lg font-bold text-slate-950">
+        {title}
+      </div>
+      <div
+        className={`mt-1 text-xs leading-5 ${
+          warning ? "text-amber-800" : "text-slate-500"
+        }`}
+      >
+        {detail}
+      </div>
+    </div>
   );
 }
 
@@ -1581,12 +1644,14 @@ function OperationalMaintenanceTab({
   onFullDemoReset,
   chemicalCount,
   stockMovementCount,
+  onRestoreDefaults,
 }: {
   onStartNewTestDay: () => void;
   onResetDemoInventory: () => void;
   onFullDemoReset: () => void;
   chemicalCount: number;
   stockMovementCount: number;
+  onRestoreDefaults: () => void;
 }) {
   return (
     <div>
@@ -1742,6 +1807,25 @@ function OperationalMaintenanceTab({
           </button>
         </section>
       </div>
+
+      <section className="mt-5 rounded-2xl border border-red-200 bg-white p-5">
+        <div className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">
+          Settings reset
+        </div>
+        <h3 className="mt-2 text-xl font-bold text-slate-950">
+          Restore default settings
+        </h3>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+          Restore GreenFlow business settings to the original demonstration values. This is separate from the operational and inventory resets above.
+        </p>
+        <button
+          type="button"
+          onClick={onRestoreDefaults}
+          className="mt-4 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+        >
+          Restore default settings
+        </button>
+      </section>
     </div>
   );
 }

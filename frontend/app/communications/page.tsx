@@ -16,6 +16,7 @@ import {
   formatDateWithDay,
   getTodayDateValue,
 } from "@/lib/date-utils";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 type CommunicationChannel =
   | "SMS"
@@ -950,7 +951,7 @@ export default function CommunicationsPage() {
                             )}
                           </div>
                           <div className="mt-1 text-xs text-slate-500">
-                            Customer {item.customerNumber} · {item.treatmentName}
+                            Customer {item.customerNumber} · {formatProgrammeTreatmentLabel(item.treatmentName)}
                           </div>
                         </div>
 

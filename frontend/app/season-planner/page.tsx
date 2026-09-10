@@ -13,7 +13,7 @@ import {
   type SeasonCalendar,
   useSeasonStore,
 } from "@/components/season-store";
-import { STANDARD_TREATMENTS } from "@/lib/standard-treatments";
+import { PROGRAMME_TREATMENTS } from "@/lib/programme-treatment-labels";
 
 type SeasonMessageTone =
   | "success"
@@ -442,25 +442,18 @@ export default function SeasonPlannerPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1700px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Programme calendar
+              </div>
 
-              <h1 className="mt-2 text-3xl font-bold">
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Season Planner
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Set Group 1&apos;s first date once.
-                GreenFlow then assigns each later
-                group to the next permitted working
-                day and generates all five treatment
-                rounds from the editable gaps.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Set the working calendar once for the season. GreenFlow then builds the T1–T5 dates for every group and passes them into each customer's annual programme.
               </p>
             </div>
 
@@ -473,27 +466,24 @@ export default function SeasonPlannerPage() {
                   value={selectedYear}
                   onChange={(event) =>
                     setSelectedYear(
-                      Number(
-                        event.target.value,
-                      ) || currentYear,
+                      Number(event.target.value) || currentYear,
                     )
                   }
                   className="w-32 rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
                 />
               </Field>
 
-              <button
-                type="button"
-                onClick={restoreDefaults}
-                className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold hover:bg-slate-50"
+              <Link
+                href="/programmes"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                Restore defaults
-              </button>
+                Annual Programmes
+              </Link>
 
               <button
                 type="button"
                 onClick={savePlanner}
-                className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
                 Save and regenerate
               </button>
@@ -516,6 +506,39 @@ export default function SeasonPlannerPage() {
               {message}
             </div>
           )}
+
+          <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SeasonOverviewCard
+              label="Season"
+              value={String(draft.year)}
+              detail={draft.name || "Annual treatment calendar"}
+            />
+
+            <SeasonOverviewCard
+              label="Treatment rounds"
+              value="T1–T5"
+              detail="Five standard programme treatments"
+            />
+
+            <SeasonOverviewCard
+              label="Groups"
+              value={String(draft.groupCount)}
+              detail={`${draft.groupsPerWorkingDay} group${
+                draft.groupsPerWorkingDay === 1 ? "" : "s"
+              } per working day`}
+            />
+
+            <SeasonOverviewCard
+              label="Excluded dates"
+              value={String(draft.excludedDates.length)}
+              detail={
+                draft.excludedDates.length > 0
+                  ? "Dates skipped by the calendar"
+                  : "No extra dates excluded"
+              }
+              warning={draft.excludedDates.length > 0}
+            />
+          </section>
 
           <section className="grid gap-4 xl:grid-cols-[400px_1fr]">
             <aside className="space-y-4">
@@ -541,7 +564,7 @@ export default function SeasonPlannerPage() {
                     />
                   </Field>
 
-                  <Field label="Group 1 — Treatment 1 start date">
+                  <Field label="Group 1 — T1 start date">
                     <input
                       type="date"
                       value={
@@ -638,7 +661,7 @@ export default function SeasonPlannerPage() {
 
               <Panel
                 title="Standard treatments"
-                description="This is the shared five-treatment template. Gaps default to 70 days and remain editable."
+                description="The shared T1–T5 treatment sequence. Keep the familiar round number alongside the full treatment name."
               >
                 <div className="space-y-3">
                   {draft.treatmentRounds.map(
@@ -656,15 +679,17 @@ export default function SeasonPlannerPage() {
                             }
                           </span>
 
-                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Treatment{" "}
-                            {
-                              round.visitNumber
-                            }
+                          <div>
+                            <div className="text-sm font-bold text-slate-900">
+                              T{round.visitNumber}
+                            </div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Programme treatment
+                            </div>
                           </div>
                         </div>
 
-                        <Field label="Treatment name">
+                        <Field label={`T${round.visitNumber} treatment name`}>
                           <input
                             value={
                               round.treatmentName
@@ -709,13 +734,9 @@ export default function SeasonPlannerPage() {
                   )}
                 </div>
 
-                <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-                  The five initial names come from{" "}
-                  <code className="rounded bg-white px-1.5 py-0.5 text-xs">
-                    lib/standard-treatments.ts
-                  </code>
-                  . Saved season edits are then used
-                  throughout scheduling.
+                <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-900">
+                  <span className="font-bold">T1–T5 stay as the operational round names.</span>{" "}
+                  The full treatment description can still be edited for each season and is used throughout scheduling and customer programme records.
                 </div>
               </Panel>
 
@@ -786,8 +807,11 @@ export default function SeasonPlannerPage() {
               <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-bold">
-                      Group calendar preview
+                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                      Schedule preview
+                    </div>
+                    <h2 className="mt-1 text-xl font-bold text-slate-950">
+                      Group calendar
                     </h2>
 
                     <p className="mt-1 text-sm text-slate-500">
@@ -803,7 +827,7 @@ export default function SeasonPlannerPage() {
                   <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
                     {draft.groupCount} groups ·{" "}
                     {
-                      STANDARD_TREATMENTS.length
+                      PROGRAMME_TREATMENTS.length
                     }{" "}
                     treatments
                   </span>
@@ -882,20 +906,28 @@ export default function SeasonPlannerPage() {
                 </div>
               </article>
 
-              <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950 shadow-sm">
-                <h2 className="font-bold">
-                  Phase 1 scheduling rule
-                </h2>
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                      Calendar rules
+                    </div>
+                    <h2 className="mt-1 text-lg font-bold text-slate-950">
+                      One standard schedule, individual exceptions
+                    </h2>
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                      Customers inherit the T1–T5 dates for their assigned group. If one customer needs a different visit date, make that individual change from Annual Programmes rather than altering the group calendar.
+                    </p>
+                  </div>
 
-                <p className="mt-1">
-                  This page is now the only calendar
-                  generator. The former independent
-                  planner storage key is no longer
-                  used. Customers inherit these dates
-                  from their assigned group; only
-                  customer-specific reschedules should
-                  create overrides.
-                </p>
+                  <button
+                    type="button"
+                    onClick={restoreDefaults}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Restore season defaults
+                  </button>
+                </div>
               </article>
             </section>
           </section>
@@ -1007,6 +1039,48 @@ function formatWeekday(
       weekday: "long",
     },
   ).format(parseDate(value));
+}
+
+function SeasonOverviewCard({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <article
+      className={`rounded-2xl border p-4 shadow-sm ${
+        warning
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div
+        className={`text-xs font-bold uppercase tracking-[0.12em] ${
+          warning ? "text-amber-700" : "text-slate-500"
+        }`}
+      >
+        {label}
+      </div>
+
+      <div className="mt-2 text-xl font-bold text-slate-950">
+        {value}
+      </div>
+
+      <div
+        className={`mt-1 text-xs leading-5 ${
+          warning ? "text-amber-800" : "text-slate-500"
+        }`}
+      >
+        {detail}
+      </div>
+    </article>
+  );
 }
 
 function Panel({

@@ -20,6 +20,7 @@ import {
   getTreatmentTotalProductCost,
   useTreatmentStore,
 } from "@/components/treatment-store";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 type StatusFilter =
   | "All"
@@ -313,33 +314,27 @@ function TreatmentsPageContent() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1650px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Treatment history
+              </div>
 
-              <h1 className="mt-2 text-3xl font-bold">
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Treatment Records
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Review completed treatments,
-                cancellations, failed visits and
-                rescheduling history from one
-                operational record.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                The internal record of completed treatments and visit outcomes, including application details, invoices and rescheduling history.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/jobs"
-                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                Open Jobs
+                Schedule
               </Link>
 
               <Link
@@ -348,9 +343,9 @@ function TreatmentsPageContent() {
                     ? `/documents?customer=${customerNumber}`
                     : "/documents"
                 }
-                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold hover:bg-slate-50"
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
-                Open Documents
+                Documents
               </Link>
             </div>
           </header>
@@ -418,7 +413,7 @@ function TreatmentsPageContent() {
               value={String(
                 scopedTreatments.length,
               )}
-              detail="Operational history"
+              detail="Visit outcomes recorded"
             />
 
             <SummaryCard
@@ -426,7 +421,7 @@ function TreatmentsPageContent() {
               value={String(
                 completedTreatments.length,
               )}
-              detail="Treatment reports"
+              detail="Completed visits"
             />
 
             <SummaryCard
@@ -445,7 +440,7 @@ function TreatmentsPageContent() {
               value={`${totalArea.toLocaleString(
                 "en-GB",
               )} m²`}
-              detail="Recorded applications"
+              detail="Completed lawn area"
             />
 
             <SummaryCard
@@ -453,11 +448,23 @@ function TreatmentsPageContent() {
               value={`£${totalProductCost.toFixed(
                 2,
               )}`}
-              detail="All products used"
+              detail="Recorded product cost"
             />
           </section>
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-4">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                Record search
+              </div>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Find a treatment record
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-slate-500">
+                Search by customer, treatment, product, invoice or notes, then select a record to inspect the saved details.
+              </p>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-[1fr_230px]">
               <Field label="Search records">
                 <input
@@ -509,6 +516,15 @@ function TreatmentsPageContent() {
 
           <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_500px]">
             <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 p-4">
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                  Treatment history
+                </div>
+                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                  {filteredTreatments.length} matching record{filteredTreatments.length === 1 ? "" : "s"}
+                </h2>
+              </div>
+
               <div className="grid grid-cols-[115px_1.2fr_1.15fr_150px_1.2fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                 <span>Date</span>
                 <span>Customer</span>
@@ -517,7 +533,7 @@ function TreatmentsPageContent() {
                 <span>Products</span>
               </div>
 
-              <div className="max-h-[64vh] overflow-y-auto">
+              <div>
                 {filteredTreatments.length ===
                 0 ? (
                   <div className="p-12 text-center text-sm text-slate-500">
@@ -632,16 +648,15 @@ function TreatmentsPageContent() {
                 <>
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h2 className="text-xl font-bold">
+                      <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                        Selected record
+                      </div>
+                      <h2 className="mt-1 text-xl font-bold text-slate-950">
                         Treatment detail
                       </h2>
 
-                      <p className="mt-1 text-sm text-slate-500">
-                        Immutable operational facts
-                        recorded when the job outcome
-                        was saved. Completed records
-                        cannot be deleted from this
-                        screen.
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        Saved visit details and internal application history. Completed records are protected from ordinary deletion.
                       </p>
                     </div>
 
@@ -749,7 +764,7 @@ function TreatmentsPageContent() {
                           href={`/customers/${selectedCustomer.customerNumber}?tab=treatments`}
                           className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
                         >
-                          Open customer
+                          Open account
                         </Link>
                       )}
 
@@ -761,7 +776,7 @@ function TreatmentsPageContent() {
                         }
                         className="rounded-xl border border-[#338b45] px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
                       >
-                        Open document centre
+                        Documents
                       </Link>
 
                       {selectedTreatment && (
@@ -770,7 +785,7 @@ function TreatmentsPageContent() {
                             href={`/chemical-usage?customer=${selectedTreatment.customerNumber}`}
                             className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
                           >
-                            Chemical usage
+                            Application record
                           </Link>
 
                           <Link

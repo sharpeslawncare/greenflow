@@ -91,6 +91,10 @@ export default function ActionsPage() {
       action.dueDate > today,
   );
 
+  const noDueDate = openActions.filter(
+    (action) => !action.dueDate,
+  );
+
   const filtered = useMemo(() => {
     const query =
       search.trim().toLowerCase();
@@ -201,56 +205,79 @@ export default function ActionsPage() {
     <AppShell>
       <main className="min-h-screen bg-slate-50 p-4 md:p-6">
         <div className="mx-auto max-w-7xl">
-          <header className="flex flex-wrap items-start justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-                Operations
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Customer follow-up
               </div>
-              <h1 className="mt-1 text-3xl font-black text-slate-950">
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Action Centre
               </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Keep customer follow-ups, access issues, payment chases and other office actions separate from scheduled lawn-care jobs.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Keep office follow-ups, access issues, payments and customer requests visible without mixing them into scheduled lawn-care jobs.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                setShowNew(true)
-              }
-              className="rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
-            >
-              + New action
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                ← Dashboard
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setShowNew(true)}
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+              >
+                + New action
+              </button>
+            </div>
           </header>
 
-          <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               label="Overdue"
               value={overdue.length}
-              warning={
-                overdue.length > 0
-              }
+              detail="Need attention now"
+              warning={overdue.length > 0}
             />
             <SummaryCard
               label="Due today"
               value={dueToday.length}
-              warning={
-                dueToday.length > 0
-              }
+              detail="Due before the day is closed"
+              warning={dueToday.length > 0}
             />
             <SummaryCard
               label="Upcoming"
               value={upcoming.length}
+              detail="Future dated actions"
             />
             <SummaryCard
               label="Open actions"
               value={openActions.length}
+              detail={
+                noDueDate.length > 0
+                  ? `${noDueDate.length} without a due date`
+                  : "All open actions are dated"
+              }
             />
           </section>
 
           <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-4">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                Action list
+              </div>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                What needs attention?
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Open actions are shown first and ordered by due date. Use the filters when you need completed history or a particular action type.
+              </p>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-3">
               <input
                 value={search}
@@ -403,7 +430,7 @@ export default function ActionsPage() {
                                   action.id,
                                 )
                               }
-                              className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f]"
+                              className="rounded-xl bg-[#176b37] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#125b2f]"
                             >
                               Complete
                             </button>
@@ -414,7 +441,7 @@ export default function ActionsPage() {
                                   action.id,
                                 )
                               }
-                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
                             >
                               Cancel
                             </button>
@@ -430,7 +457,7 @@ export default function ActionsPage() {
                                 action.id,
                               )
                             }
-                            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+                            className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-bold text-red-700 hover:bg-red-50"
                           >
                             Delete
                           </button>
@@ -659,10 +686,12 @@ function Field({
 function SummaryCard({
   label,
   value,
+  detail,
   warning = false,
 }: {
   label: string;
   value: number;
+  detail: string;
   warning?: boolean;
 }) {
   return (
@@ -673,17 +702,26 @@ function SummaryCard({
           : "border-slate-200 bg-white"
       }`}
     >
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+      <div
+        className={`text-xs font-bold uppercase tracking-[0.12em] ${
+          warning ? "text-amber-700" : "text-slate-500"
+        }`}
+      >
         {label}
       </div>
       <div
-        className={`mt-1 text-3xl font-black ${
-          warning
-            ? "text-amber-950"
-            : "text-slate-950"
+        className={`mt-2 text-2xl font-bold tracking-tight ${
+          warning ? "text-amber-950" : "text-slate-950"
         }`}
       >
         {value}
+      </div>
+      <div
+        className={`mt-1 text-xs ${
+          warning ? "text-amber-800" : "text-slate-500"
+        }`}
+      >
+        {detail}
       </div>
     </div>
   );

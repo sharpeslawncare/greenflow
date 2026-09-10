@@ -40,6 +40,7 @@ import {
   type TreatmentStatus,
   useTreatmentStore,
 } from "@/components/treatment-store";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 type VisitJob = {
   id: string;
@@ -1429,7 +1430,7 @@ function VisitCentrePageContent() {
           "another job";
 
         const error =
-          `${job.customer.fullName} already has ${treatmentName} scheduled on ${formatDate(
+          `${job.customer.fullName} already has ${formatProgrammeTreatmentLabel(treatmentName)} scheduled on ${formatDate(
             replacementDate,
           )}. Choose a different replacement date.`;
 
@@ -2052,7 +2053,7 @@ function VisitCentrePageContent() {
                 : `Bulk visit completion · ${selectedJobs.length} customers`,
             notes:
               selectedJobs.length === 1
-                ? `${selectedJobs[0].customer.fullName} · ${selectedJobs[0].visit.treatmentName}`
+                ? `${selectedJobs[0].customer.fullName} · ${formatProgrammeTreatmentLabel(selectedJobs[0].visit.treatmentName)}`
                 : `${selectedJobs.length} completed visits · ${totalSelectedArea.toLocaleString(
                     "en-GB",
                   )} m² combined area`,
@@ -2778,7 +2779,7 @@ function VisitCentrePageContent() {
 
                               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#176b37]">
                                 <span>
-                                  {job.visit.treatmentName}
+                                  {formatProgrammeTreatmentLabel(job.visit.treatmentName)}
                                 </span>
 
                                 {job.source ===
@@ -3079,10 +3080,10 @@ function VisitCentrePageContent() {
                           ).map(
                             (treatmentName) => (
                               <span
-                                key={treatmentName}
+                                key={formatProgrammeTreatmentLabel(treatmentName)}
                                 className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-900"
                               >
-                                {treatmentName}
+                                {formatProgrammeTreatmentLabel(treatmentName)}
                               </span>
                             ),
                           )}
@@ -3710,7 +3711,7 @@ function VisitCentrePageContent() {
                               </div>
 
                               <div className="mt-1 text-xs font-semibold text-[#176b37]">
-                                {job.visit.treatmentName}
+                                {formatProgrammeTreatmentLabel(job.visit.treatmentName)}
                                 {customerJobs.length > 1
                                   ? ` · Stop ${stopNumber} · Visit ${visitNumber} of ${customerJobs.length}`
                                   : ""}

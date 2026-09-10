@@ -888,68 +888,34 @@ export default function StockPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
-
-              <h1 className="mt-2 text-3xl font-bold">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Chemical stock
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Stock & Purchasing
               </h1>
-
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Live stock now comes directly from the Chemical Store. Current stock and reorder levels are pack-equivalents; treatment usage remains calculated in kg, litres, g or ml.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                See what is on hand, record deliveries and stock counts, and keep purchasing decisions tied to the same live Chemical Store used by Visit Centre.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={
-                  clearLegacyStockData
-                }
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
+              <Link
+                href="/"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                Clear old stock data
-              </button>
+                ← Dashboard
+              </Link>
 
               <button
                 type="button"
                 onClick={() => {
-                  const confirmed =
-                    window.confirm(
-                      "Clear the shared stock movement history? Live stock balances will not change.",
-                    );
-
-                  if (!confirmed) {
-                    return;
-                  }
-
-                  clearStockMovements();
-                  showMessage(
-                    "Stock movement history cleared. Live stock balances were not changed.",
-                  );
+                  setProductForm(createEmptyProductForm());
+                  setShowProductForm(true);
                 }}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-              >
-                Clear movement history
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setProductForm(
-                    createEmptyProductForm(),
-                  );
-                  setShowProductForm(
-                    true,
-                  );
-                }}
-                className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
                 + Add product
               </button>
@@ -973,12 +939,53 @@ export default function StockPage() {
             </div>
           )}
 
-          <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-            <strong>
-              One live stock balance:
-            </strong>{" "}
-            changing stock here updates the same Chemical Store used by Visit Centre. A value of 23 for a 25 kg bag means 23 pack-equivalents = 575 kg available.
-          </div>
+          <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                  One live stock balance
+                </div>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                  Stock changes here update the same Chemical Store used by Visit Centre. Quantities are held as pack-equivalents while treatment usage remains recorded in kg, litres, g or ml.
+                </p>
+              </div>
+
+              <details className="relative">
+                <summary className="cursor-pointer list-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                  Maintenance tools
+                </summary>
+                <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={clearLegacyStockData}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Clear old stock data
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const confirmed = window.confirm(
+                        "Clear the shared stock movement history? Live stock balances will not change.",
+                      );
+
+                      if (!confirmed) {
+                        return;
+                      }
+
+                      clearStockMovements();
+                      showMessage(
+                        "Stock movement history cleared. Live stock balances were not changed.",
+                      );
+                    }}
+                    className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50"
+                  >
+                    Clear movement history
+                  </button>
+                </div>
+              </details>
+            </div>
+          </section>
 
 
           {reconciliationMismatches.length >
@@ -1020,7 +1027,7 @@ export default function StockPage() {
             />
 
             <SummaryCard
-              label="Fertiliser pack-equivalents"
+              label="Fertiliser stock"
               value={formatNumber(
                 totalFertiliserPacks,
                 2,
@@ -1056,6 +1063,14 @@ export default function StockPage() {
           <section className="mt-5 grid gap-5 xl:grid-cols-[360px_1fr]">
             <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 p-4">
+                <div className="mb-3">
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                    Product stock
+                  </div>
+                  <h2 className="mt-1 text-lg font-bold text-slate-950">
+                    Choose a product
+                  </h2>
+                </div>
                 <input
                   value={search}
                   onChange={(event) =>
@@ -1068,7 +1083,7 @@ export default function StockPage() {
                 />
               </div>
 
-              <div className="max-h-[720px] overflow-y-auto">
+              <div>
                 {filteredChemicals.length ===
                 0 ? (
                   <div className="p-8 text-center text-sm text-slate-500">
@@ -1197,7 +1212,7 @@ export default function StockPage() {
                             "Usage",
                           )
                         }
-                        className="rounded-xl border border-[#338b45] px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                       >
                         Record manual usage
                       </button>
@@ -1346,7 +1361,10 @@ export default function StockPage() {
 
                 <section className="grid gap-5 lg:grid-cols-2">
                   <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h2 className="text-lg font-bold">
+                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                      Product setup
+                    </div>
+                    <h2 className="mt-1 text-lg font-bold">
                       Stock settings
                     </h2>
 
@@ -1536,7 +1554,10 @@ export default function StockPage() {
                   </article>
 
                   <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h2 className="text-lg font-bold">
+                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                      Purchasing
+                    </div>
+                    <h2 className="mt-1 text-lg font-bold">
                       Suggested purchase
                     </h2>
 
@@ -1574,7 +1595,10 @@ export default function StockPage() {
 
                 <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 px-5 py-4">
-                    <h2 className="text-lg font-bold">
+                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                      Audit trail
+                    </div>
+                    <h2 className="mt-1 text-lg font-bold">
                       Stock movement history
                     </h2>
 

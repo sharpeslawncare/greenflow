@@ -25,7 +25,7 @@ const primaryNavigation: NavigationItem[] = [
     href: "/",
   },
   {
-    label: "Today's Jobs",
+    label: "Schedule",
     href: "/jobs",
   },
   {
@@ -36,8 +36,26 @@ const primaryNavigation: NavigationItem[] = [
 
 const navigationSections: NavigationSection[] = [
   {
-    id: "operations",
-    label: "Operations",
+    id: "customers",
+    label: "Customers",
+    items: [
+      {
+        label: "Customer Accounts",
+        href: "/customers",
+      },
+      {
+        label: "Enquiries & Quotes",
+        href: "/enquiries",
+      },
+      {
+        label: "Annual Programmes",
+        href: "/programmes",
+      },
+    ],
+  },
+  {
+    id: "planning",
+    label: "Work Planning",
     items: [
       {
         label: "Groups & Routes",
@@ -52,10 +70,6 @@ const navigationSections: NavigationSection[] = [
         href: "/actions",
       },
       {
-        label: "Working Day Capacity",
-        href: "/capacity",
-      },
-      {
         label: "Treatment Records",
         href: "/treatments",
       },
@@ -63,44 +77,24 @@ const navigationSections: NavigationSection[] = [
         label: "Season Planner",
         href: "/season-planner",
       },
-    ],
-  },
-  {
-    id: "customers",
-    label: "Customers",
-    items: [
       {
-        label: "Customer Centre",
-        href: "/customers",
-      },
-      {
-        label: "Annual Programmes",
-        href: "/programmes",
-      },
-      {
-        label: "Enquiries & Quotes",
-        href: "/enquiries",
+        label: "Working Day Capacity",
+        href: "/capacity",
       },
     ],
   },
   {
     id: "chemicals",
-    label: "Chemical Centre",
+    label: "Chemicals & Stock",
     items: [
       {
         label: "Chemical Centre",
         href: "/chemicals",
       },
       {
-        label: "Chemical Usage",
+        label: "Daily Chemical Usage",
         href: "/chemical-usage",
       },
-    ],
-  },
-  {
-    id: "stock",
-    label: "Stock",
-    items: [
       {
         label: "Stock & Purchasing",
         href: "/stock",
@@ -112,7 +106,7 @@ const navigationSections: NavigationSection[] = [
     label: "Communications",
     items: [
       {
-        label: "Communications",
+        label: "Customer Communications",
         href: "/communications",
       },
       {
@@ -126,7 +120,7 @@ const navigationSections: NavigationSection[] = [
     label: "Business",
     items: [
       {
-        label: "Maintenance",
+        label: "Settings",
         href: "/settings",
       },
       {
@@ -177,7 +171,7 @@ export function AppShell({
         <aside className="hidden h-screen w-72 shrink-0 flex-col overflow-y-auto bg-[#0d5333] px-5 py-6 text-white lg:flex">
           <Link
             href="/"
-            className="mb-8 block shrink-0"
+            className="mb-7 block shrink-0"
           >
             <div className="text-3xl font-bold tracking-tight">
               GreenFlow
@@ -236,9 +230,7 @@ export function AppShell({
                             ? "bg-white/15 text-white"
                             : "text-green-50 hover:bg-white/10"
                         }`}
-                        aria-expanded={
-                          open
-                        }
+                        aria-expanded={open}
                       >
                         <span>
                           {section.label}
@@ -261,12 +253,8 @@ export function AppShell({
                           {section.items.map(
                             (item) => (
                               <NavigationLink
-                                key={
-                                  item.href
-                                }
-                                item={
-                                  item
-                                }
+                                key={item.href}
+                                item={item}
                                 active={isActivePath(
                                   pathname,
                                   item.href,
@@ -286,10 +274,12 @@ export function AppShell({
 
           <div className="mt-auto pt-6">
             <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
-              <div className="font-semibold">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-green-200">
+                Signed in
+              </div>
+              <div className="mt-1 font-semibold">
                 Rob Sharpe
               </div>
-
               <div className="text-sm text-green-200">
                 Owner
               </div>
@@ -298,6 +288,52 @@ export function AppShell({
         </aside>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
+          <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+            <div className="flex items-center justify-between gap-3">
+              <Link
+                href="/"
+                className="min-w-0"
+              >
+                <div className="font-bold text-[#0d5333]">
+                  GreenFlow
+                </div>
+                <div className="truncate text-xs text-slate-500">
+                  Sharpes Lawn Care
+                </div>
+              </Link>
+
+              <div className="flex gap-2">
+                <Link
+                  href="/jobs"
+                  className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                    isActivePath(
+                      pathname,
+                      "/jobs",
+                    )
+                      ? "bg-[#0d5333] text-white"
+                      : "border border-slate-300 bg-white text-slate-700"
+                  }`}
+                >
+                  Schedule
+                </Link>
+
+                <Link
+                  href="/visit-centre"
+                  className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                    isActivePath(
+                      pathname,
+                      "/visit-centre",
+                    )
+                      ? "bg-[#0d5333] text-white"
+                      : "border border-slate-300 bg-white text-slate-700"
+                  }`}
+                >
+                  Visit Centre
+                </Link>
+              </div>
+            </div>
+          </div>
+
           {children}
         </div>
       </div>
@@ -323,7 +359,7 @@ function NavigationLink({
           : "px-4 py-3 font-medium"
       } ${
         active
-          ? "bg-white text-[#0d5333] shadow-sm"
+          ? "bg-white font-semibold text-[#0d5333] shadow-sm"
           : nested
             ? "text-green-100 hover:bg-white/10 hover:text-white"
             : "text-green-50 hover:bg-white/10"

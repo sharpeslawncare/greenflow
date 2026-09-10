@@ -24,6 +24,7 @@ import {
   formatDateWithDay,
   getTodayDateValue,
 } from "@/lib/date-utils";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 type RouteCustomer = {
   customer: StoredCustomer;
@@ -1663,7 +1664,7 @@ export default function RoutesPage() {
                                         .postcode
                                     }
                                     {" · "}
-                                    {stop.treatmentNames.join(
+                                    {stop.treatmentNames.map(formatProgrammeTreatmentLabel).join(
                                       " + ",
                                     )}
                                   </div>

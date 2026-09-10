@@ -1026,25 +1026,27 @@ export default function AdditionalJobsPlannerPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1750px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/jobs"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Back to Jobs
-              </Link>
-
-              <h1 className="mt-2 text-3xl font-bold">
-                Additional Jobs Planner
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Additional work
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+                Additional Jobs
               </h1>
-
-              <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-500">
-                Plan Scarification, Aeration, Overseeding and future additional services separately from the five-treatment seasonal programme. Only scheduled jobs enter the daily Jobs, Routes and Visit Centre workflow.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Keep extra lawn work separate from the five-treatment programme, then schedule it into a working day when you are ready.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <Link
+                href="/jobs"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                ← Jobs
+              </Link>
+
               <button
                 type="button"
                 onClick={() =>
@@ -1055,16 +1057,9 @@ export default function AdditionalJobsPlannerPage() {
                 className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
                 {showBulkCreator
-                  ? "Close Add Jobs"
-                  : "+ Add Jobs"}
+                  ? "Close add jobs"
+                  : "+ Add additional jobs"}
               </button>
-
-              <Link
-                href="/customers"
-                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold hover:bg-slate-50"
-              >
-                Open Customers
-              </Link>
             </div>
           </header>
 
@@ -1086,13 +1081,13 @@ export default function AdditionalJobsPlannerPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
-                    Bulk additional jobs
+                    Add additional work
                   </div>
                   <h2 className="mt-1 text-xl font-bold">
-                    Add work for multiple customers
+                    Create jobs for one or more customers
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Choose a service, an optional working date and any active customer. A customer does not need to have seasonal work already booked on that date. Use the date filters below if you want to focus on customers already scheduled that day.
+                    Choose the service and customers. Leave the date blank to keep the work in Unscheduled, or choose a working date to send it straight into the daily workflow.
                   </p>
                 </div>
 
@@ -1171,7 +1166,7 @@ export default function AdditionalJobsPlannerPage() {
                   }
                   className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
-                  Create {bulkCustomerNumbers.length || ""} job
+                  Add {bulkCustomerNumbers.length || ""} job
                   {bulkCustomerNumbers.length === 1
                     ? ""
                     : "s"}
@@ -1425,13 +1420,13 @@ export default function AdditionalJobsPlannerPage() {
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
-              label="Unscheduled"
+              label="Waiting to schedule"
               value={String(
                 unscheduledRows.length,
               )}
               detail={`£${unscheduledValue.toFixed(
                 2,
-              )} waiting to allocate`}
+              )} of additional work`}
               warning={
                 unscheduledRows.length >
                 0
@@ -1459,16 +1454,28 @@ export default function AdditionalJobsPlannerPage() {
             />
 
             <SummaryCard
-              label="Pipeline value"
+              label="Outstanding value"
               value={`£${(
                 unscheduledValue +
                 scheduledValue
               ).toFixed(2)}`}
-              detail="Unscheduled + scheduled"
+              detail="Waiting + scheduled"
             />
           </section>
 
           <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-4">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                Job status
+              </div>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Additional work list
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Unscheduled work is your holding list. Scheduled work has a working date and will appear in Jobs, Routes and Visit Centre.
+              </p>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
               <div className="flex flex-wrap gap-2">
                 {(
@@ -1500,7 +1507,7 @@ export default function AdditionalJobsPlannerPage() {
                           : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      {tab} · {count}
+                      {tab === "Unscheduled" ? "Waiting" : tab} · {count}
                     </button>
                   );
                 })}
@@ -1635,7 +1642,7 @@ export default function AdditionalJobsPlannerPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                      Selected jobs
+                      {activeTab === "Scheduled" ? "Move scheduled work" : "Schedule selected work"}
                     </div>
 
                     <div className="mt-1 text-2xl font-bold">
@@ -1643,11 +1650,9 @@ export default function AdditionalJobsPlannerPage() {
                     </div>
 
                     <div className="mt-1 text-sm text-slate-500">
-                      £
-                      {selectedValue.toFixed(
+                      £{selectedValue.toFixed(
                         2,
-                      )}{" "}
-                      selected value
+                      )} selected value
                     </div>
                   </div>
 
@@ -1771,8 +1776,8 @@ export default function AdditionalJobsPlannerPage() {
                   {selectable && (
                     <span>Select</span>
                   )}
-                  <span>Customer</span>
-                  <span>Name / address</span>
+                  <span>No.</span>
+                  <span>Customer / address</span>
                   <span>Service</span>
                   <span>Group</span>
                   <span>Van</span>
@@ -1786,7 +1791,7 @@ export default function AdditionalJobsPlannerPage() {
                         : "Completed"}
                   </span>
                   <span>Price</span>
-                  <span>Customer</span>
+                  <span>Account</span>
                 </div>
 
                 {filteredRows.length ===
@@ -1951,7 +1956,7 @@ function PlannerRowView({
         href={`/customers/${customer.customerNumber}?tab=additionalJobs`}
         className="w-fit rounded-lg border border-[#338b45] px-3 py-2 text-xs font-semibold text-[#176b37] hover:bg-green-50"
       >
-        Open customer
+        View account
       </Link>
     </div>
   );

@@ -186,6 +186,32 @@ export default function CustomersPage() {
       [customers],
     );
 
+  const activeCustomers =
+    customers.filter(
+      (customer) => customer.status === "Active",
+    );
+
+  const accessAlertCount =
+    activeCustomers.filter(
+      (customer) =>
+        customer.lockedGate ||
+        customer.dogOnProperty,
+    ).length;
+
+  const activeLawnArea =
+    activeCustomers.reduce(
+      (total, customer) =>
+        total + customer.lawnSize,
+      0,
+    );
+
+  const activeStandardVisitValue =
+    activeCustomers.reduce(
+      (total, customer) =>
+        total + customer.treatmentPrice,
+      0,
+    );
+
   const customerRows =
     useMemo<CustomerRow[]>(() => {
       const query =
@@ -905,58 +931,93 @@ export default function CustomersPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1750px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Customer accounts
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+                Customers
+              </h1>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Find a customer quickly, open their account and keep the core contact, property and programme details accurate.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
               <Link
                 href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 ← Dashboard
               </Link>
 
-              <h1 className="mt-2 text-3xl font-bold tracking-tight">
-                Customer Centre
-              </h1>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Manage customer accounts, contact details and programme values.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <label className="cursor-pointer rounded-xl border border-[#338b45] bg-white px-5 py-2.5 text-sm font-semibold text-[#176b37] transition hover:bg-green-50">
-                Import customers CSV
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  onChange={
-                    handleImportFile
-                  }
-                  className="hidden"
-                />
-              </label>
-
               <button
                 type="button"
-                onClick={
-                  handleRestoreDemoData
-                }
-                className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                onClick={openAddCustomer}
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
-                Restore demo data
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  openAddCustomer
-                }
-                className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125b2f]"
-              >
-                + Add Customer
+                + Add customer
               </button>
             </div>
           </header>
+
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <CustomerSummaryCard
+              label="Active customers"
+              value={String(statusCounts.Active)}
+              detail={`${statusCounts.Paused} paused · ${statusCounts.Cancelled} cancelled`}
+            />
+            <CustomerSummaryCard
+              label="Access alerts"
+              value={String(accessAlertCount)}
+              detail="Locked gate or dog recorded"
+              warning={accessAlertCount > 0}
+            />
+            <CustomerSummaryCard
+              label="Active lawn area"
+              value={`${activeLawnArea.toLocaleString("en-GB")} m²`}
+              detail="Across active customer accounts"
+            />
+            <CustomerSummaryCard
+              label="Standard visit value"
+              value={`£${activeStandardVisitValue.toFixed(2)}`}
+              detail="One standard treatment per active customer"
+            />
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Customer tools
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  Import is available when moving customer data into GreenFlow. Demo restore is kept separate from everyday customer work.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <label className="inline-flex h-10 cursor-pointer items-center rounded-xl border border-[#338b45] bg-white px-4 text-sm font-semibold text-[#176b37] hover:bg-green-50">
+                  Import customers CSV
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleImportFile}
+                    className="hidden"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleRestoreDemoData}
+                  className="inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Restore demo data
+                </button>
+              </div>
+            </div>
+          </section>
 
           {successMessage && (
             <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
@@ -972,7 +1033,19 @@ export default function CustomersPage() {
             </div>
           )}
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-4">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                Customer list
+              </div>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Find an account
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Search by name, customer number, address or contact details, then open the account for the full history and future work.
+              </p>
+            </div>
+
             <nav className="flex overflow-x-auto border-b border-slate-200 px-3">
               <CustomerTabButton
                 label="Active"
@@ -1045,11 +1118,8 @@ export default function CustomersPage() {
                 />
 
                 <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-bold text-green-900">
-                  Number of{" "}
-                  {activeTab} Customers{" "}
-                  {
-                    customerRows.length
-                  }
+                  {customerRows.length}{" "}
+                  {activeTab.toLowerCase()} customer{customerRows.length === 1 ? "" : "s"}
                 </div>
               </div>
             </div>
@@ -1060,7 +1130,7 @@ export default function CustomersPage() {
               <div className="min-w-[1450px]">
                 <div className="sticky top-0 z-10 grid grid-cols-[100px_1.25fr_1.6fr_115px_135px_1.4fr_70px_75px_90px_110px_56px] border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-600">
                   <SortHeader
-                    label="Cust. ID"
+                    label="Customer no."
                     sortKey="customerNumber"
                     currentSortKey={sortKey}
                     direction={sortDirection}
@@ -1135,7 +1205,7 @@ export default function CustomersPage() {
                   />
 
                   <SortHeader
-                    label="Annual Value"
+                    label="Programme value"
                     sortKey="annualValue"
                     currentSortKey={sortKey}
                     direction={sortDirection}
@@ -1290,7 +1360,7 @@ export default function CustomersPage() {
                               <div className="absolute right-3 top-12 z-30 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 shadow-xl">
                                 <QuickActionLink
                                   href={`/customers/${customer.customerNumber}`}
-                                  label="Open customer"
+                                  label="Open account"
                                   onClick={() =>
                                     setOpenMenuCustomerNumber("")
                                   }
@@ -1330,7 +1400,7 @@ export default function CustomersPage() {
 
                                 <QuickActionLink
                                   href={`/customers/${customer.customerNumber}?tab=chemicals`}
-                                  label="Chemical usage"
+                                  label="Application record"
                                   onClick={() =>
                                     setOpenMenuCustomerNumber("")
                                   }
@@ -2810,6 +2880,50 @@ function compareCustomerNumbers(
 
   return first.localeCompare(
     second,
+  );
+}
+
+function CustomerSummaryCard({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 shadow-sm ${
+        warning
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div
+        className={`text-xs font-bold uppercase tracking-[0.12em] ${
+          warning
+            ? "text-amber-700"
+            : "text-slate-500"
+        }`}
+      >
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-bold tracking-tight text-slate-950">
+        {value}
+      </div>
+      <div
+        className={`mt-1 text-xs ${
+          warning
+            ? "text-amber-800"
+            : "text-slate-500"
+        }`}
+      >
+        {detail}
+      </div>
+    </div>
   );
 }
 

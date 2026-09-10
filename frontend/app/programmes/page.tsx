@@ -22,6 +22,7 @@ import {
   type SeasonCalendar,
   useSeasonStore,
 } from "@/components/season-store";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 type ProgrammeMessageTone =
   | "success"
@@ -486,8 +487,8 @@ export default function ProgrammesPage() {
     showMessage(
       replacementDate ===
         row.groupDate
-        ? `${row.treatmentName} restored to the Group ${selectedCustomer.groupNumber} date.`
-        : `${row.treatmentName} moved to ${formatDate(
+        ? `${formatProgrammeTreatmentLabel(row.treatmentName)} restored to the Group ${selectedCustomer.groupNumber} date.`
+        : `${formatProgrammeTreatmentLabel(row.treatmentName)} moved to ${formatDate(
             replacementDate,
           )} for ${selectedCustomer.fullName} only.`,
     );
@@ -565,25 +566,18 @@ export default function ProgrammesPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1650px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Customer programmes
+              </div>
 
-              <h1 className="mt-2 text-3xl font-bold">
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                 Annual Programmes
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Customers automatically inherit the
-                five treatment dates assigned to
-                their group. Use this page only to
-                review schedules or create a
-                customer-specific date override.
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                Review each customer's five-treatment schedule. Standard dates come from their group calendar, with individual date changes kept as clear exceptions.
               </p>
             </div>
 
@@ -593,39 +587,37 @@ export default function ProgrammesPage() {
                   value={selectedYear}
                   onChange={(event) => {
                     setSelectedYear(
-                      Number(
-                        event.target.value,
-                      ),
+                      Number(event.target.value),
                     );
 
-                    setEditingVisitNumber(
-                      null,
-                    );
-
-                    setReplacementDate(
-                      "",
-                    );
+                    setEditingVisitNumber(null);
+                    setReplacementDate("");
                   }}
                   className="min-w-40 rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
                 >
-                  {availableYears.map(
-                    (year) => (
-                      <option
-                        key={year}
-                        value={year}
-                      >
-                        {year}
-                      </option>
-                    ),
-                  )}
+                  {availableYears.map((year) => (
+                    <option
+                      key={year}
+                      value={year}
+                    >
+                      {year}
+                    </option>
+                  ))}
                 </select>
               </Field>
 
               <Link
                 href="/season-planner"
-                className="inline-flex h-11 items-center rounded-xl border border-[#338b45] bg-white px-4 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                Open Season Planner
+                Season Planner
+              </Link>
+
+              <Link
+                href="/customers"
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+              >
+                Customer accounts
               </Link>
             </div>
           </header>
@@ -661,10 +653,77 @@ export default function ProgrammesPage() {
             </section>
           )}
 
+          <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ProgrammeOverviewCard
+              label="Active customers"
+              value={String(activeCustomers.length)}
+              detail="Customers eligible for programme scheduling"
+            />
+
+            <ProgrammeOverviewCard
+              label="Season"
+              value={String(selectedYear)}
+              detail={
+                selectedSeason
+                  ? `${selectedSeason.treatmentRounds.length} standard treatment rounds`
+                  : "Season calendar not yet available"
+              }
+              warning={!selectedSeason}
+            />
+
+            <ProgrammeOverviewCard
+              label="Selected customer"
+              value={
+                selectedCustomer
+                  ? selectedCustomer.fullName
+                  : "None"
+              }
+              detail={
+                selectedCustomer
+                  ? `Group ${selectedCustomer.groupNumber} · Customer ${selectedCustomer.customerNumber}`
+                  : "Choose an account below"
+              }
+            />
+
+            <ProgrammeOverviewCard
+              label="Programme status"
+              value={
+                selectedProgramme
+                  ? `${includedVisitCount} included`
+                  : "Not available"
+              }
+              detail={
+                selectedProgramme
+                  ? overriddenVisitCount > 0
+                    ? `${overriddenVisitCount} customer-specific date override${
+                        overriddenVisitCount === 1 ? "" : "s"
+                      }`
+                    : "Using standard group dates"
+                  : "No inherited programme for this selection"
+              }
+              warning={Boolean(
+                selectedProgramme &&
+                  overriddenVisitCount > 0,
+              )}
+            />
+          </section>
+
           <section className="grid gap-4 xl:grid-cols-[390px_1fr]">
             <aside className="space-y-4">
               <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <Field label="Find customer">
+                <div className="mb-4">
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                    Customer list
+                  </div>
+                  <h2 className="mt-1 text-lg font-bold text-slate-950">
+                    Find an account
+                  </h2>
+                  <p className="mt-1 text-sm leading-5 text-slate-500">
+                    Select an active customer to review their programme for {selectedYear}.
+                  </p>
+                </div>
+
+                <Field label="Search customers">
                   <input
                     value={search}
                     onChange={(event) =>
@@ -792,7 +851,7 @@ export default function ProgrammesPage() {
 
                           {selectedProgramme && (
                             <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
-                              Schedule inherited
+                              Standard group schedule
                             </span>
                           )}
                         </div>
@@ -870,6 +929,18 @@ export default function ProgrammesPage() {
                   </article>
 
                   <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 p-5">
+                      <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                        Schedule of works
+                      </div>
+                      <h2 className="mt-1 text-xl font-bold text-slate-950">
+                        Five-treatment programme
+                      </h2>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        Group dates are the normal schedule. Override a date only when this customer needs to be treated differently.
+                      </p>
+                    </div>
+
                     <div className="grid grid-cols-[75px_1.3fr_170px_170px_150px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                       <span>Round</span>
                       <span>Treatment</span>
@@ -1055,17 +1126,13 @@ export default function ProgrammesPage() {
 
                   <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-950">
                     <h2 className="font-bold">
-                      How this page now works
+                      How programme dates work
                     </h2>
 
                     <p className="mt-1">
-                      Dates are not generated here.
-                      The Season Planner creates one
-                      calendar for all groups, and
-                      every customer inherits the
-                      dates assigned to their group.
-                      Only a deliberate customer
-                      override is saved separately.
+                      The Season Planner sets the standard calendar for each group.
+                      Customers automatically follow those dates unless you deliberately
+                      create an individual date override here.
                     </p>
                   </article>
                 </>
@@ -1203,6 +1270,48 @@ function Field({
 
       {children}
     </label>
+  );
+}
+
+function ProgrammeOverviewCard({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <article
+      className={`rounded-2xl border p-4 shadow-sm ${
+        warning
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div
+        className={`text-xs font-bold uppercase tracking-[0.12em] ${
+          warning ? "text-amber-700" : "text-slate-500"
+        }`}
+      >
+        {label}
+      </div>
+
+      <div className="mt-2 truncate text-lg font-bold text-slate-950">
+        {value}
+      </div>
+
+      <div
+        className={`mt-1 text-xs leading-5 ${
+          warning ? "text-amber-800" : "text-slate-500"
+        }`}
+      >
+        {detail}
+      </div>
+    </article>
   );
 }
 

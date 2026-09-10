@@ -34,6 +34,7 @@ import {
   type TreatmentStatus,
   useTreatmentStore,
 } from "@/components/treatment-store";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 type CommunicationRecord = {
   id: string;
@@ -1267,26 +1268,21 @@ export default function DashboardPage() {
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-[#176b37]">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
                 Sharpes Lawn Care
-              </p>
-
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
-                Operations Dashboard
+              </div>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+                Dashboard
               </h1>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Customers, enquiries,
-                scheduled work and
-                business activity in one
-                place.
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+                Your working day, customer follow-up and next preparation steps in one place.
               </p>
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
-              <div className="block">
+              <div>
                 <span className="mb-1.5 block text-sm font-semibold text-slate-700">
                   Working date
                 </span>
@@ -1299,10 +1295,10 @@ export default function DashboardPage() {
                         shiftDateValue(current, -1),
                       )
                     }
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     aria-label="Previous day"
                   >
-                    ← Previous
+                    ←
                   </button>
 
                   <div className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-bold text-slate-800">
@@ -1312,9 +1308,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      setSelectedDate(
-                        getTodayDateValue(),
-                      )
+                      setSelectedDate(getTodayDateValue())
                     }
                     className="rounded-xl border border-[#338b45] bg-green-50 px-4 py-2.5 text-sm font-semibold text-[#176b37] transition hover:bg-green-100"
                   >
@@ -1328,26 +1322,19 @@ export default function DashboardPage() {
                         shiftDateValue(current, 1),
                       )
                     }
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     aria-label="Next day"
                   >
-                    Next →
+                    →
                   </button>
                 </div>
               </div>
 
               <Link
-                href="/enquiries"
-                className="rounded-xl border border-[#338b45] bg-white px-5 py-2.5 text-sm font-semibold text-[#176b37] transition hover:bg-green-50"
-              >
-                New Enquiry
-              </Link>
-
-              <Link
                 href={`/jobs?date=${selectedDate}`}
-                className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#125b2f]"
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white transition hover:bg-[#125b2f]"
               >
-                Open jobs for this date
+                Open schedule
               </Link>
             </div>
           </header>
@@ -1496,6 +1483,10 @@ export default function DashboardPage() {
                 href="/additional-jobs"
                 label="Additional Jobs"
               />
+              <WorkflowLink
+                href="/enquiries"
+                label="New enquiry"
+              />
             </div>
           </section>
 
@@ -1519,7 +1510,7 @@ export default function DashboardPage() {
               <div className="flex flex-wrap gap-2">
                 <WorkflowLink
                   href={`/jobs?date=${selectedDate}`}
-                  label="Open Jobs"
+                  label="Open schedule"
                 />
                 <WorkflowLink
                   href={`/routes?date=${selectedDate}`}
@@ -1598,7 +1589,7 @@ export default function DashboardPage() {
                 <strong className="text-slate-900">
                   {selectedDateVanCount}
                 </strong>{" "}
-                {selectedDateVanCount === 1 ? "van" : "vans"} represented
+                {selectedDateVanCount === 1 ? "working van" : "working vans"}
               </span>
 
               <span>
@@ -1614,7 +1605,7 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <section className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
+          <section id="close-day" className="mt-4 scroll-mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-700">
@@ -1846,9 +1837,8 @@ export default function DashboardPage() {
                 </h2>
 
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                  The next scheduled working days after the selected date,
-                  with workload, area, revenue and capacity warnings visible
-                  before the diary becomes overloaded.
+                  The next scheduled working days after the selected date, with the
+                  workload and access information you need to prepare ahead.
                 </p>
               </div>
 
@@ -1856,7 +1846,7 @@ export default function DashboardPage() {
                 href="/capacity"
                 className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-700 transition hover:border-[#338b45] hover:bg-green-50 hover:text-[#176b37]"
               >
-                Open Working Day Capacity
+                Review capacity
               </Link>
             </div>
 
