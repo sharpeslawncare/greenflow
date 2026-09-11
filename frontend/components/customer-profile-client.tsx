@@ -355,11 +355,23 @@ export function CustomerProfileClient({
           (treatment) =>
             treatment.status ===
               "Completed" &&
-            Boolean(
-              treatment.chemicalName,
-            ) &&
-            treatment.productRequired >
-              0,
+            (
+              treatment.applications.some(
+                (application) =>
+                  Boolean(
+                    application.productName,
+                  ) &&
+                  application.productRequired >
+                    0,
+              ) ||
+              (
+                Boolean(
+                  treatment.chemicalName,
+                ) &&
+                treatment.productRequired >
+                  0
+              )
+            ),
         ),
       [customerTreatments],
     );
@@ -3135,75 +3147,183 @@ function ChemicalHistoryTab({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200">
-      <div className="min-w-[950px]">
-        <div className="grid grid-cols-[120px_1.25fr_1.25fr_130px_120px_110px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+      <div className="min-w-[1050px]">
+        <div className="grid grid-cols-[120px_1.2fr_1.6fr_130px_120px_130px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
           <span>Date</span>
           <span>Treatment</span>
-          <span>Chemical</span>
-          <span>Product</span>
+          <span>Chemical / product</span>
+          <span>Product used</span>
           <span>Water</span>
-          <span>Cost</span>
+          <span>Product cost</span>
         </div>
 
         {treatments.map(
-          (treatment) => (
-            <div
-              key={treatment.id}
-              className="grid grid-cols-[120px_1.25fr_1.25fr_130px_120px_110px] items-center gap-3 border-t border-slate-100 px-4 py-4 text-sm"
-            >
-              <span>
-                {formatDate(
-                  getTreatmentDate(
-                    treatment,
-                  ),
-                )}
-              </span>
+          (treatment) => {
+            const applications =
+              treatment.applications.length >
+              0
+                ? treatment.applications.map(
+                    (application) => ({
+                      id: application.id,
+                      productName:
+                        application.productName,
+                      productType:
+                        application.productType,
+                      productRequired:
+                        application.productRequired,
+                      productUnit:
+                        application.productUnit,
+                      waterRequiredLitres:
+                        application.waterRequiredLitres,
+                      estimatedProductCost:
+                        application.estimatedProductCost,
+                      applicationMethod:
+                        application.applicationMethod,
+                      spotSprayPercentage:
+                        application.spotSprayPercentage,
+                    }),
+                  )
+                : [
+                    {
+                      id: `${treatment.id}-legacy`,
+                      productName:
+                        treatment.chemicalName,
+                      productType:
+                        treatment.chemicalType,
+                      productRequired:
+                        treatment.productRequired,
+                      productUnit:
+                        treatment.productUnit,
+                      waterRequiredLitres:
+                        treatment.waterRequiredLitres,
+                      estimatedProductCost:
+                        treatment.estimatedProductCost,
+                      applicationMethod: "",
+                      spotSprayPercentage:
+                        100,
+                    },
+                  ];
 
-              <span className="font-semibold">
-                {
-                  treatment.treatmentName
-                }
-              </span>
+            const totalCost =
+              applications.reduce(
+                (total, application) =>
+                  total +
+                  (application
+                    .estimatedProductCost ||
+                    0),
+                0,
+              );
 
-              <div>
-                <div className="font-semibold">
+            return (
+              <div
+                key={treatment.id}
+                className="grid grid-cols-[120px_1.2fr_1.6fr_130px_120px_130px] items-start gap-3 border-t border-slate-100 px-4 py-4 text-sm"
+              >
+                <span>
+                  {formatDate(
+                    getTreatmentDate(
+                      treatment,
+                    ),
+                  )}
+                </span>
+
+                <span className="font-semibold">
                   {
-                    treatment.chemicalName
+                    treatment.treatmentName
                   }
+                </span>
+
+                <div className="space-y-3">
+                  {applications.map(
+                    (application) => (
+                      <div
+                        key={
+                          application.id
+                        }
+                      >
+                        <div className="font-semibold">
+                          {
+                            application.productName
+                          }
+                        </div>
+
+                        <div className="mt-1 text-xs text-slate-500">
+                          {application.productType ||
+                            "Product"}
+                          {application.applicationMethod ===
+                            "Spot Spray"
+                            ? ` · Spot spray ${application.spotSprayPercentage}%`
+                            : application.applicationMethod
+                              ? ` · ${application.applicationMethod}`
+                              : ""}
+                        </div>
+                      </div>
+                    ),
+                  )}
                 </div>
 
-                <div className="mt-1 text-xs text-slate-500">
-                  {
-                    treatment.chemicalType ||
-                    "Product"
-                  }
+                <div className="space-y-3">
+                  {applications.map(
+                    (application) => (
+                      <div
+                        key={`${application.id}-product`}
+                      >
+                        {
+                          application.productRequired
+                        }{" "}
+                        {
+                          application.productUnit
+                        }
+                      </div>
+                    ),
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {applications.map(
+                    (application) => (
+                      <div
+                        key={`${application.id}-water`}
+                      >
+                        {application.waterRequiredLitres.toFixed(
+                          2,
+                        )}{" "}
+                        L
+                      </div>
+                    ),
+                  )}
+                </div>
+
+                <div>
+                  <div className="space-y-3">
+                    {applications.map(
+                      (application) => (
+                        <div
+                          key={`${application.id}-cost`}
+                          className="font-semibold"
+                        >
+                          £
+                          {application.estimatedProductCost.toFixed(
+                            2,
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </div>
+
+                  {applications.length >
+                    1 && (
+                    <div className="mt-3 border-t border-slate-200 pt-2 text-xs font-bold text-slate-700">
+                      Total £
+                      {totalCost.toFixed(
+                        2,
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-
-              <span>
-                {
-                  treatment.productRequired
-                }{" "}
-                {
-                  treatment.productUnit
-                }
-              </span>
-
-              <span>
-                {treatment.waterRequiredLitres.toFixed(
-                  2,
-                )}{" "}
-                L
-              </span>
-
-              <span className="font-semibold">
-                £
-                {treatment.estimatedProductCost.toFixed(
-                  2,
-                )}
-              </span>
-            </div>
-          ),
+            );
+          },
         )}
       </div>
     </div>

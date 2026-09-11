@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   type FormEvent,
   type ReactNode,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -2246,20 +2247,74 @@ function NumberField({
   step: string;
   onChange: (value: number) => void;
 }) {
+  const [inputValue, setInputValue] =
+    useState(String(value));
+
+  useEffect(() => {
+    setInputValue(String(value));
+  }, [value]);
+
   return (
     <Field label={label}>
       <input
         type="number"
         min="0"
         step={step}
-        value={value}
-        onChange={(event) =>
-          onChange(
-            Number(
-              event.target.value,
-            ) || 0,
-          )
-        }
+        value={inputValue}
+        onChange={(event) => {
+          const nextValue =
+            event.target.value;
+
+          setInputValue(nextValue);
+
+          if (
+            nextValue.trim() === ""
+          ) {
+            return;
+          }
+
+          const parsedValue =
+            Number(nextValue);
+
+          if (
+            Number.isFinite(
+              parsedValue,
+            ) &&
+            parsedValue >= 0
+          ) {
+            onChange(parsedValue);
+          }
+        }}
+        onBlur={() => {
+          if (
+            inputValue.trim() === ""
+          ) {
+            setInputValue(
+              String(value),
+            );
+            return;
+          }
+
+          const parsedValue =
+            Number(inputValue);
+
+          if (
+            !Number.isFinite(
+              parsedValue,
+            ) ||
+            parsedValue < 0
+          ) {
+            setInputValue(
+              String(value),
+            );
+            return;
+          }
+
+          onChange(parsedValue);
+          setInputValue(
+            String(parsedValue),
+          );
+        }}
         className={inputClass}
       />
     </Field>

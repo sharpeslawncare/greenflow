@@ -479,29 +479,6 @@ export default function RoutesPage() {
       );
     }, [routeCustomers]);
 
-  useEffect(() => {
-    if (
-      groupsDueOnDate.length ===
-        0 ||
-      groupsDueOnDate.includes(
-        selectedGroup,
-      )
-    ) {
-      return;
-    }
-
-    setSelectedGroup(
-      groupsDueOnDate[0],
-    );
-
-    setDestinationGroup(
-      groupsDueOnDate[0],
-    );
-  }, [
-    groupsDueOnDate,
-    selectedGroup,
-  ]);
-
   const selectedGroupCustomers =
     useMemo(() => {
       const query =

@@ -98,6 +98,9 @@ export default function CustomersPage() {
   const [search, setSearch] =
     useState("");
 
+  const [groupFilter, setGroupFilter] =
+    useState("all");
+
   const [activeTab, setActiveTab] =
     useState<CustomerTab>(
       "Active",
@@ -212,6 +215,31 @@ export default function CustomersPage() {
       0,
     );
 
+  const availableGroups =
+    useMemo(
+      () =>
+        Array.from(
+          new Set(
+            customers
+              .map(
+                (customer) =>
+                  customer.groupNumber,
+              )
+              .filter(
+                (groupNumber) =>
+                  Number.isFinite(
+                    groupNumber,
+                  ) &&
+                  groupNumber > 0,
+              ),
+          ),
+        ).sort(
+          (first, second) =>
+            first - second,
+        ),
+      [customers],
+    );
+
   const customerRows =
     useMemo<CustomerRow[]>(() => {
       const query =
@@ -228,6 +256,12 @@ export default function CustomersPage() {
             (customer) =>
               customer.status ===
               requiredStatus,
+          )
+          .filter(
+            (customer) =>
+              groupFilter === "all" ||
+              customer.groupNumber ===
+                Number(groupFilter),
           )
           .filter(
             (customer) =>
@@ -307,6 +341,7 @@ export default function CustomersPage() {
       programmes,
       activeTab,
       search,
+      groupFilter,
       sortKey,
       sortDirection,
     ]);
@@ -599,6 +634,7 @@ export default function CustomersPage() {
     setImportPreview(null);
     setImportError("");
     setSearch("");
+    setGroupFilter("all");
     setCurrentPage(1);
     setActiveTab("Active");
 
@@ -873,6 +909,7 @@ export default function CustomersPage() {
 
     restoreDemoCustomers();
     setSearch("");
+    setGroupFilter("all");
     setActiveTab("Active");
     setCurrentPage(1);
 
@@ -1104,7 +1141,7 @@ export default function CustomersPage() {
             </nav>
 
             <div className="p-4">
-              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div className="grid gap-3 md:grid-cols-[1fr_180px_auto] md:items-center">
                 <input
                   value={search}
                   onChange={(event) => {
@@ -1117,9 +1154,47 @@ export default function CustomersPage() {
                   className={inputClass}
                 />
 
+                <select
+                  value={groupFilter}
+                  onChange={(event) => {
+                    setGroupFilter(
+                      event.target.value,
+                    );
+                    setCurrentPage(1);
+                    setOpenMenuCustomerNumber(
+                      "",
+                    );
+                  }}
+                  aria-label="Filter customers by group"
+                  className={inputClass}
+                >
+                  <option value="all">
+                    All groups
+                  </option>
+                  {availableGroups.map(
+                    (groupNumber) => (
+                      <option
+                        key={
+                          groupNumber
+                        }
+                        value={String(
+                          groupNumber,
+                        )}
+                      >
+                        Group{" "}
+                        {groupNumber}
+                      </option>
+                    ),
+                  )}
+                </select>
+
                 <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-bold text-green-900">
                   {customerRows.length}{" "}
                   {activeTab.toLowerCase()} customer{customerRows.length === 1 ? "" : "s"}
+                  {groupFilter !==
+                    "all"
+                    ? ` · Group ${groupFilter}`
+                    : ""}
                 </div>
               </div>
             </div>
@@ -1238,7 +1313,7 @@ export default function CustomersPage() {
                           key={
                             customer.customerNumber
                           }
-                          className={`relative grid grid-cols-[100px_1.25fr_1.6fr_115px_135px_1.4fr_70px_75px_90px_110px_56px] items-center border-b border-slate-100 text-sm transition last:border-0 hover:bg-green-50 ${
+                          className={`relative grid grid-cols-[100px_1.25fr_1.6fr_115px_135px_1.4fr_70px_75px_90px_110px_56px] items-center border-b border-slate-100 text-[15px] transition last:border-0 hover:bg-green-50 ${
                             index %
                               2 ===
                             0
@@ -1315,9 +1390,28 @@ export default function CustomersPage() {
                           </TableCell>
 
                           <TableCell centred>
-                            {
-                              customer.groupNumber
-                            }
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGroupFilter(
+                                  String(
+                                    customer.groupNumber,
+                                  ),
+                                );
+                                setCurrentPage(
+                                  1,
+                                );
+                                setOpenMenuCustomerNumber(
+                                  "",
+                                );
+                              }}
+                              className="rounded-lg px-2 py-1 font-semibold text-[#176b37] hover:bg-green-100 hover:underline"
+                              title={`Show Group ${customer.groupNumber}`}
+                            >
+                              {
+                                customer.groupNumber
+                              }
+                            </button>
                           </TableCell>
 
                           <TableCell centred>

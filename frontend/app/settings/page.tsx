@@ -613,6 +613,153 @@ export default function SettingsPage() {
     window.location.reload();
   }
 
+  function startGreenFlowFresh() {
+    const phrase =
+      window.prompt(
+        'Start GreenFlow fresh? This permanently clears customer and operational test data while keeping your real setup. Create a backup first. Type START FRESH to continue.',
+      );
+
+    if (phrase !== "START FRESH") {
+      if (phrase !== null) {
+        showMessage(
+          'Fresh start cancelled. The phrase must be exactly "START FRESH".',
+        );
+      }
+      return;
+    }
+
+    /*
+     * Preserve real GreenFlow configuration and setup.
+     *
+     * Settings Store includes:
+     * - business identity/details
+     * - invoice configuration/numbering
+     * - treatment wording/library
+     * - communication templates
+     * - advisories and branding
+     *
+     * Fleet and Season Calendars are also setup, not customer history.
+     *
+     * Chemical Store is preserved in full so the product catalogue,
+     * live stock quantities and stock movement audit trail are not
+     * silently altered by a customer-data reset.
+     *
+     * Customer sequence is deliberately preserved so old customer
+     * numbers are never re-used after the fresh start.
+     */
+    const preservedKeys = new Set([
+      "greenflow-business-settings-v1",
+      "greenflow-business-details-backup-v1",
+      "greenflow-customer-sequence-v1",
+      "greenflow-fleet-v1",
+      "greenflow-season-calendars-v1",
+      "greenflow-chemicals-v1",
+      "greenflow-chemicals-v2",
+      "greenflow-chemicals-v3",
+      "greenflow-stock-v1",
+      "greenflow-stock-movements-v1",
+      "greenflow-stock-movements-v2",
+      "greenflow-stock-metadata-v2",
+      "greenflow-last-backup-at",
+    ]);
+
+    const preservedValues =
+      new Map<string, string>();
+
+    preservedKeys.forEach((key) => {
+      const value =
+        window.localStorage.getItem(key);
+
+      if (value !== null) {
+        preservedValues.set(
+          key,
+          value,
+        );
+      }
+    });
+
+    const greenFlowKeys: string[] = [];
+
+    for (
+      let index = 0;
+      index < window.localStorage.length;
+      index += 1
+    ) {
+      const key =
+        window.localStorage.key(index);
+
+      if (
+        key?.startsWith(
+          "greenflow-",
+        ) &&
+        !preservedKeys.has(key)
+      ) {
+        greenFlowKeys.push(key);
+      }
+    }
+
+    greenFlowKeys.forEach(
+      (key) =>
+        window.localStorage.removeItem(
+          key,
+        ),
+    );
+
+    preservedValues.forEach(
+      (value, key) => {
+        window.localStorage.setItem(
+          key,
+          value,
+        );
+      },
+    );
+
+    /*
+     * Explicitly initialise customer-linked stores to empty arrays.
+     * This prevents any store that has demonstration seed data from
+     * repopulating customers/history after reload.
+     */
+    const emptyArrayStores = [
+      "greenflow-customers-v1",
+      "greenflow-customer-programmes-v1",
+      "greenflow-treatments-v1",
+      "greenflow-treatments-v2",
+      "greenflow-treatments-v3",
+      "greenflow-enquiries-v1",
+      "greenflow-actions-v1",
+      "greenflow-communications-v1",
+      "greenflow-route-orders-v1",
+    ];
+
+    emptyArrayStores.forEach((key) => {
+      window.localStorage.setItem(
+        key,
+        JSON.stringify([]),
+      );
+    });
+
+    /*
+     * Close-day and temporary working data use object-shaped stores.
+     */
+    const emptyObjectStores = [
+      "greenflow-close-day-v1",
+      "greenflow-visit-centre-standard-mixes-v1",
+    ];
+
+    emptyObjectStores.forEach((key) => {
+      window.localStorage.setItem(
+        key,
+        JSON.stringify({}),
+      );
+    });
+
+    window.alert(
+      "GreenFlow fresh start complete. Customers, programmes, treatment history, routes, actions, communications and other operational test data were cleared. Business settings, invoice numbering, customer-number watermark, fleet, T1-T5 programme calendars, chemical catalogue and live stock were preserved.",
+    );
+
+    window.location.reload();
+  }
+
   function testInvoiceNumber() {
     const confirmed = window.confirm(
       `The next invoice number is ${getNextInvoiceNumber()}. Increase it to the following number?`,
@@ -743,6 +890,9 @@ export default function SettingsPage() {
                   }
                   onFullDemoReset={
                     fullDemoReset
+                  }
+                  onStartGreenFlowFresh={
+                    startGreenFlowFresh
                   }
                   chemicalCount={
                     chemicals.length
@@ -1642,6 +1792,7 @@ function OperationalMaintenanceTab({
   onStartNewTestDay,
   onResetDemoInventory,
   onFullDemoReset,
+  onStartGreenFlowFresh,
   chemicalCount,
   stockMovementCount,
   onRestoreDefaults,
@@ -1649,6 +1800,7 @@ function OperationalMaintenanceTab({
   onStartNewTestDay: () => void;
   onResetDemoInventory: () => void;
   onFullDemoReset: () => void;
+  onStartGreenFlowFresh: () => void;
   chemicalCount: number;
   stockMovementCount: number;
   onRestoreDefaults: () => void;
@@ -1766,6 +1918,61 @@ function OperationalMaintenanceTab({
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">
             GreenFlow already has separate Season Management logic. Do not use the inventory reset for a normal season change.
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+            Fresh start · Recommended now
+          </div>
+
+          <h3 className="mt-2 text-2xl font-bold text-blue-950">
+            Start GreenFlow Fresh
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-blue-900">
+            Clear the accumulated customer and operational test data so you can start using GreenFlow from a genuinely empty customer base, while keeping the real system setup you have already configured.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <ResetDetail
+              label="Cleared"
+              items={[
+                "Customers and customer programmes",
+                "Enquiries and Additional Jobs",
+                "Completed treatment records and invoice-linked history",
+                "Saved routes and working-day progress",
+                "Actions and follow-up records",
+                "Communication queue and history",
+                "Close Day and other customer-linked operational data",
+              ]}
+            />
+
+            <ResetDetail
+              label="Preserved"
+              items={[
+                "Sharpes Lawn Care business details and GreenFlow settings",
+                "Invoice settings and current invoice-number sequence",
+                "Customer-number watermark",
+                "Treatment wording and treatment library",
+                "Fleet setup",
+                "T1-T5 programme calendars",
+                "Chemical product catalogue, live stock and stock movement history",
+              ]}
+            />
+          </div>
+
+          <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm leading-6 text-blue-900">
+            <strong>Create a backup first.</strong>{" "}
+            You will be required to type <strong>START FRESH</strong> exactly before GreenFlow clears the operational data.
+          </div>
+
+          <button
+            type="button"
+            onClick={onStartGreenFlowFresh}
+            className="mt-6 rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800"
+          >
+            Start GreenFlow Fresh
+          </button>
         </section>
 
         <section className="rounded-2xl border border-red-200 bg-red-50 p-5">

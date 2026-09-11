@@ -306,6 +306,19 @@ function VisitCentrePageContent() {
     setCompletionResult,
   ] = useState<CompletionResult | null>(null);
 
+  const [correctionProductMode, setCorrectionProductMode] =
+    useState<VisitProductMode>("today");
+  const [correctionProductIds, setCorrectionProductIds] =
+    useState<string[]>([]);
+  const [correctionTreatmentIds, setCorrectionTreatmentIds] =
+    useState<string[]>([]);
+  const [correctionMethod, setCorrectionMethod] =
+    useState<HerbicideApplicationMethod>("Full Lawn Spray");
+  const [correctionPercentage, setCorrectionPercentage] = useState(
+    DEFAULT_SPOT_SPRAY_PERCENTAGE,
+  );
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+
   useEffect(() => {
     if (
       !settingsReady ||
@@ -887,6 +900,174 @@ function VisitCentrePageContent() {
   const allSelected =
     jobs.length > 0 &&
     jobs.every((job) => selectedJobIds.includes(job.id));
+
+  const completedTreatmentsOnDate = useMemo(
+    () =>
+      treatments.filter((treatment) => {
+        if (
+          treatment.status !== "Completed" ||
+          treatment.completedDate !== selectedDate
+        ) {
+          return false;
+        }
+
+        const customer = customers.find(
+          (item) => item.customerNumber === treatment.customerNumber,
+        );
+
+        if (!customer) {
+          return requestedGroup === 0 && requestedVan === 0;
+        }
+
+        return (
+          (requestedGroup === 0 || customer.groupNumber === requestedGroup) &&
+          (requestedVan === 0 || customer.vanNumber === requestedVan)
+        );
+      }),
+    [treatments, customers, selectedDate, requestedGroup, requestedVan],
+  );
+
+  const completedTreatmentKeys = Array.from(
+    new Set(
+      completedTreatmentsOnDate.map((treatment) =>
+        normaliseTreatmentName(treatment.treatmentName),
+      ),
+    ),
+  );
+
+  const correctionMixedTreatmentSelection =
+    completedTreatmentKeys.length > 1;
+
+  const correctionTreatmentName =
+    !correctionMixedTreatmentSelection &&
+    completedTreatmentsOnDate.length > 0
+      ? completedTreatmentsOnDate[0].treatmentName
+      : "";
+
+  const correctionTreatmentMixKey =
+    correctionTreatmentName
+      ? createTreatmentMixKey(
+          selectedDate,
+          correctionTreatmentName,
+        )
+      : "";
+
+  const correctionSavedMix = useMemo(() => {
+    if (!correctionTreatmentMixKey) {
+      return emptyStandardMix;
+    }
+
+    const savedMixes = readStandardMixStore();
+
+    return (
+      savedMixes[correctionTreatmentMixKey] ??
+      savedMixes[selectedDate] ??
+      emptyStandardMix
+    );
+  }, [correctionTreatmentMixKey, selectedDate]);
+
+  const correctionSavedMixProductIds =
+    getMixProductIds(correctionSavedMix);
+
+  const correctionSavedMixProducts =
+    correctionSavedMixProductIds
+      .map(
+        (id) =>
+          activeChemicals.find(
+            (chemical) => chemical.id === id,
+          ) ?? null,
+      )
+      .filter(
+        (chemical): chemical is ChemicalRecord =>
+          Boolean(chemical),
+      );
+
+  const correctionSavedMixAvailable =
+    correctionSavedMixProducts.length > 0;
+
+  const correctionSelectedProductIds =
+    correctionProductMode === "today"
+      ? correctionSavedMixProductIds
+      : correctionProductIds;
+
+  const correctionSelectedProducts =
+    Array.from(
+      new Set(correctionSelectedProductIds),
+    )
+      .map(
+        (id) =>
+          activeChemicals.find(
+            (chemical) => chemical.id === id,
+          ) ?? null,
+      )
+      .filter(
+        (chemical): chemical is ChemicalRecord =>
+          Boolean(chemical),
+      );
+
+  const correctionHasHerbicide =
+    correctionSelectedProducts.some(
+      (chemical) =>
+        isProductType(
+          chemical.type,
+          "herbicide",
+        ),
+    );
+
+  const correctionEligibleTreatments = useMemo(
+    () =>
+      correctionSelectedProducts.length > 0
+        ? completedTreatmentsOnDate.filter(
+            (treatment) =>
+              correctionSelectedProducts.some(
+                (chemical) =>
+                  !treatment.applications.some(
+                    (application) =>
+                      application.productId ===
+                      chemical.id,
+                  ),
+              ),
+          )
+        : [],
+    [
+      completedTreatmentsOnDate,
+      correctionSelectedProducts,
+    ],
+  );
+
+  useEffect(() => {
+    setCorrectionTreatmentIds(
+      correctionEligibleTreatments.map(
+        (treatment) => treatment.id,
+      ),
+    );
+  }, [
+    selectedDate,
+    correctionProductMode,
+    correctionSelectedProductIds.join("|"),
+    correctionEligibleTreatments.length,
+  ]);
+
+  useEffect(() => {
+    if (
+      correctionProductMode === "today" &&
+      !correctionSavedMixAvailable
+    ) {
+      setCorrectionProductMode("custom");
+    }
+  }, [
+    correctionProductMode,
+    correctionSavedMixAvailable,
+    selectedDate,
+    correctionTreatmentMixKey,
+  ]);
+
+  useEffect(() => {
+    if (!correctionHasHerbicide) {
+      setCorrectionMethod("Full Lawn Spray");
+    }
+  }, [correctionHasHerbicide]);
+
 
   const ready =
     customersReady &&
@@ -2096,6 +2277,316 @@ function VisitCentrePageContent() {
 
   }
 
+  function toggleCorrectionProduct(
+    chemicalId: string,
+  ) {
+    setCorrectionProductIds((current) =>
+      current.includes(chemicalId)
+        ? current.filter(
+            (id) => id !== chemicalId,
+          )
+        : [...current, chemicalId],
+    );
+  }
+
+  function applyMissingProductsToCompletedVisits() {
+    if (
+      correctionSelectedProducts.length === 0
+    ) {
+      showMessage(
+        "Choose at least one product that was used.",
+        "error",
+      );
+      return;
+    }
+
+    const selectedTreatments =
+      correctionEligibleTreatments.filter(
+        (treatment) =>
+          correctionTreatmentIds.includes(
+            treatment.id,
+          ),
+      );
+
+    if (selectedTreatments.length === 0) {
+      showMessage(
+        "Select at least one completed visit to correct.",
+        "error",
+      );
+      return;
+    }
+
+    const method = correctionHasHerbicide
+      ? correctionMethod
+      : "Full Lawn Spray";
+
+    const percentage =
+      correctionHasHerbicide &&
+      method === "Spot Spray"
+        ? normaliseSpotSprayPercentage(
+            correctionPercentage,
+          )
+        : 100;
+
+    const prepared = selectedTreatments.map(
+      (treatment) => {
+        const customer = customers.find(
+          (item) =>
+            item.customerNumber ===
+            treatment.customerNumber,
+        );
+
+        const area =
+          treatment.treatmentAreaSquareMetres > 0
+            ? treatment.treatmentAreaSquareMetres
+            : customer?.lawnSize ?? 0;
+
+        const missingProducts =
+          correctionSelectedProducts.filter(
+            (chemical) =>
+              !treatment.applications.some(
+                (application) =>
+                  application.productId ===
+                  chemical.id,
+              ),
+          );
+
+        const applications =
+          missingProducts.map((chemical) =>
+            createApplicationForCustomer(
+              chemical,
+              area,
+              isProductType(
+                chemical.type,
+                "herbicide",
+              )
+                ? method
+                : "Full Lawn Spray",
+              isProductType(
+                chemical.type,
+                "herbicide",
+              ),
+              percentage,
+            ),
+          );
+
+        return {
+          treatment,
+          customer,
+          area,
+          missingProducts,
+          applications,
+        };
+      },
+    );
+
+    const invalidArea = prepared.find(
+      (item) =>
+        item.applications.length > 0 &&
+        item.area <= 0,
+    );
+
+    if (invalidArea) {
+      showMessage(
+        `GreenFlow cannot calculate the missing products for customer ${invalidArea.treatment.customerNumber} because no lawn area is recorded.`,
+        "error",
+      );
+      return;
+    }
+
+    const preparedWithChanges =
+      prepared.filter(
+        (item) =>
+          item.applications.length > 0,
+      );
+
+    if (preparedWithChanges.length === 0) {
+      showMessage(
+        "The selected completed visits already contain all of the chosen products.",
+        "error",
+      );
+      return;
+    }
+
+    const requirementMap = new Map<
+      string,
+      ProductRequirement
+    >();
+
+    for (const item of preparedWithChanges) {
+      item.applications.forEach(
+        (application, index) => {
+          const chemical =
+            item.missingProducts[index];
+
+          const existing =
+            requirementMap.get(
+              chemical.id,
+            );
+
+          requirementMap.set(
+            chemical.id,
+            {
+              chemical,
+              requiredAmount:
+                roundToThreeDecimals(
+                  (existing?.requiredAmount ??
+                    0) +
+                    application.productRequired,
+                ),
+              requiredUnit:
+                getProductUnit(
+                  chemical.applicationRateUnit,
+                ),
+            },
+          );
+        },
+      );
+    }
+
+    const requirements = Array.from(
+      requirementMap.values(),
+    );
+
+    const stockProblem =
+      findStockProblem(requirements);
+
+    if (stockProblem) {
+      showMessage(
+        stockProblem,
+        "error",
+      );
+      return;
+    }
+
+    const productNames =
+      correctionSelectedProducts
+        .map((chemical) => chemical.name)
+        .join(", ");
+
+    const confirmed = window.confirm(
+      `Add the missing selected products to ${preparedWithChanges.length} completed visit${
+        preparedWithChanges.length === 1
+          ? ""
+          : "s"
+      } on ${formatDateWithDay(
+        selectedDate,
+      )}?\n\nProducts: ${productNames}\n\nGreenFlow will add only products that are missing from each selected treatment record and deduct only those new applications from stock. Invoices and completion status will not change.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const saved: TreatmentRecord[] = [];
+
+    for (const item of preparedWithChanges) {
+      const addedNames =
+        item.missingProducts
+          .map(
+            (chemical) => chemical.name,
+          )
+          .join(", ");
+
+      const updated =
+        createTreatmentRecord({
+          ...item.treatment,
+          applications: [
+            ...item.treatment.applications,
+            ...item.applications,
+          ],
+          notes: appendNote(
+            item.treatment.notes,
+            `Application correction: ${addedNames} added after completion on ${formatDateWithDay(
+              selectedDate,
+            )}.`,
+          ),
+        });
+
+      const result =
+        updateTreatment(updated);
+
+      if (!result.success) {
+        for (
+          const previous of
+          [...saved].reverse()
+        ) {
+          updateTreatment(previous);
+        }
+
+        showMessage(
+          `${result.message} No stock was deducted and the correction was rolled back.`,
+          "error",
+        );
+        return;
+      }
+
+      saved.push(item.treatment);
+    }
+
+    const stockResult =
+      deductChemicalStockBatch(
+        requirements.map(
+          (requirement) => ({
+            chemicalId:
+              requirement.chemical.id,
+            productAmount:
+              requirement.requiredAmount,
+            productUnit:
+              requirement.requiredUnit,
+          }),
+        ),
+        {
+          date: selectedDate,
+          reference: `Post-completion application correction · ${preparedWithChanges.length} customers`,
+          notes: `${productNames} added to completed treatment records after the original Visit Centre submission.`,
+        },
+      );
+
+    if (!stockResult.success) {
+      for (
+        const previous of
+        [...saved].reverse()
+      ) {
+        updateTreatment(previous);
+      }
+
+      showMessage(
+        `${stockResult.message} Treatment record changes were rolled back.`,
+        "error",
+      );
+      return;
+    }
+
+    setCorrectionTreatmentIds([]);
+    setCorrectionProductIds([]);
+    setCorrectionProductMode(
+      correctionSavedMixAvailable
+        ? "today"
+        : "custom",
+    );
+    setCorrectionMethod(
+      "Full Lawn Spray",
+    );
+    setCorrectionPercentage(
+      DEFAULT_SPOT_SPRAY_PERCENTAGE,
+    );
+    setCorrectionOpen(false);
+
+    showMessage(
+      `${requirements.length} product${
+        requirements.length === 1
+          ? ""
+          : "s"
+      } corrected across ${preparedWithChanges.length} completed visit${
+        preparedWithChanges.length === 1
+          ? ""
+          : "s"
+      }. Customer application records and stock usage are now corrected.`,
+    );
+  }
+
+
   function resetSharedForm() {
     setOutcome("Completed");
     setObservations([]);
@@ -2513,6 +3004,441 @@ function VisitCentrePageContent() {
               </div>
             </section>
           )}
+
+          {completedTreatmentsOnDate.length > 0 && (
+            <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                    Completed-day correction
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-amber-950">
+                    Forgot to record products?
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-900">
+                    Reopen the same product choices used before completion. Choose the saved treatment mix or select products manually, then apply only the missing products to the completed customer records. Jobs, prices and invoices stay unchanged.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCorrectionOpen(
+                      (current) => !current,
+                    )
+                  }
+                  className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-100"
+                >
+                  {correctionOpen
+                    ? "Close correction"
+                    : "Correct products"}
+                </button>
+              </div>
+
+              {correctionOpen && (
+                <div className="mt-5 rounded-2xl border border-amber-200 bg-white p-4">
+                  {correctionMixedTreatmentSelection && (
+                    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                      Completed records on this date contain more than one treatment type. Choose products manually so GreenFlow does not apply one saved treatment mix across different treatments.
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <ProductModeOption
+                      label="Use Saved Treatment Mix"
+                      detail={
+                        correctionSavedMixAvailable &&
+                        !correctionMixedTreatmentSelection
+                          ? "Use the same saved products that were available when these visits were completed."
+                          : "No single saved treatment mix is available for this completed selection."
+                      }
+                      checked={
+                        correctionProductMode ===
+                        "today"
+                      }
+                      disabled={
+                        !correctionSavedMixAvailable ||
+                        correctionMixedTreatmentSelection
+                      }
+                      onChange={() =>
+                        setCorrectionProductMode(
+                          "today",
+                        )
+                      }
+                    />
+
+                    <ProductModeOption
+                      label="Choose Products Manually"
+                      detail="Choose one or several active Chemical Centre products that were actually used."
+                      checked={
+                        correctionProductMode ===
+                        "custom"
+                      }
+                      onChange={() =>
+                        setCorrectionProductMode(
+                          "custom",
+                        )
+                      }
+                    />
+                  </div>
+
+                  {correctionProductMode ===
+                    "today" &&
+                    correctionSavedMixAvailable &&
+                    !correctionMixedTreatmentSelection && (
+                      <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                        <div className="font-bold text-green-950">
+                          Using Saved Treatment Mix
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {correctionSavedMixProducts.map(
+                            (chemical) => (
+                              <span
+                                key={chemical.id}
+                                className="rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-semibold text-green-800"
+                              >
+                                {chemical.name}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {correctionProductMode ===
+                    "custom" && (
+                      <div className="mt-4">
+                        <div className="font-bold text-slate-900">
+                          Choose products
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Select every product that was actually applied. GreenFlow will skip any product already present on an individual completed treatment record.
+                        </p>
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {activeChemicals.map(
+                            (chemical) => {
+                              const selected =
+                                correctionProductIds.includes(
+                                  chemical.id,
+                                );
+
+                              return (
+                                <button
+                                  key={chemical.id}
+                                  type="button"
+                                  onClick={() =>
+                                    toggleCorrectionProduct(
+                                      chemical.id,
+                                    )
+                                  }
+                                  className={`rounded-xl border p-3 text-left transition ${
+                                    selected
+                                      ? "border-[#338b45] bg-green-50"
+                                      : "border-slate-200 bg-white hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="font-bold text-slate-900">
+                                        {chemical.name}
+                                      </div>
+                                      <div className="mt-1 text-xs text-slate-500">
+                                        {chemical.type}
+                                      </div>
+                                    </div>
+                                    <span
+                                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                                        selected
+                                          ? "bg-green-100 text-green-800"
+                                          : "bg-slate-100 text-slate-500"
+                                      }`}
+                                    >
+                                      {selected
+                                        ? "Selected"
+                                        : "Add"}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            },
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {correctionHasHerbicide && (
+                    <section className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                      <div className="font-bold text-green-950">
+                        Herbicide application
+                      </div>
+                      <p className="mt-1 text-sm text-green-800">
+                        Choose how the missing herbicide was actually applied. This applies to the selected completed visits being corrected.
+                      </p>
+
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <ApplicationMethodOption
+                          label="Full lawn spray"
+                          detail="Use the normal whole-lawn herbicide calculation."
+                          checked={
+                            correctionMethod ===
+                            "Full Lawn Spray"
+                          }
+                          onChange={() =>
+                            setCorrectionMethod(
+                              "Full Lawn Spray",
+                            )
+                          }
+                        />
+
+                        <ApplicationMethodOption
+                          label="Spot spray"
+                          detail={`${correctionPercentage}% of normal herbicide usage.`}
+                          checked={
+                            correctionMethod ===
+                            "Spot Spray"
+                          }
+                          onChange={() =>
+                            setCorrectionMethod(
+                              "Spot Spray",
+                            )
+                          }
+                        />
+                      </div>
+
+                      {correctionMethod ===
+                        "Spot Spray" && (
+                          <div className="mt-4 rounded-xl border border-green-200 bg-white p-4">
+                            <div className="font-bold text-slate-900">
+                              Estimated area being spot treated
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {SPOT_SPRAY_PRESETS.map(
+                                (percentage) => (
+                                  <button
+                                    key={percentage}
+                                    type="button"
+                                    onClick={() =>
+                                      setCorrectionPercentage(
+                                        percentage,
+                                      )
+                                    }
+                                    className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
+                                      correctionPercentage ===
+                                      percentage
+                                        ? "border-[#176b37] bg-green-50 text-[#176b37]"
+                                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    {percentage}%
+                                  </button>
+                                ),
+                              )}
+                            </div>
+
+                            <div className="mt-4 max-w-[220px]">
+                              <Field label="Custom percentage">
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    step="1"
+                                    value={
+                                      correctionPercentage
+                                    }
+                                    onChange={(event) =>
+                                      setCorrectionPercentage(
+                                        normaliseSpotSprayPercentage(
+                                          Number(
+                                            event.target.value,
+                                          ),
+                                        ),
+                                      )
+                                    }
+                                    className={`${inputClass} pr-10`}
+                                  />
+                                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-bold text-slate-500">
+                                    %
+                                  </span>
+                                </div>
+                              </Field>
+                            </div>
+                          </div>
+                        )}
+                    </section>
+                  )}
+
+                  {correctionSelectedProducts.length >
+                    0 && (
+                    <div className="mt-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-slate-950">
+                            Completed visits needing correction
+                          </div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            {correctionSelectedProducts.length}{" "}
+                            product
+                            {correctionSelectedProducts.length ===
+                            1
+                              ? ""
+                              : "s"}{" "}
+                            chosen ·{" "}
+                            {correctionEligibleTreatments.length}{" "}
+                            eligible ·{" "}
+                            {correctionTreatmentIds.length}{" "}
+                            selected
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCorrectionTreatmentIds(
+                                correctionEligibleTreatments.map(
+                                  (treatment) =>
+                                    treatment.id,
+                                ),
+                              )
+                            }
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCorrectionTreatmentIds(
+                                [],
+                              )
+                            }
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      {correctionEligibleTreatments.length ===
+                      0 ? (
+                        <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
+                          Every completed visit on this date already contains all of the chosen products.
+                        </div>
+                      ) : (
+                        <div className="mt-3 max-h-72 overflow-y-auto rounded-xl border border-slate-200">
+                          {correctionEligibleTreatments.map(
+                            (treatment) => {
+                              const customer =
+                                customers.find(
+                                  (item) =>
+                                    item.customerNumber ===
+                                    treatment.customerNumber,
+                                );
+                              const checked =
+                                correctionTreatmentIds.includes(
+                                  treatment.id,
+                                );
+                              const missingNames =
+                                correctionSelectedProducts
+                                  .filter(
+                                    (chemical) =>
+                                      !treatment.applications.some(
+                                        (application) =>
+                                          application.productId ===
+                                          chemical.id,
+                                      ),
+                                  )
+                                  .map(
+                                    (chemical) =>
+                                      chemical.name,
+                                  );
+
+                              return (
+                                <label
+                                  key={treatment.id}
+                                  className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() =>
+                                      setCorrectionTreatmentIds(
+                                        (current) =>
+                                          current.includes(
+                                            treatment.id,
+                                          )
+                                            ? current.filter(
+                                                (id) =>
+                                                  id !==
+                                                  treatment.id,
+                                              )
+                                            : [
+                                                ...current,
+                                                treatment.id,
+                                              ],
+                                      )
+                                    }
+                                    className="h-4 w-4"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-semibold text-slate-900">
+                                      {customer?.fullName ??
+                                        treatment.customerNumber}
+                                    </div>
+                                    <div className="mt-0.5 text-xs text-slate-500">
+                                      Customer{" "}
+                                      {treatment.customerNumber}{" "}
+                                      ·{" "}
+                                      {formatProgrammeTreatmentLabel(
+                                        treatment.treatmentName,
+                                      )}{" "}
+                                      ·{" "}
+                                      {treatment.treatmentAreaSquareMetres.toLocaleString(
+                                        "en-GB",
+                                      )}{" "}
+                                      m²
+                                    </div>
+                                    <div className="mt-1 text-xs font-semibold text-amber-800">
+                                      Missing:{" "}
+                                      {missingNames.join(
+                                        ", ",
+                                      )}
+                                    </div>
+                                  </div>
+                                </label>
+                              );
+                            },
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <div className="text-sm text-amber-900">
+                          GreenFlow adds only missing applications and deducts only the newly recorded quantities. Completion status, price and invoice stay unchanged.
+                        </div>
+                        <button
+                          type="button"
+                          disabled={
+                            correctionTreatmentIds.length ===
+                            0
+                          }
+                          onClick={
+                            applyMissingProductsToCompletedVisits
+                          }
+                          className="rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-400"
+                        >
+                          Apply selected products
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
 
           <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
