@@ -14,6 +14,7 @@ import {
   type TreatmentRecord,
   useTreatmentStore,
 } from "@/components/treatment-store";
+import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 type CustomerTreatmentHistoryProps = {
   customerNumber: string;
@@ -336,9 +337,11 @@ function TreatmentHistoryRow({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-bold text-slate-950">
-              {
-                treatment.treatmentName
-              }
+              {additional
+                ? treatment.treatmentName
+                : formatProgrammeTreatmentLabel(
+                    treatment.treatmentName,
+                  )}
             </h3>
 
             {additional ? (

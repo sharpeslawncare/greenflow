@@ -19,6 +19,8 @@ import {
   useProgrammeStore,
 } from "@/components/programme-store";
 import {
+  getSeasonCycleLabel,
+  isDateInSeasonCycle,
   type SeasonCalendar,
   useSeasonStore,
 } from "@/components/season-store";
@@ -57,6 +59,9 @@ export default function ProgrammesPage() {
     programmes,
     ready: programmesReady,
     getProgrammeForCustomer,
+    getCurrentProgrammeForCustomer,
+    getNextProgrammeForCustomer,
+    customerNeedsNextProgramme,
     applySeasonDatesToCustomer,
     saveProgramme,
   } = useProgrammeStore();
@@ -152,6 +157,30 @@ export default function ProgrammesPage() {
     ]);
 
   useEffect(() => {
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    const requestedYear =
+      Number(
+        params.get("year"),
+      );
+
+    if (
+      Number.isInteger(
+        requestedYear,
+      ) &&
+      requestedYear >= 2020 &&
+      requestedYear <= 2100
+    ) {
+      setSelectedYear(
+        requestedYear,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
     if (
       selectedCustomerNumber ||
       activeCustomers.length ===
@@ -190,6 +219,45 @@ export default function ProgrammesPage() {
           selectedYear,
         )
       : undefined;
+
+  const currentProgramme =
+    selectedCustomer
+      ? getCurrentProgrammeForCustomer(
+          selectedCustomer.customerNumber,
+        )
+      : undefined;
+
+  const nextProgramme =
+    selectedCustomer
+      ? getNextProgrammeForCustomer(
+          selectedCustomer.customerNumber,
+        )
+      : undefined;
+
+  const nextProgrammeRequired =
+    selectedCustomer
+      ? customerNeedsNextProgramme(
+          selectedCustomer.customerNumber,
+        )
+      : false;
+
+  const nextProgrammeYear =
+    (currentProgramme?.year ??
+      selectedYear) + 1;
+
+  const nextSeason =
+    seasons.find(
+      (season) =>
+        season.year ===
+        nextProgrammeYear,
+    ) ?? null;
+
+  const lifecycleAppliesToSelection =
+    Boolean(
+      currentProgramme &&
+        currentProgramme.year ===
+          selectedYear,
+    );
 
   const selectedGroupDates =
     selectedCustomer &&
@@ -388,12 +456,15 @@ export default function ProgrammesPage() {
     }
 
     if (
-      Number(
-        replacementDate.slice(0, 4),
-      ) !== selectedYear
+      !isDateInSeasonCycle(
+        replacementDate,
+        selectedYear,
+      )
     ) {
       showMessage(
-        `Choose a replacement date within the ${selectedYear} season.`,
+        `Choose a replacement date within the ${getSeasonCycleLabel(
+          selectedYear,
+        )} programme cycle.`,
         "error",
       );
       return;
@@ -501,7 +572,9 @@ export default function ProgrammesPage() {
 
     const confirmed =
       window.confirm(
-        `Restore all active ${selectedYear} visits for ${selectedCustomer.fullName} to the standard Group ${selectedCustomer.groupNumber} dates?`,
+        `Restore all active ${getSeasonCycleLabel(
+          selectedYear,
+        )} visits for ${selectedCustomer.fullName} to the standard Group ${selectedCustomer.groupNumber} dates?`,
       );
 
     if (!confirmed) {
@@ -577,12 +650,12 @@ export default function ProgrammesPage() {
               </h1>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                Review each customer's five-treatment schedule. Standard dates come from their group calendar, with individual date changes kept as clear exceptions.
+                Review each customer's T1–T5 programme cycle. Standard dates come from their group calendar, with individual date changes kept as clear exceptions.
               </p>
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
-              <Field label="Season year">
+              <Field label="Programme cycle">
                 <select
                   value={selectedYear}
                   onChange={(event) => {
@@ -600,7 +673,9 @@ export default function ProgrammesPage() {
                       key={year}
                       value={year}
                     >
-                      {year}
+                      {getSeasonCycleLabel(
+                        year,
+                      )}
                     </option>
                   ))}
                 </select>
@@ -641,8 +716,10 @@ export default function ProgrammesPage() {
 
           {!selectedSeason && (
             <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
-              No season calendar exists for{" "}
-              {selectedYear}. Create it in the{" "}
+              No programme calendar exists for{" "}
+              {getSeasonCycleLabel(
+                selectedYear,
+              )}. Create it in the{" "}
               <Link
                 href="/season-planner"
                 className="font-bold underline"
@@ -661,12 +738,14 @@ export default function ProgrammesPage() {
             />
 
             <ProgrammeOverviewCard
-              label="Season"
-              value={String(selectedYear)}
+              label="Programme cycle"
+              value={getSeasonCycleLabel(
+                selectedYear,
+              )}
               detail={
                 selectedSeason
-                  ? `${selectedSeason.treatmentRounds.length} standard treatment rounds`
-                  : "Season calendar not yet available"
+                  ? `${selectedSeason.treatmentRounds.length} standard T1–T5 rounds`
+                  : "Programme calendar not yet available"
               }
               warning={!selectedSeason}
             />
@@ -719,7 +798,9 @@ export default function ProgrammesPage() {
                     Find an account
                   </h2>
                   <p className="mt-1 text-sm leading-5 text-slate-500">
-                    Select an active customer to review their programme for {selectedYear}.
+                    Select an active customer to review their {getSeasonCycleLabel(
+                      selectedYear,
+                    )} programme.
                   </p>
                 </div>
 
@@ -832,6 +913,60 @@ export default function ProgrammesPage() {
                 </EmptyPanel>
               ) : (
                 <>
+                  {lifecycleAppliesToSelection &&
+                    nextProgrammeRequired &&
+                    !nextSeason && (
+                      <article className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="max-w-3xl">
+                            <div className="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">
+                              Next programme required
+                            </div>
+
+                            <h2 className="mt-1 text-xl font-bold text-amber-950">
+                              T4 is complete — create the next T1–T5 programme
+                            </h2>
+
+                            <p className="mt-2 text-sm leading-6 text-amber-900">
+                              The {getSeasonCycleLabel(
+                                nextProgrammeYear,
+                              )} programme calendar has not been created yet. Set it up once in Season Planner; the current T5 stays exactly where it is while GreenFlow prepares the following T1–T5 cycle.
+                            </p>
+                          </div>
+
+                          <Link
+                            href={`/season-planner?year=${nextProgrammeYear}&nextCycle=1`}
+                            className="inline-flex h-11 items-center rounded-xl bg-amber-700 px-5 text-sm font-bold text-white hover:bg-amber-800"
+                          >
+                            Set up{" "}
+                            {getSeasonCycleLabel(
+                              nextProgrammeYear,
+                            )}{" "}
+                            calendar
+                          </Link>
+                        </div>
+                      </article>
+                    )}
+
+                  {lifecycleAppliesToSelection &&
+                    nextProgramme && (
+                      <article className="rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
+                        <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+                          Next programme ready
+                        </div>
+
+                        <h2 className="mt-1 text-lg font-bold text-green-950">
+                          {getSeasonCycleLabel(
+                            nextProgramme.year,
+                          )} T1–T5 is already planned
+                        </h2>
+
+                        <p className="mt-1 text-sm leading-6 text-green-900">
+                          The current cycle remains operational until its remaining T5 is completed. The following T1 is already known, so the customer can continue into the next cycle without a scheduling gap.
+                        </p>
+                      </article>
+                    )}
+
                   <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
@@ -851,7 +986,9 @@ export default function ProgrammesPage() {
 
                           {selectedProgramme && (
                             <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
-                              Standard group schedule
+                              {getSeasonCycleLabel(
+                                selectedYear,
+                              )} group schedule
                             </span>
                           )}
                         </div>
@@ -934,7 +1071,9 @@ export default function ProgrammesPage() {
                         Schedule of works
                       </div>
                       <h2 className="mt-1 text-xl font-bold text-slate-950">
-                        Five-treatment programme
+                        {getSeasonCycleLabel(
+                          selectedYear,
+                        )} T1–T5 programme
                       </h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
                         Group dates are the normal schedule. Override a date only when this customer needs to be treated differently.
@@ -1130,9 +1269,11 @@ export default function ProgrammesPage() {
                     </h2>
 
                     <p className="mt-1">
-                      The Season Planner sets the standard calendar for each group.
-                      Customers automatically follow those dates unless you deliberately
-                      create an individual date override here.
+                      The Season Planner sets the standard T1–T5 calendar for each group.
+                      T1 starts in the opening year and later rounds may continue into the
+                      following year. After T4 is completed, create the next cycle so the
+                      customer's next T1 is already known before the current T5 is completed.
+                      Individual date overrides remain customer-specific.
                     </p>
                   </article>
                 </>

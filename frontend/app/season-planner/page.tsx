@@ -10,6 +10,8 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import {
+  getSeasonCycleLabel,
+  isDateInSeasonCycle,
   type SeasonCalendar,
   useSeasonStore,
 } from "@/components/season-store";
@@ -37,6 +39,16 @@ export default function SeasonPlannerPage() {
   const [selectedYear, setSelectedYear] =
     useState(currentYear);
 
+  const [
+    requestedYearResolved,
+    setRequestedYearResolved,
+  ] = useState(false);
+
+  const [
+    openedForNextCycle,
+    setOpenedForNextCycle,
+  ] = useState(false);
+
   const [draft, setDraft] =
     useState<SeasonCalendar | null>(
       null,
@@ -60,7 +72,44 @@ export default function SeasonPlannerPage() {
     ) ?? null;
 
   useEffect(() => {
-    if (!ready) {
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    const requestedYear =
+      Number(
+        params.get("year"),
+      );
+
+    const nextCycle =
+      params.get("nextCycle") === "1";
+
+    if (
+      Number.isInteger(
+        requestedYear,
+      ) &&
+      requestedYear >= 2020 &&
+      requestedYear <= 2100
+    ) {
+      setSelectedYear(
+        requestedYear,
+      );
+    }
+
+    setOpenedForNextCycle(
+      nextCycle,
+    );
+    setRequestedYearResolved(
+      true,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      !requestedYearResolved
+    ) {
       return;
     }
 
@@ -80,6 +129,7 @@ export default function SeasonPlannerPage() {
     );
   }, [
     ready,
+    requestedYearResolved,
     selectedYear,
     selectedSeason,
     createSeason,
@@ -170,12 +220,15 @@ export default function SeasonPlannerPage() {
     }
 
     if (
-      Number(
-        excludedDate.slice(0, 4),
-      ) !== draft.year
+      !isDateInSeasonCycle(
+        excludedDate,
+        draft.year,
+      )
     ) {
       showMessage(
-        `Excluded dates must fall within the ${draft.year} season.`,
+        `Excluded dates must fall within the ${getSeasonCycleLabel(
+          draft.year,
+        )} programme cycle.`,
         "error",
       );
       return;
@@ -242,7 +295,9 @@ export default function SeasonPlannerPage() {
       ) !== draft.year
     ) {
       showMessage(
-        `Group 1's start date must fall within the ${draft.year} season.`,
+        `T1 must start within ${draft.year}, the opening year of the ${getSeasonCycleLabel(
+          draft.year,
+        )} programme cycle.`,
         "error",
       );
       return;
@@ -354,17 +409,20 @@ export default function SeasonPlannerPage() {
       return;
     }
 
-    const excludedDateOutsideSeason =
+    const excludedDateOutsideCycle =
       draft.excludedDates.find(
         (date) =>
-          Number(
-            date.slice(0, 4),
-          ) !== draft.year,
+          !isDateInSeasonCycle(
+            date,
+            draft.year,
+          ),
       );
 
-    if (excludedDateOutsideSeason) {
+    if (excludedDateOutsideCycle) {
       showMessage(
-        `All excluded dates must fall within the ${draft.year} season.`,
+        `All excluded dates must fall within the ${getSeasonCycleLabel(
+          draft.year,
+        )} programme cycle.`,
         "error",
       );
       return;
@@ -391,14 +449,25 @@ export default function SeasonPlannerPage() {
     setDraft(cleanedDraft);
 
     showMessage(
-      `${cleanedDraft.year} group calendar saved and regenerated.`,
+      `${getSeasonCycleLabel(
+        cleanedDraft.year,
+      )} programme calendar saved and regenerated.`,
     );
+
+    if (openedForNextCycle) {
+      window.setTimeout(() => {
+        window.location.href =
+          `/programmes?year=${cleanedDraft.year}`;
+      }, 700);
+    }
   }
 
   function restoreDefaults() {
     const confirmed =
       window.confirm(
-        `Restore the default five-treatment calendar for ${selectedYear}?`,
+        `Restore the default T1–T5 calendar for ${getSeasonCycleLabel(
+          selectedYear,
+        )}?`,
       );
 
     if (!confirmed) {
@@ -410,7 +479,9 @@ export default function SeasonPlannerPage() {
     );
 
     showMessage(
-      `${selectedYear} defaults restored.`,
+      `${getSeasonCycleLabel(
+        selectedYear,
+      )} defaults restored.`,
     );
   }
 
@@ -426,7 +497,11 @@ export default function SeasonPlannerPage() {
     }, 3200);
   }
 
-  if (!ready || !draft) {
+  if (
+    !ready ||
+    !requestedYearResolved ||
+    !draft
+  ) {
     return (
       <AppShell>
         <main className="p-6">
@@ -453,12 +528,12 @@ export default function SeasonPlannerPage() {
               </h1>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                Set the working calendar once for the season. GreenFlow then builds the T1–T5 dates for every group and passes them into each customer's annual programme.
+                Set the working calendar for each T1–T5 programme cycle. T1 starts in the selected year and T2–T5 can continue naturally into the following year.
               </p>
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
-              <Field label="Season year">
+              <Field label="T1 start year">
                 <input
                   type="number"
                   min="2020"
@@ -490,6 +565,33 @@ export default function SeasonPlannerPage() {
             </div>
           </header>
 
+          {openedForNextCycle && (
+            <section className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-3xl">
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                    Next programme cycle
+                  </div>
+
+                  <h2 className="mt-1 text-xl font-bold text-amber-950">
+                    Set up {getSeasonCycleLabel(selectedYear)}
+                  </h2>
+
+                  <p className="mt-2 text-sm leading-6 text-amber-900">
+                    T4 has been completed in the current programme. Review the new T1–T5 dates here, then use <strong>Save and regenerate</strong>. The current T5 stays in place while the following T1 becomes known.
+                  </p>
+                </div>
+
+                <Link
+                  href={`/programmes?year=${selectedYear}`}
+                  className="inline-flex rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-100"
+                >
+                  Back to Annual Programmes
+                </Link>
+              </div>
+            </section>
+          )}
+
           {message && (
             <div
               role={
@@ -509,9 +611,14 @@ export default function SeasonPlannerPage() {
 
           <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SeasonOverviewCard
-              label="Season"
-              value={String(draft.year)}
-              detail={draft.name || "Annual treatment calendar"}
+              label="Programme cycle"
+              value={getSeasonCycleLabel(
+                draft.year,
+              )}
+              detail={
+                draft.name ||
+                "T1 start year through following T5"
+              }
             />
 
             <SeasonOverviewCard
@@ -544,7 +651,9 @@ export default function SeasonPlannerPage() {
             <aside className="space-y-4">
               <Panel
                 title="Calendar settings"
-                description="These settings control the schedule inherited by every customer in each group."
+                description={`These settings control the ${getSeasonCycleLabel(
+                  draft.year,
+                )} T1–T5 schedule inherited by every customer in each group.`}
               >
                 <div className="space-y-4">
                   <Field label="Calendar name">
@@ -584,6 +693,15 @@ export default function SeasonPlannerPage() {
                       className={inputClass}
                     />
                   </Field>
+
+                  <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-xs leading-5 text-green-900">
+                    <span className="font-bold">
+                      {getSeasonCycleLabel(
+                        draft.year,
+                      )} cycle:
+                    </span>{" "}
+                    T1 starts in {draft.year}. T2–T5 are allowed to continue into {draft.year + 1}.
+                  </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <NumberField
@@ -742,7 +860,9 @@ export default function SeasonPlannerPage() {
 
               <Panel
                 title="Excluded dates"
-                description="Add bank holidays, closures or any date on which work must not be scheduled."
+                description={`Add bank holidays, closures or any date in ${getSeasonCycleLabel(
+                  draft.year,
+                )} on which work must not be scheduled.`}
               >
                 <div className="flex gap-2">
                   <input
@@ -916,7 +1036,7 @@ export default function SeasonPlannerPage() {
                       One standard schedule, individual exceptions
                     </h2>
                     <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                      Customers inherit the T1–T5 dates for their assigned group. If one customer needs a different visit date, make that individual change from Annual Programmes rather than altering the group calendar.
+                      Customers inherit the T1–T5 dates for their assigned group. T1 belongs to the opening year and later rounds may continue into the following year. If one customer needs a different visit date, make that individual change from Annual Programmes rather than altering the group calendar.
                     </p>
                   </div>
 
@@ -925,7 +1045,7 @@ export default function SeasonPlannerPage() {
                     onClick={restoreDefaults}
                     className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    Restore season defaults
+                    Restore cycle defaults
                   </button>
                 </div>
               </article>

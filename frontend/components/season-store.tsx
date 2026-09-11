@@ -113,6 +113,30 @@ const STORAGE_KEY =
 
 const DEFAULT_GROUP_COUNT = 30;
 
+export function getSeasonCycleLabel(
+  year: number,
+) {
+  return `${year}/${String(year + 1).slice(-2)}`;
+}
+
+export function isDateInSeasonCycle(
+  date: string,
+  year: number,
+) {
+  if (!isDateValue(date)) {
+    return false;
+  }
+
+  const dateYear = Number(
+    date.slice(0, 4),
+  );
+
+  return (
+    dateYear === year ||
+    dateYear === year + 1
+  );
+}
+
 const SeasonStoreContext =
   createContext<SeasonStoreValue | null>(
     null,
@@ -339,13 +363,10 @@ export function SeasonStoreProvider({
     date: string,
   ) {
     if (
-      !isDateValue(date) ||
-      Number(
-        date.slice(
-          0,
-          4,
-        ),
-      ) !== year
+      !isDateInSeasonCycle(
+        date,
+        year,
+      )
     ) {
       return;
     }
@@ -522,7 +543,9 @@ export function createDefaultSeason(
     year: safeYear,
 
     name:
-      `${safeYear} Standard Treatment Season`,
+      `${getSeasonCycleLabel(
+        safeYear,
+      )} Standard Treatment Programme`,
 
     firstGroupStartDate:
       safeStartDate,
@@ -567,13 +590,10 @@ export function generateSeasonDates(
       new Set(
         season.excludedDates.filter(
           (date) =>
-            isDateValue(date) &&
-            Number(
-              date.slice(
-                0,
-                4,
-              ),
-            ) === season.year,
+            isDateInSeasonCycle(
+              date,
+              season.year,
+            ),
         ),
       ),
     ).sort();

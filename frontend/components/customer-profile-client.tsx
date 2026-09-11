@@ -24,7 +24,10 @@ import {
   type ProgrammeVisitStatus,
   useProgrammeStore,
 } from "@/components/programme-store";
-import { useSeasonStore } from "@/components/season-store";
+import {
+  getSeasonCycleLabel,
+  useSeasonStore,
+} from "@/components/season-store";
 import {
   type TreatmentRecord,
   useTreatmentStore,
@@ -117,6 +120,8 @@ export function CustomerProfileClient({
   const {
     programmes,
     ready: programmesReady,
+    getCurrentProgrammeForCustomer,
+    getNextProgrammeForCustomer,
   } = useProgrammeStore();
 
   const {
@@ -261,6 +266,16 @@ export function CustomerProfileClient({
       ],
     );
 
+  const currentProgramme =
+    getCurrentProgrammeForCustomer(
+      customerNumber,
+    ) ?? null;
+
+  const nextProgramme =
+    getNextProgrammeForCustomer(
+      customerNumber,
+    ) ?? null;
+
   const selectedProgramme =
     useMemo(() => {
       const today =
@@ -287,11 +302,13 @@ export function CustomerProfileClient({
         );
 
       return (
+        currentProgramme ??
         programmeWithFutureVisit ??
         customerProgrammes[0] ??
         null
       );
     }, [
+      currentProgramme,
       customerProgrammes,
       treatments,
       customerNumber,
@@ -1130,6 +1147,12 @@ function cancelEditing() {
               customer={customer}
               programme={
                 selectedProgramme
+              }
+              currentProgramme={
+                currentProgramme
+              }
+              nextProgramme={
+                nextProgramme
               }
               season={
                 selectedSeason
@@ -2700,12 +2723,26 @@ function hasFinalTreatmentOutcomeForVisit(
 function ProgrammeTab({
   customer,
   programme,
+  currentProgramme,
+  nextProgramme,
   season,
   treatments,
 }: {
   customer: StoredCustomer;
 
   programme:
+    | ReturnType<
+        typeof useProgrammeStore
+      >["programmes"][number]
+    | null;
+
+  currentProgramme:
+    | ReturnType<
+        typeof useProgrammeStore
+      >["programmes"][number]
+    | null;
+
+  nextProgramme:
     | ReturnType<
         typeof useProgrammeStore
       >["programmes"][number]
@@ -2720,12 +2757,47 @@ function ProgrammeTab({
   treatments:
     TreatmentRecord[];
 }) {
+  const currentNextVisit =
+    currentProgramme?.visits
+      .filter(
+        (visit) =>
+          visit.status === "Scheduled" ||
+          visit.status === "Planned",
+      )
+      .sort((first, second) =>
+        first.scheduledDate.localeCompare(
+          second.scheduledDate,
+        ),
+      )[0] ?? null;
+
+  const futureFirstVisit =
+    nextProgramme?.visits
+      .filter(
+        (visit) =>
+          visit.status === "Scheduled" ||
+          visit.status === "Planned",
+      )
+      .sort((first, second) =>
+        first.scheduledDate.localeCompare(
+          second.scheduledDate,
+        ),
+      )[0] ?? null;
+
   if (!season) {
     return (
-      <EmptyState>
-        No Season Calendar is available for this
-        customer&apos;s programme year.
-      </EmptyState>
+      <div className="space-y-4">
+        <ProgrammeCycleSummary
+          currentProgramme={currentProgramme}
+          nextProgramme={nextProgramme}
+          currentNextVisit={currentNextVisit}
+          futureFirstVisit={futureFirstVisit}
+        />
+
+        <EmptyState>
+          No programme calendar is available for this
+          customer&apos;s current cycle.
+        </EmptyState>
+      </div>
     );
   }
 
@@ -2738,15 +2810,32 @@ function ProgrammeTab({
 
   if (!groupDates) {
     return (
-      <EmptyState>
-        Group {customer.groupNumber} is outside the
-        configured range for {season.year}.
-      </EmptyState>
+      <div className="space-y-4">
+        <ProgrammeCycleSummary
+          currentProgramme={currentProgramme}
+          nextProgramme={nextProgramme}
+          currentNextVisit={currentNextVisit}
+          futureFirstVisit={futureFirstVisit}
+        />
+
+        <EmptyState>
+          Group {customer.groupNumber} is outside the
+          configured range for{" "}
+          {getSeasonCycleLabel(season.year)}.
+        </EmptyState>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <ProgrammeCycleSummary
+        currentProgramme={currentProgramme}
+        nextProgramme={nextProgramme}
+        currentNextVisit={currentNextVisit}
+        futureFirstVisit={futureFirstVisit}
+      />
+
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
         <div>
           <div className="font-bold">
@@ -2756,8 +2845,9 @@ function ProgrammeTab({
 
           <p className="mt-1">
             These treatment names and standard dates
-            come directly from the {season.year} Season
-            Calendar.
+            come directly from the{" "}
+            {getSeasonCycleLabel(season.year)} T1–T5
+            programme calendar.
           </p>
         </div>
 
@@ -2817,9 +2907,7 @@ function ProgrammeTab({
                   className="grid grid-cols-[70px_1.4fr_180px_180px_130px] items-center gap-3 border-t border-slate-100 px-4 py-4 text-sm"
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#176b37] font-bold text-white">
-                    {
-                      round.visitNumber
-                    }
+                    T{round.visitNumber}
                   </span>
 
                   <div>
@@ -2831,7 +2919,7 @@ function ProgrammeTab({
 
                     <div className="mt-1 text-xs text-slate-500">
                       {index === 0
-                        ? "Season starting round"
+                        ? "Programme starting round"
                         : `${round.gapAfterPreviousDays} day standard gap`}
                     </div>
                   </div>
@@ -2889,6 +2977,106 @@ function ProgrammeTab({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ProgrammeCycleSummary({
+  currentProgramme,
+  nextProgramme,
+  currentNextVisit,
+  futureFirstVisit,
+}: {
+  currentProgramme:
+    | ReturnType<
+        typeof useProgrammeStore
+      >["programmes"][number]
+    | null;
+  nextProgramme:
+    | ReturnType<
+        typeof useProgrammeStore
+      >["programmes"][number]
+    | null;
+  currentNextVisit:
+    | ReturnType<
+        typeof useProgrammeStore
+      >["programmes"][number]["visits"][number]
+    | null;
+  futureFirstVisit:
+    | ReturnType<
+        typeof useProgrammeStore
+      >["programmes"][number]["visits"][number]
+    | null;
+}) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <article className="rounded-2xl border border-green-200 bg-green-50 p-5">
+        <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+          Current programme
+        </div>
+
+        <div className="mt-1 text-lg font-bold text-green-950">
+          {currentProgramme
+            ? `${getSeasonCycleLabel(
+                currentProgramme.year,
+              )} T1–T5`
+            : "No current programme"}
+        </div>
+
+        <p className="mt-2 text-sm leading-6 text-green-900">
+          {currentNextVisit
+            ? `Next in this cycle: T${currentNextVisit.visitNumber} · ${currentNextVisit.treatmentName} · ${formatDate(
+                currentNextVisit.scheduledDate,
+              )}`
+            : "There are no remaining planned visits in the current cycle."}
+        </p>
+      </article>
+
+      <article
+        className={`rounded-2xl border p-5 ${
+          nextProgramme
+            ? "border-blue-200 bg-blue-50"
+            : "border-slate-200 bg-slate-50"
+        }`}
+      >
+        <div
+          className={`text-xs font-bold uppercase tracking-[0.14em] ${
+            nextProgramme
+              ? "text-blue-700"
+              : "text-slate-500"
+          }`}
+        >
+          Next programme
+        </div>
+
+        <div
+          className={`mt-1 text-lg font-bold ${
+            nextProgramme
+              ? "text-blue-950"
+              : "text-slate-700"
+          }`}
+        >
+          {nextProgramme
+            ? `${getSeasonCycleLabel(
+                nextProgramme.year,
+              )} T1–T5 planned`
+            : "Not yet created"}
+        </div>
+
+        <p
+          className={`mt-2 text-sm leading-6 ${
+            nextProgramme
+              ? "text-blue-900"
+              : "text-slate-500"
+          }`}
+        >
+          {futureFirstVisit
+            ? `Following T${futureFirstVisit.visitNumber}: ${futureFirstVisit.treatmentName} · ${formatDate(
+                futureFirstVisit.scheduledDate,
+              )}. This remains future planning until the current cycle is finished.`
+            : "The following programme will appear here once it has been created after T4."}
+        </p>
+      </article>
     </div>
   );
 }

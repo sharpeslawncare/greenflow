@@ -16,6 +16,7 @@ import {
 } from "@/components/customer-store";
 
 import {
+  getSeasonCycleLabel,
   type GroupSeasonDates,
   type SeasonCalendar,
   useSeasonStore,
@@ -102,6 +103,22 @@ type ProgrammeStoreValue = {
   getProgrammesForCustomer: (
     customerNumber: string,
   ) => CustomerProgramme[];
+
+  getCurrentProgrammeForCustomer: (
+    customerNumber: string,
+  ) => CustomerProgramme | undefined;
+
+  getNextProgrammeForCustomer: (
+    customerNumber: string,
+  ) => CustomerProgramme | undefined;
+
+  customerNeedsNextProgramme: (
+    customerNumber: string,
+  ) => boolean;
+
+  createNextProgrammeForCustomer: (
+    customerNumber: string,
+  ) => ProgrammeSaveResult;
 
   applySeasonDatesToCustomer: (
     customerNumber: string,
@@ -442,6 +459,202 @@ export function ProgrammeStoreProvider({
       );
   }
 
+  function getCurrentProgrammeForCustomer(
+    customerNumber: string,
+  ) {
+    const customerProgrammes =
+      getProgrammesForCustomer(
+        customerNumber,
+      );
+
+    return findOperationalProgramme(
+      customerProgrammes,
+    );
+  }
+
+  function getNextProgrammeForCustomer(
+    customerNumber: string,
+  ) {
+    const currentProgramme =
+      getCurrentProgrammeForCustomer(
+        customerNumber,
+      );
+
+    if (!currentProgramme) {
+      return undefined;
+    }
+
+    return programmesRef.current.find(
+      (programme) =>
+        programme.customerNumber ===
+          customerNumber &&
+        programme.year ===
+          currentProgramme.year + 1,
+    );
+  }
+
+  function customerNeedsNextProgramme(
+    customerNumber: string,
+  ) {
+    const currentProgramme =
+      getCurrentProgrammeForCustomer(
+        customerNumber,
+      );
+
+    if (!currentProgramme) {
+      return false;
+    }
+
+    const t4 =
+      currentProgramme.visits.find(
+        (visit) =>
+          visit.visitNumber === 4,
+      );
+
+    if (
+      !t4 ||
+      t4.status !== "Completed"
+    ) {
+      return false;
+    }
+
+    return !programmesRef.current.some(
+      (programme) =>
+        programme.customerNumber ===
+          customerNumber &&
+        programme.year ===
+          currentProgramme.year + 1,
+    );
+  }
+
+  function createNextProgrammeForCustomer(
+    customerNumber: string,
+  ): ProgrammeSaveResult {
+    const customer =
+      customers.find(
+        (item) =>
+          item.customerNumber ===
+          customerNumber,
+      );
+
+    if (!customer) {
+      return {
+        success: false,
+        message:
+          "The next programme could not be created because the customer was not found.",
+      };
+    }
+
+    const currentProgramme =
+      getCurrentProgrammeForCustomer(
+        customerNumber,
+      );
+
+    if (!currentProgramme) {
+      return {
+        success: false,
+        message:
+          "The next programme could not be created because there is no current programme.",
+      };
+    }
+
+    const t4 =
+      currentProgramme.visits.find(
+        (visit) =>
+          visit.visitNumber === 4,
+      );
+
+    if (
+      !t4 ||
+      t4.status !== "Completed"
+    ) {
+      return {
+        success: false,
+        message:
+          "Complete T4 before creating the customer's next T1–T5 programme.",
+      };
+    }
+
+    const nextYear =
+      currentProgramme.year + 1;
+
+    const existing =
+      programmesRef.current.find(
+        (programme) =>
+          programme.customerNumber ===
+            customerNumber &&
+          programme.year ===
+            nextYear,
+      );
+
+    if (existing) {
+      return {
+        success: true,
+        message:
+          `${getSeasonCycleLabel(
+            nextYear,
+          )} programme already exists for this customer.`,
+      };
+    }
+
+    const nextSeason =
+      seasons.find(
+        (season) =>
+          season.year === nextYear,
+      );
+
+    if (!nextSeason) {
+      return {
+        success: false,
+        message:
+          `Create the ${getSeasonCycleLabel(
+            nextYear,
+          )} programme calendar in Season Planner first.`,
+      };
+    }
+
+    const groupDates =
+      getGroupSeasonDates(
+        nextSeason,
+        customer.groupNumber,
+      );
+
+    if (!groupDates) {
+      return {
+        success: false,
+        message:
+          `No Group ${customer.groupNumber} dates are available in the ${getSeasonCycleLabel(
+            nextYear,
+          )} programme calendar.`,
+      };
+    }
+
+    const created =
+      mergeProgrammeWithSeason({
+        customer,
+        season: nextSeason,
+        groupDates,
+      });
+
+    const next = [
+      created,
+      ...programmesRef.current,
+    ].sort(sortProgrammes);
+
+    programmesRef.current =
+      next;
+
+    setProgrammes(next);
+
+    return {
+      success: true,
+      message:
+        `${getSeasonCycleLabel(
+          nextYear,
+        )} T1–T5 programme created. The current T5 remains in place and the next T1 is now known.`,
+    };
+  }
+
   function applySeasonDatesToCustomer(
     customerNumber: string,
     year: number,
@@ -661,6 +874,11 @@ export function ProgrammeStoreProvider({
         getProgrammeForCustomer,
         getProgrammesForCustomer,
 
+        getCurrentProgrammeForCustomer,
+        getNextProgrammeForCustomer,
+        customerNeedsNextProgramme,
+        createNextProgrammeForCustomer,
+
         applySeasonDatesToCustomer,
         ensureProgrammesForSeason,
 
@@ -718,8 +936,27 @@ function synchroniseAllProgrammes(
         "Active",
     );
 
+  /*
+   * Programme calendars can exist in advance, but a customer's
+   * following T1-T5 programme must not be silently created before
+   * the current programme reaches T4.
+   *
+   * Existing programmes are always kept synchronised with their
+   * calendar. A missing later programme is only created once the
+   * immediately preceding programme has T4 completed.
+   *
+   * Seasons are processed oldest-to-newest so a completed historical
+   * chain can advance naturally, while the first incomplete cycle
+   * stops any later automatic creation.
+   */
+  const orderedSeasons =
+    [...seasons].sort(
+      (first, second) =>
+        first.year - second.year,
+    );
+
   for (
-    const season of seasons
+    const season of orderedSeasons
   ) {
     for (
       const customer of
@@ -743,6 +980,44 @@ function synchroniseAllProgrammes(
             programme.year ===
               season.year,
         );
+
+      if (!existing) {
+        const earlierProgrammes =
+          next.filter(
+            (programme) =>
+              programme.customerNumber ===
+                customer.customerNumber &&
+              programme.year <
+                season.year,
+          );
+
+        if (
+          earlierProgrammes.length > 0
+        ) {
+          const previousProgramme =
+            next.find(
+              (programme) =>
+                programme.customerNumber ===
+                  customer.customerNumber &&
+                programme.year ===
+                  season.year - 1,
+            );
+
+          const previousT4 =
+            previousProgramme?.visits.find(
+              (visit) =>
+                visit.visitNumber === 4,
+            );
+
+          if (
+            !previousProgramme ||
+            previousT4?.status !==
+              "Completed"
+          ) {
+            continue;
+          }
+        }
+      }
 
       const merged =
         mergeProgrammeWithSeason({
@@ -1010,6 +1285,36 @@ function isEligibleActiveDate(
   return (
     scheduledDate >=
     minimumDate
+  );
+}
+
+function findOperationalProgramme(
+  programmes: CustomerProgramme[],
+) {
+  const ascending = [
+    ...programmes,
+  ].sort(
+    (first, second) =>
+      first.year - second.year,
+  );
+
+  const unfinished =
+    ascending.find(
+      (programme) =>
+        programme.visits.some(
+          (visit) =>
+            visit.status !==
+              "Completed" &&
+            visit.status !==
+              "Skipped",
+        ),
+    );
+
+  return (
+    unfinished ??
+    ascending[
+      ascending.length - 1
+    ]
   );
 }
 

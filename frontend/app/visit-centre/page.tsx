@@ -563,54 +563,6 @@ function VisitCentrePageContent() {
       getOrderedCustomerNumbers,
     ]);
 
-  const seasonRolloverWarning =
-    useMemo(() => {
-      const treatmentFiveYears =
-        Array.from(
-          new Set(
-            jobs
-              .filter(
-                (job) =>
-                  job.source ===
-                    "programme" &&
-                  job.visit.visitNumber === 5,
-              )
-              .map(
-                (job) =>
-                  job.programme.year,
-              ),
-          ),
-        ).sort(
-          (first, second) =>
-            first - second,
-        );
-
-      const missingNextSeasonYears =
-        treatmentFiveYears.filter(
-          (year) =>
-            !seasons.some(
-              (season) =>
-                season.year ===
-                year + 1,
-            ),
-        );
-
-      if (
-        missingNextSeasonYears.length ===
-        0
-      ) {
-        return null;
-      }
-
-      return {
-        currentYears:
-          missingNextSeasonYears,
-        nextYears:
-          missingNextSeasonYears.map(
-            (year) => year + 1,
-          ),
-      };
-    }, [jobs, seasons]);
 
   useEffect(() => {
     if (jobs.length === 0) {
@@ -2281,45 +2233,6 @@ function VisitCentrePageContent() {
             </section>
           )}
 
-          {seasonRolloverWarning && (
-            <section
-              role="alert"
-              className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="max-w-4xl">
-                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
-                    Season rollover reminder
-                  </div>
-
-                  <h2 className="mt-1 text-xl font-bold text-amber-950">
-                    Next season has not yet been generated
-                  </h2>
-
-                  <p className="mt-2 text-sm leading-6 text-amber-900">
-                    Treatment 5 visits are now appearing for{" "}
-                    {seasonRolloverWarning.currentYears.join(
-                      ", ",
-                    )}
-                    , but the{" "}
-                    {seasonRolloverWarning.nextYears.join(
-                      ", ",
-                    )}{" "}
-                    season calendar does not yet exist. Create the next season
-                    before completing the final treatment round so customers
-                    have their following season&apos;s bookings ready.
-                  </p>
-                </div>
-
-                <Link
-                  href="/season-planner"
-                  className="inline-flex rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-800"
-                >
-                  Open Season Planner
-                </Link>
-              </div>
-            </section>
-          )}
 
           {(requestedGroup > 0 ||
             requestedVan > 0) && (

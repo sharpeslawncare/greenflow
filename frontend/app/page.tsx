@@ -28,6 +28,10 @@ import {
   type ProgrammeVisit,
   useProgrammeStore,
 } from "@/components/programme-store";
+import {
+  getSeasonCycleLabel,
+  useSeasonStore,
+} from "@/components/season-store";
 
 import {
   type TreatmentRecord,
@@ -84,7 +88,14 @@ export default function DashboardPage() {
   const {
     programmes,
     ready: programmesReady,
+    customerNeedsNextProgramme,
+    getCurrentProgrammeForCustomer,
   } = useProgrammeStore();
+
+  const {
+    seasons,
+    ready: seasonsReady,
+  } = useSeasonStore();
 
   const {
     treatments,
@@ -691,6 +702,72 @@ export default function DashboardPage() {
         ),
     );
 
+  const customersNeedingNextProgramme =
+    activeCustomers.filter(
+      (customer) =>
+        customerNeedsNextProgramme(
+          customer.customerNumber,
+        ),
+    );
+
+  const nextProgrammeNeeds =
+    customersNeedingNextProgramme
+      .map((customer) => {
+        const currentProgramme =
+          getCurrentProgrammeForCustomer(
+            customer.customerNumber,
+          );
+
+        if (!currentProgramme) {
+          return null;
+        }
+
+        const nextYear =
+          currentProgramme.year + 1;
+
+        return {
+          customer,
+          nextYear,
+          calendarExists:
+            seasons.some(
+              (season) =>
+                season.year ===
+                nextYear,
+            ),
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          customer:
+            (typeof activeCustomers)[number];
+          nextYear: number;
+          calendarExists: boolean;
+        } => Boolean(item),
+      );
+
+  const missingNextCycleYears =
+    Array.from(
+      new Set(
+        nextProgrammeNeeds
+          .filter(
+            (item) =>
+              !item.calendarExists,
+          )
+          .map(
+            (item) =>
+              item.nextYear,
+          ),
+      ),
+    ).sort(
+      (first, second) =>
+        first - second,
+    );
+
+  const firstMissingNextCycleYear =
+    missingNextCycleYears[0] ?? null;
+
   const newEnquiries =
     enquiries.filter(
       (enquiry) =>
@@ -886,6 +963,7 @@ export default function DashboardPage() {
     reschedulingRecords.length +
     lowStockProducts.length +
     customersWithoutProgramme.length +
+    missingNextCycleYears.length +
     enquiryAttentionCount;
 
   const unscheduledAdditionalJobs =
@@ -967,9 +1045,36 @@ export default function DashboardPage() {
       priority: "ahead" as const,
     },
     {
+      key: "next-programme-cycle",
+      title:
+        firstMissingNextCycleYear
+          ? `Create ${getSeasonCycleLabel(
+              firstMissingNextCycleYear,
+            )} programme cycle`
+          : "Next programme cycle required",
+      detail:
+        firstMissingNextCycleYear
+          ? "T4 is complete, but the following T1–T5 programme calendar does not exist yet. Set the dates once in Season Planner so the next T1 can be prepared before the current T5 is completed."
+          : "The following T1–T5 programme calendar needs creating.",
+      count:
+        missingNextCycleYears.length,
+      href:
+        firstMissingNextCycleYear
+          ? `/season-planner?year=${firstMissingNextCycleYear}&nextCycle=1`
+          : "/season-planner",
+      actionLabel:
+        firstMissingNextCycleYear
+          ? `Set up ${getSeasonCycleLabel(
+              firstMissingNextCycleYear,
+            )}`
+          : "Set up next cycle",
+      severity: "warning" as const,
+      priority: "ahead" as const,
+    },
+    {
       key: "programmes",
       title: "Active customers without programme",
-      detail: "Active customers not linked to a programme for the current year.",
+      detail: "Active customers not linked to a programme beginning in the current T1 start year.",
       count: customersWithoutProgramme.length,
       href: "/programmes",
       actionLabel: "Review programmes",
@@ -1247,6 +1352,7 @@ export default function DashboardPage() {
     customersReady &&
     enquiriesReady &&
     programmesReady &&
+    seasonsReady &&
     treatmentsReady &&
     chemicalsReady &&
     actionsReady;
