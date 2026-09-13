@@ -57,6 +57,7 @@ type UpcomingWork = {
   jobType: "programme" | "additional";
   preferredContact: CommunicationChannel;
   destination: string;
+  mobilePhone: string;
   lockedGate: boolean;
   dogOnProperty: boolean;
 };
@@ -116,6 +117,17 @@ export default function CommunicationsPage() {
 
   const [preparationWorkflow, setPreparationWorkflow] =
     useState(false);
+
+  const [showAllCustomers, setShowAllCustomers] =
+    useState(false);
+
+  const [showAllAccessCustomers, setShowAllAccessCustomers] =
+    useState(false);
+
+  const [dayMessageTemplate, setDayMessageTemplate] =
+    useState(
+      "Hi {firstName}, unfortunately due to conditions we need to rearrange your lawn treatment scheduled for {date}. I’ll be in touch with a new date. Many thanks, Rob - Sharpes Lawn Care",
+    );
 
   useEffect(() => {
     try {
@@ -267,6 +279,8 @@ export default function CommunicationsPage() {
                     getDestination(
                       customer,
                     ),
+                  mobilePhone:
+                    customer.mobilePhone ?? "",
                   lockedGate:
                     Boolean(customer.lockedGate),
                   dogOnProperty:
@@ -320,6 +334,8 @@ export default function CommunicationsPage() {
                     getDestination(
                       customer,
                     ),
+                  mobilePhone:
+                    customer.mobilePhone ?? "",
                   lockedGate:
                     Boolean(customer.lockedGate),
                   dogOnProperty:
@@ -512,6 +528,73 @@ export default function CommunicationsPage() {
         item.dogOnProperty,
     ).length;
 
+  const accessCandidates =
+    useMemo(
+      () =>
+        dateCandidates
+          .filter(
+            (item) =>
+              item.lockedGate ||
+              item.dogOnProperty,
+          )
+          .sort((first, second) =>
+            first.customerName.localeCompare(
+              second.customerName,
+            ),
+          ),
+      [dateCandidates],
+    );
+
+  const accessContactedCount =
+    accessCandidates.filter((item) =>
+      hasSentReminder(records, item),
+    ).length;
+
+  const accessRemainingCount =
+    accessCandidates.length -
+    accessContactedCount;
+
+  const dayRecords =
+    useMemo(
+      () =>
+        records
+          .filter(
+            (record) =>
+              record.scheduledDate ===
+              workingDate,
+          )
+          .sort(
+            (first, second) =>
+              (second.sentAt ||
+                second.createdAt).localeCompare(
+                first.sentAt ||
+                  first.createdAt,
+              ),
+          ),
+      [records, workingDate],
+    );
+
+  const sentDayRecords =
+    dayRecords.filter(
+      (record) =>
+        record.status === "Sent",
+    );
+
+  const scheduledCustomerCount =
+    new Set(
+      dateCandidates.map(
+        (item) => item.customerNumber,
+      ),
+    ).size;
+
+  const contactedCustomerCount =
+    new Set(
+      sentDayRecords.map(
+        (record) =>
+          record.customerNumber,
+      ),
+    ).size;
+
   const dealtWithForDateCount =
     dateCandidates.filter((item) =>
       hasExistingReminder(records, item),
@@ -689,6 +772,90 @@ export default function CommunicationsPage() {
     );
   }
 
+  function markManualContactSent(
+    item: UpcomingWork,
+    channel: "SMS" | "Telephone",
+  ) {
+    if (hasSentReminder(records, item)) {
+      showMessage(
+        `${item.customerName} is already marked contacted for this visit.`,
+      );
+      return;
+    }
+
+    const record: CommunicationRecord = {
+      id: createId(),
+      customerNumber:
+        item.customerNumber,
+      customerName:
+        item.customerName,
+      channel,
+      status: "Sent",
+      subject:
+        "Upcoming lawn treatment",
+      message:
+        createReminderMessage(
+          item,
+          settings.communications
+            .visitReminderTemplate,
+        ),
+      scheduledDate:
+        item.scheduledDate,
+      treatmentName:
+        item.treatmentName,
+      jobType: item.jobType,
+      createdAt:
+        new Date().toISOString(),
+      sentAt:
+        new Date().toISOString(),
+    };
+
+    setRecords((current) => [
+      record,
+      ...current,
+    ]);
+
+    showMessage(
+      `${item.customerName} marked contacted.`,
+    );
+  }
+
+  function markDayMessageSent(
+    item: UpcomingWork,
+    sentMessage: string,
+  ) {
+    const record: CommunicationRecord = {
+      id: createId(),
+      customerNumber:
+        item.customerNumber,
+      customerName:
+        item.customerName,
+      channel: "SMS",
+      status: "Sent",
+      subject:
+        "Working day update",
+      message: sentMessage,
+      scheduledDate:
+        item.scheduledDate,
+      treatmentName:
+        item.treatmentName,
+      jobType: item.jobType,
+      createdAt:
+        new Date().toISOString(),
+      sentAt:
+        new Date().toISOString(),
+    };
+
+    setRecords((current) => [
+      record,
+      ...current,
+    ]);
+
+    showMessage(
+      `${item.customerName} marked contacted for this working day.`,
+    );
+  }
+
   async function copyMessage(
     record: CommunicationRecord,
   ) {
@@ -729,29 +896,68 @@ export default function CommunicationsPage() {
     );
   }
 
+  const visibleAccessCandidates =
+    showAllAccessCustomers
+      ? accessCandidates
+      : accessCandidates.slice(0, 5);
+
+  const stillToContactCount =
+    Math.max(
+      0,
+      scheduledCustomerCount -
+        contactedCustomerCount,
+    );
+
   return (
     <AppShell>
       <main className="p-5 md:p-7">
         <div className="mx-auto max-w-[1600px]">
           <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
-                Customer communications
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-green-200 bg-green-50 text-xl font-black text-[#176b37] sm:flex">
+                ✉
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-                Visit Notifications
-              </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                Deal with access reminders for the selected working day, then keep the communication record accurate.
-              </p>
+
+              <div className="min-w-0">
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                  Customer communications
+                </div>
+                <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+                  Contact customers
+                </h1>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                  Get in touch with customers scheduled for this working day, confirm access and keep everyone informed.
+                </p>
+              </div>
             </div>
 
-            <Link
-              href={`/?date=${workingDate}`}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              ← Dashboard
-            </Link>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block min-w-[245px] rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Working date
+                </span>
+                <input
+                  type="date"
+                  value={workingDate}
+                  min={getTodayDateValue()}
+                  onChange={(event) => {
+                    setWorkingDate(
+                      event.target.value,
+                    );
+                    setSelectedKeys([]);
+                    setShowAllAccessCustomers(false);
+                  }}
+                  className="mt-1 w-full border-0 bg-transparent p-0 text-sm font-bold text-slate-950 outline-none"
+                />
+              </label>
+
+              <Link
+                href={`/?date=${workingDate}`}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                ← Dashboard
+              </Link>
+            </div>
           </header>
 
           {message && (
@@ -761,594 +967,619 @@ export default function CommunicationsPage() {
           )}
 
           {preparationWorkflow && (
-            <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
-                    Prepare the working day
-                  </div>
-                  <h2 className="mt-1 text-xl font-bold text-slate-950">
-                    Step 1 of 3 · Contact access customers
-                  </h2>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                    Review the customers who need access reminders for {formatDateWithDay(workingDate)}.
-                  </p>
+            <section className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-green-200 bg-green-50/70 px-5 py-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+                  Prepare the working day · Step 1 of 3
+                </div>
+                <div className="mt-1 font-bold text-green-950">
+                  Contact customers who need access arranged, then continue to the saved route.
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <WorkflowProgressCard number="1" title="Contact customers" state="current" />
-                <WorkflowProgressCard number="2" title="Check route" state="later" />
-                <WorkflowProgressCard number="3" title="Print pack" state="later" />
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
-                <div>
-                  <div className="font-bold text-green-950">
-                    {accessAttentionCount === 0
-                      ? "No access alerts on this working day"
-                      : `${accessAttentionCount} customer${accessAttentionCount === 1 ? "" : "s"} with an access alert`}
-                  </div>
-                  <div className="mt-1 text-sm text-green-800">
-                    When the customers you need to contact are dealt with, continue to the saved route.
-                  </div>
-                </div>
-
-                <Link
-                  href={`/routes?date=${workingDate}&workflow=prepare`}
-                  className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#125b2f]"
-                >
-                  Next: Check route →
-                </Link>
+              <div className="flex items-center gap-2 text-xs font-bold">
+                <span className="rounded-full bg-[#176b37] px-3 py-1.5 text-white">
+                  1 Contact
+                </span>
+                <span className="rounded-full bg-white px-3 py-1.5 text-slate-500">
+                  2 Route
+                </span>
+                <span className="rounded-full bg-white px-3 py-1.5 text-slate-500">
+                  3 Print
+                </span>
               </div>
             </section>
           )}
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Working date
-                </div>
-                <div className="mt-1 text-xl font-bold text-slate-950">
-                  {formatDateWithDay(workingDate)}
-                </div>
-              </div>
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <PolishedSummaryCard
+              symbol="▣"
+              label="Scheduled"
+              value={String(
+                scheduledCustomerCount,
+              )}
+              detail="Customers on this working day"
+              tone="green"
+            />
 
-              <div className="min-w-[240px]">
-                <Field label="Change date">
-                  <input
-                    type="date"
-                    value={workingDate}
-                    min={getTodayDateValue()}
-                    onChange={(event) => {
-                      setWorkingDate(event.target.value);
-                      setSelectedKeys([]);
-                    }}
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
-            </div>
+            <PolishedSummaryCard
+              symbol="!"
+              label="Need access contact"
+              value={String(
+                accessRemainingCount,
+              )}
+              detail={`${accessAttentionCount} access alert${
+                accessAttentionCount === 1
+                  ? ""
+                  : "s"
+              } in total`}
+              tone={
+                accessRemainingCount > 0
+                  ? "red"
+                  : "green"
+              }
+            />
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <SummaryCard
-                label="Scheduled"
-                value={String(dateCandidates.length)}
-                detail="Visits on this working date"
-              />
-              <SummaryCard
-                label="Access alerts"
-                value={String(accessAttentionCount)}
-                detail="Locked gate or dog alert"
-              />
-              <SummaryCard
-                label="Already dealt with"
-                value={String(dealtWithForDateCount)}
-                detail="Reminder queued or sent"
-              />
-              <SummaryCard
-                label="Missing contact"
-                value={String(missingContactForDateCount)}
-                detail="Needs customer detail updated"
-              />
-            </div>
+            <PolishedSummaryCard
+              symbol="✓"
+              label="Messages sent"
+              value={String(
+                contactedCustomerCount,
+              )}
+              detail="Customers marked contacted"
+              tone="green"
+            />
+
+            <PolishedSummaryCard
+              symbol="→"
+              label="Still to contact"
+              value={String(
+                stillToContactCount,
+              )}
+              detail={`Out of ${scheduledCustomerCount} scheduled`}
+              tone="slate"
+            />
           </section>
 
-          <section className="mt-4 rounded-2xl border border-green-200 bg-green-50/60 p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
-                  Working-day contacts
+          <section className="mt-4 overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-rose-100 bg-rose-50/70 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-lg font-black text-rose-700">
+                  !
                 </div>
-                <h2 className="mt-1 text-lg font-bold text-green-950">
-                  Who needs contacting?
-                </h2>
-                <p className="mt-1 max-w-3xl text-sm text-green-800">
-                  Access warnings are shown prominently. You can still queue any other scheduled customer when needed.
-                </p>
+
+                <div>
+                  <h2 className="text-lg font-bold text-slate-950">
+                    Access contact required
+                  </h2>
+                  <p className="mt-0.5 text-sm text-slate-600">
+                    These customers have a gate or property access alert. Contact them before the visit.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={selectAllForDate}
-                  disabled={selectableDateCandidates.length === 0}
-                  className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-bold text-green-800 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Select all available
-                </button>
-                <button
-                  type="button"
-                  onClick={queueSelectedReminders}
-                  disabled={selectedDateCandidates.length === 0}
-                  className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  Queue selected ({selectedDateCandidates.length})
-                </button>
+              <div className="rounded-full bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-700">
+                {accessCandidates.length} customer{accessCandidates.length === 1 ? "" : "s"}
               </div>
             </div>
 
-            <div className="mt-4 space-y-2">
-              {dateCandidates.length === 0 ? (
+            {accessCandidates.length === 0 ? (
+              <div className="p-4">
                 <EmptyState>
-                  No scheduled visits are due on {formatDateWithDay(workingDate)}.
+                  No customers with gate or access alerts are due on {formatDateWithDay(workingDate)}.
                 </EmptyState>
-              ) : (
-                [...dateCandidates]
-                  .sort((first, second) => {
-                    const firstAlert =
-                      first.lockedGate || first.dogOnProperty ? 1 : 0;
-                    const secondAlert =
-                      second.lockedGate || second.dogOnProperty ? 1 : 0;
-                    return secondAlert - firstAlert;
-                  })
-                  .map((item) => {
-                    const existing =
-                      hasExistingReminder(records, item);
-                    const missingContact = !item.destination;
-                    const selectable = !existing && !missingContact;
-                    const accessAlert =
-                      item.lockedGate || item.dogOnProperty;
+              </div>
+            ) : (
+              <>
+                <div className="hidden grid-cols-[minmax(180px,1.2fr)_minmax(180px,1fr)_minmax(170px,1fr)_minmax(150px,0.9fr)_minmax(390px,1.8fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-500 lg:grid">
+                  <div>Customer</div>
+                  <div>Contact</div>
+                  <div>Today&apos;s treatment</div>
+                  <div>Access issue</div>
+                  <div>Actions</div>
+                </div>
 
-                    return (
-                      <label
-                        key={item.key}
-                        className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${
-                          accessAlert
-                            ? "border-amber-300 bg-amber-50"
-                            : selectable
-                              ? "cursor-pointer border-green-200 bg-white"
-                              : "border-slate-200 bg-slate-50"
-                        } ${selectable ? "cursor-pointer" : ""}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedKeys.includes(item.key)}
-                          disabled={!selectable}
-                          onChange={() => toggleSelected(item.key)}
-                          className="h-4 w-4 accent-[#176b37]"
-                        />
+                <div className="divide-y divide-slate-100">
+                  {visibleAccessCandidates.map(
+                    (item) => {
+                      const contacted =
+                        hasSentReminder(
+                          records,
+                          item,
+                        );
+                      const mobile =
+                        item.mobilePhone.trim();
+                      const reminderMessage =
+                        createReminderMessage(
+                          item,
+                          settings.communications
+                            .visitReminderTemplate,
+                        );
 
-                        <div className="min-w-[200px] flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
+                      return (
+                        <article
+                          key={item.key}
+                          className={`grid gap-3 px-4 py-4 lg:grid-cols-[minmax(180px,1.2fr)_minmax(180px,1fr)_minmax(170px,1fr)_minmax(150px,0.9fr)_minmax(390px,1.8fr)] lg:items-center ${
+                            contacted
+                              ? "bg-green-50/40"
+                              : "bg-white"
+                          }`}
+                        >
+                          <div className="min-w-0">
                             <Link
                               href={`/customers/${item.customerNumber}`}
-                              onClick={(event) => event.stopPropagation()}
                               className="font-bold text-slate-950 hover:text-[#176b37] hover:underline"
                             >
                               {item.customerName}
                             </Link>
+                            <div className="mt-1 text-xs text-slate-500">
+                              Customer {item.customerNumber}
+                            </div>
+                          </div>
+
+                          <div className="text-sm text-slate-600">
+                            {mobile || "No mobile number"}
+                          </div>
+
+                          <div className="text-sm font-semibold text-slate-800">
+                            {formatProgrammeTreatmentLabel(
+                              item.treatmentName,
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5">
                             {item.lockedGate && (
-                              <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-900">
+                              <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700">
                                 Locked gate
                               </span>
                             )}
+
                             {item.dogOnProperty && (
-                              <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-900">
+                              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
                                 Dog on property
                               </span>
                             )}
                           </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            Customer {item.customerNumber} · {formatProgrammeTreatmentLabel(item.treatmentName)}
+
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            {mobile ? (
+                              <>
+                                <a
+                                  href={createWhatsAppLink(
+                                    mobile,
+                                    reminderMessage,
+                                  )}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex min-h-10 items-center justify-center rounded-xl bg-[#176b37] px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-[#125b2f]"
+                                >
+                                  Open WhatsApp
+                                </a>
+
+                                <a
+                                  href={createSmsLink(
+                                    mobile,
+                                    reminderMessage,
+                                  )}
+                                  className="flex min-h-10 items-center justify-center rounded-xl border border-green-300 bg-white px-3 py-2 text-center text-xs font-bold text-green-800 transition hover:bg-green-50"
+                                >
+                                  Open SMS
+                                </a>
+                              </>
+                            ) : (
+                              <Link
+                                href={`/customers/${item.customerNumber}`}
+                                className="flex min-h-10 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-center text-xs font-bold text-rose-700"
+                              >
+                                Add mobile
+                              </Link>
+                            )}
+
+                            <button
+                              type="button"
+                              disabled={contacted}
+                              onClick={() =>
+                                markManualContactSent(
+                                  item,
+                                  "SMS",
+                                )
+                              }
+                              className={`min-h-10 rounded-xl px-3 py-2 text-xs font-bold transition ${
+                                contacted
+                                  ? "cursor-not-allowed border border-green-200 bg-green-50 text-green-700"
+                                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              {contacted
+                                ? "✓ Contacted"
+                                : "Mark contacted"}
+                            </button>
                           </div>
-                        </div>
+                        </article>
+                      );
+                    },
+                  )}
+                </div>
 
-                        <WorkTypeBadge type={item.jobType} />
+                {accessCandidates.length > 5 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowAllAccessCustomers(
+                        (current) =>
+                          !current,
+                      )
+                    }
+                    className="flex w-full items-center justify-between border-t border-slate-100 bg-white px-5 py-3 text-sm font-bold text-[#176b37] hover:bg-green-50"
+                  >
+                    <span>
+                      {showAllAccessCustomers
+                        ? "Show fewer customers"
+                        : `Show ${accessCandidates.length - 5} more customer${
+                            accessCandidates.length - 5 === 1
+                              ? ""
+                              : "s"
+                          }`}
+                    </span>
+                    <span aria-hidden="true">
+                      {showAllAccessCustomers
+                        ? "↑"
+                        : "↓"}
+                    </span>
+                  </button>
+                )}
+              </>
+            )}
+          </section>
 
-                        <div className="min-w-[180px] text-sm">
-                          <span className="font-semibold">
-                            {item.preferredContact}
-                          </span>
-                          <span className="text-slate-500">
-                            {" · "}
-                            {item.destination || "No contact detail"}
-                          </span>
-                        </div>
+          <section className="mt-4 overflow-hidden rounded-2xl border border-green-200 bg-green-50/40 shadow-sm">
+            <button
+              type="button"
+              onClick={() =>
+                setShowAllCustomers(
+                  (current) => !current,
+                )
+              }
+              className="flex w-full flex-wrap items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-green-50"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-lg font-black text-green-800">
+                  +
+                </div>
 
-                        {existing ? (
-                          <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
-                            Already queued/sent
-                          </span>
-                        ) : missingContact ? (
-                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
-                            Missing contact detail
-                          </span>
-                        ) : accessAlert ? (
-                          <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-900">
-                            Access reminder
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-800">
-                            Optional reminder
-                          </span>
-                        )}
-                      </label>
-                    );
-                  })
-              )}
-            </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-950">
+                    Contact everyone on this working day
+                  </h2>
+                  <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                    Need to rearrange because of frozen ground, high winds or another issue? Expand this section to contact all {scheduledCustomerCount} scheduled customer{scheduledCustomerCount === 1 ? "" : "s"}.
+                  </p>
+                </div>
+              </div>
 
-            {selectedKeys.length > 0 && (
-              <div className="mt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  className="text-xs font-bold text-slate-600 hover:underline"
-                >
-                  Clear selection
-                </button>
+              <span className="text-lg font-black text-green-800">
+                {showAllCustomers
+                  ? "↑"
+                  : "↓"}
+              </span>
+            </button>
+
+            {showAllCustomers && (
+              <div className="border-t border-green-200 bg-white p-5">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <label className="block">
+                    <span className="text-xs font-bold uppercase tracking-wide text-blue-800">
+                      Message to use
+                    </span>
+                    <textarea
+                      rows={4}
+                      value={dayMessageTemplate}
+                      onChange={(event) =>
+                        setDayMessageTemplate(
+                          event.target.value,
+                        )
+                      }
+                      className={`${inputClass} mt-2 bg-white`}
+                    />
+                  </label>
+
+                  <p className="mt-2 text-xs leading-5 text-blue-800">
+                    You can use {"{firstName}"}, {"{date}"} and {"{treatment}"}. GreenFlow prepares each message, but you still send it yourself.
+                  </p>
+                </div>
+
+                {dateCandidates.length === 0 ? (
+                  <div className="mt-4">
+                    <EmptyState>
+                      No customers are scheduled for {formatDateWithDay(workingDate)}.
+                    </EmptyState>
+                  </div>
+                ) : (
+                  <div className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-200">
+                    {[...dateCandidates]
+                      .sort((first, second) =>
+                        first.customerName.localeCompare(
+                          second.customerName,
+                        ),
+                      )
+                      .map((item) => {
+                        const mobile =
+                          item.mobilePhone.trim();
+                        const preparedMessage =
+                          createReminderMessage(
+                            item,
+                            dayMessageTemplate,
+                          );
+
+                        return (
+                          <article
+                            key={`all-${item.key}`}
+                            className="grid gap-3 bg-white p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1.3fr)_minmax(420px,1.6fr)] lg:items-center"
+                          >
+                            <div>
+                              <Link
+                                href={`/customers/${item.customerNumber}`}
+                                className="font-bold text-slate-950 hover:text-[#176b37] hover:underline"
+                              >
+                                {item.customerName}
+                              </Link>
+
+                              <div className="mt-1 text-xs text-slate-500">
+                                Customer {item.customerNumber} · {formatProgrammeTreatmentLabel(item.treatmentName)}
+                              </div>
+                            </div>
+
+                            <div className="text-sm text-slate-600">
+                              {mobile || "No mobile number"}
+                            </div>
+
+                            <div className="grid gap-2 sm:grid-cols-3">
+                              {mobile ? (
+                                <>
+                                  <a
+                                    href={createWhatsAppLink(
+                                      mobile,
+                                      preparedMessage,
+                                    )}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex min-h-10 items-center justify-center rounded-xl bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f]"
+                                  >
+                                    WhatsApp
+                                  </a>
+
+                                  <a
+                                    href={createSmsLink(
+                                      mobile,
+                                      preparedMessage,
+                                    )}
+                                    className="flex min-h-10 items-center justify-center rounded-xl border border-green-300 bg-white px-3 py-2 text-xs font-bold text-green-800 hover:bg-green-50"
+                                  >
+                                    SMS
+                                  </a>
+                                </>
+                              ) : (
+                                <Link
+                                  href={`/customers/${item.customerNumber}`}
+                                  className="flex min-h-10 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700"
+                                >
+                                  Add mobile
+                                </Link>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  markDayMessageSent(
+                                    item,
+                                    preparedMessage,
+                                  )
+                                }
+                                className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                              >
+                                Mark sent
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
             )}
           </section>
 
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="grid gap-3 md:grid-cols-[1fr_220px_220px_auto] md:items-end">
-              <Field label="Search records">
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Customer, number or treatment"
-                  className={inputClass}
-                />
-              </Field>
+          <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-lg font-black text-green-800">
+                  ✓
+                </div>
 
-              <Field label="Customer">
-                <select
-                  value={customerFilter}
-                  onChange={(event) => setCustomerFilter(event.target.value)}
-                  className={inputClass}
-                >
-                  <option value="">All customers</option>
-                  {customers
-                    .filter((customer) => customer.status === "Active")
-                    .map((customer) => (
-                      <option
-                        key={customer.customerNumber}
-                        value={customer.customerNumber}
-                      >
-                        {customer.customerNumber} · {customer.fullName}
-                      </option>
-                    ))}
-                </select>
-              </Field>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-950">
+                    Messages for this day
+                  </h2>
+                  <p className="mt-0.5 text-sm leading-6 text-slate-500">
+                    A clear record of messages linked to {formatDateWithDay(workingDate)}.
+                  </p>
+                </div>
+              </div>
 
-              <Field label="History status">
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(
-                      event.target.value as "All" | CommunicationStatus,
-                    )
-                  }
-                  className={inputClass}
-                >
-                  <option value="All">All statuses</option>
-                  <option value="Queued">Queued</option>
-                  <option value="Sent">Sent</option>
-                  <option value="Failed">Failed</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
-              </Field>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setCustomerFilter("");
-                  setStatusFilter("All");
-                }}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-              >
-                Clear filters
-              </button>
+              <div className="rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-800">
+                {sentDayRecords.length} sent
+              </div>
             </div>
-          </section>
 
-          <section className="mt-4 grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
-            <article className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 p-5">
-                <h2 className="text-lg font-bold">
-                  Upcoming visits
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Programme visits and scheduled Additional Jobs that can be turned into reminders.
-                </p>
-              </div>
-
+            {dayRecords.length === 0 ? (
               <div className="p-4">
-                {reminderCandidates.length ===
-                0 ? (
-                  <EmptyState>
-                    No upcoming scheduled work matches the current filters.
-                  </EmptyState>
-                ) : (
-                  <div className="space-y-3">
-                    {reminderCandidates.map(
-                      (item) => {
-                        const alreadyExists =
-                          hasExistingReminder(
-                            records,
-                            item,
-                          );
+                <EmptyState>
+                  No messages have been recorded for this working day yet.
+                </EmptyState>
+              </div>
+            ) : (
+              <>
+                <div className="hidden grid-cols-[90px_minmax(180px,1fr)_120px_minmax(360px,2fr)_120px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-500 lg:grid">
+                  <div>Time</div>
+                  <div>Customer</div>
+                  <div>Method</div>
+                  <div>Message</div>
+                  <div>Status</div>
+                </div>
 
-                        return (
-                          <div
-                            key={
-                              item.key
-                            }
-                            className="rounded-xl border border-slate-200 p-4"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Link
-                                    href={`/customers/${item.customerNumber}`}
-                                    className="font-bold text-slate-900 hover:text-[#176b37] hover:underline"
-                                  >
-                                    {
-                                      item.customerName
-                                    }
-                                  </Link>
-
-                                  <WorkTypeBadge
-                                    type={
-                                      item.jobType
-                                    }
-                                  />
-                                </div>
-
-                                <div className="mt-1 text-xs text-slate-500">
-                                  Customer{" "}
-                                  {
-                                    item.customerNumber
-                                  }{" "}
-                                  ·{" "}
-                                  {
-                                    item.preferredContact
-                                  }
-                                  {item.destination
-                                    ? ` · ${item.destination}`
-                                    : " · No contact detail"}
-                                </div>
-                              </div>
-
-                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                                {formatDateWithDay(
-                                  item.scheduledDate,
-                                )}
-                              </span>
-                            </div>
-
-                            <div className="mt-3 font-semibold">
-                              {
-                                item.treatmentName
-                              }
-                            </div>
-
-                            <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                              {createReminderMessage(
-                                  item,
-                                  settings.communications
-                                    .visitReminderTemplate,
-                                )}
-                            </div>
-
-                            <div className="mt-3 flex flex-wrap justify-end gap-2">
-                              <button
-                                type="button"
-                                disabled={
-                                  alreadyExists
-                                }
-                                onClick={() =>
-                                  queueReminder(
-                                    item,
-                                  )
-                                }
-                                className={`rounded-lg px-3 py-2 text-xs font-bold ${
-                                  alreadyExists
-                                    ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                    : "bg-[#176b37] text-white hover:bg-[#125b2f]"
-                                }`}
-                              >
-                                {alreadyExists
-                                  ? "Already queued/sent"
-                                  : "Queue reminder"}
-                              </button>
-                            </div>
-                          </div>
+                <div className="divide-y divide-slate-100">
+                  {dayRecords.map(
+                    (record) => {
+                      const customer =
+                        customers.find(
+                          (item) =>
+                            item.customerNumber ===
+                            record.customerNumber,
                         );
-                      },
-                    )}
-                  </div>
-                )}
-              </div>
-            </article>
 
-            <article className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 p-5">
-                <h2 className="text-lg font-bold">
-                  Communication history
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Open the customer&apos;s SMS, email or telephone app directly, then mark the reminder sent once you have actually contacted them.
-                </p>
-              </div>
+                      const contactDestination =
+                        customer
+                          ? getDestinationForChannel(
+                              customer,
+                              record.channel,
+                            )
+                          : "";
 
-              <div className="p-4">
-                {filteredRecords.length ===
-                0 ? (
-                  <EmptyState>
-                    No communication records match the current filters.
-                  </EmptyState>
-                ) : (
-                  <div className="space-y-3">
-                    {filteredRecords.map(
-                      (record) => {
-                        const customer =
-                          customers.find(
-                            (item) =>
-                              item.customerNumber ===
-                              record.customerNumber,
-                          );
-
-                        const contactDestination =
-                          customer
-                            ? getDestinationForChannel(
-                                customer,
-                                record.channel,
-                              )
-                            : "";
-
-                        return (
-                        <div
-                          key={
-                            record.id
-                          }
-                          className="rounded-xl border border-slate-200 p-4"
+                      return (
+                        <article
+                          key={record.id}
+                          className="grid gap-3 px-4 py-3 lg:grid-cols-[90px_minmax(180px,1fr)_120px_minmax(360px,2fr)_120px] lg:items-center"
                         >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <Link
-                                href={`/customers/${record.customerNumber}?tab=communications`}
-                                className="font-bold hover:text-[#176b37] hover:underline"
-                              >
-                                {
-                                  record.customerName
-                                }
-                              </Link>
-
-                              <div className="mt-1 text-xs text-slate-500">
-                                {
-                                  record.channel
-                                }{" "}
-                                · Customer{" "}
-                                {
-                                  record.customerNumber
-                                }{" "}
-                                ·{" "}
-                                {
-                                  record.treatmentName
-                                }
-                              </div>
-                            </div>
-
-                            <StatusBadge
-                              status={
-                                record.status
-                              }
-                            />
-                          </div>
-
-                          <div className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                            {formatDateWithDay(
-                              record.scheduledDate,
-                            )}
-                          </div>
-
-                          <div className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                            {
-                              record.message
-                            }
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {record.status ===
-                              "Queued" &&
-                              contactDestination && (
-                                <ContactAction
-                                  record={record}
-                                  destination={
-                                    contactDestination
-                                  }
-                                />
-                              )}
-
-                            {record.status ===
-                              "Queued" &&
-                              !contactDestination && (
-                                <span className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
-                                  Contact detail missing
-                                </span>
-                              )}
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                copyMessage(
-                                  record,
+                          <div className="text-xs font-semibold text-slate-500">
+                            {record.sentAt
+                              ? formatTime(
+                                  record.sentAt,
                                 )
-                              }
-                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold hover:bg-slate-50"
+                              : "—"}
+                          </div>
+
+                          <div>
+                            <Link
+                              href={`/customers/${record.customerNumber}?tab=communications`}
+                              className="font-bold text-slate-950 hover:text-[#176b37] hover:underline"
                             >
-                              Copy message
-                            </button>
+                              {record.customerName}
+                            </Link>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              #{record.customerNumber}
+                            </div>
+                          </div>
+
+                          <div>
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
+                                record.channel === "SMS"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : record.channel === "Email"
+                                    ? "bg-violet-100 text-violet-800"
+                                    : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {record.channel}
+                            </span>
+                          </div>
+
+                          <div className="min-w-0 text-sm leading-6 text-slate-700">
+                            <div className="line-clamp-2">
+                              {record.message}
+                            </div>
 
                             {record.status ===
                               "Queued" && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateStatus(
-                                      record.id,
-                                      "Sent",
-                                    )
-                                  }
-                                  className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f]"
-                                >
-                                  Mark sent
-                                </button>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {contactDestination && (
+                                    <ContactAction
+                                      record={record}
+                                      destination={
+                                        contactDestination
+                                      }
+                                    />
+                                  )}
 
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateStatus(
-                                      record.id,
-                                      "Cancelled",
-                                    )
-                                  }
-                                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
-                                >
-                                  Cancel
-                                </button>
-                              </>
-                            )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateStatus(
+                                        record.id,
+                                        "Sent",
+                                      )
+                                    }
+                                    className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f]"
+                                  >
+                                    Mark sent
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      copyMessage(
+                                        record,
+                                      )
+                                    }
+                                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold hover:bg-slate-50"
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              )}
                           </div>
-                        </div>
-                        );
-                      },
-                    )}
-                  </div>
-                )}
-              </div>
-            </article>
+
+                          <div>
+                            <StatusBadge
+                              status={record.status}
+                            />
+                          </div>
+                        </article>
+                      );
+                    },
+                  )}
+                </div>
+              </>
+            )}
           </section>
 
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-            GreenFlow prepares and records reminders here. SMS and email are opened in your normal phone or email app, so a communication is only marked sent when you confirm it.
+          <section className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-green-200 bg-green-50/60 px-5 py-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-lg font-black text-green-800">
+                →
+              </div>
+
+              <div>
+                <h2 className="font-bold text-green-950">
+                  Next steps
+                </h2>
+                <p className="mt-0.5 text-sm text-green-800">
+                  Once the customers who need contact are dealt with, continue with the working day.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={`/routes?date=${workingDate}${preparationWorkflow ? "&workflow=prepare" : ""}`}
+                className="rounded-xl border border-green-400 bg-white px-4 py-2.5 text-sm font-bold text-green-800 hover:bg-green-50"
+              >
+                View route
+              </Link>
+
+              <Link
+                href={`/jobs?date=${workingDate}`}
+                className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+              >
+                Open day&apos;s jobs
+              </Link>
+            </div>
           </section>
+
+          <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <span className="font-bold">Tip:</span>{" "}
+            You can still contact an individual customer directly from their customer account when needed.
+          </div>
         </div>
       </main>
     </AppShell>
@@ -1375,6 +1606,66 @@ function hasExistingReminder(
   );
 }
 
+function hasSentReminder(
+  records: CommunicationRecord[],
+  item: UpcomingWork,
+) {
+  return records.some(
+    (record) =>
+      record.customerNumber ===
+        item.customerNumber &&
+      record.scheduledDate ===
+        item.scheduledDate &&
+      record.treatmentName ===
+        item.treatmentName &&
+      record.jobType ===
+        item.jobType &&
+      record.status === "Sent",
+  );
+}
+
+function createWhatsAppLink(
+  mobilePhone: string,
+  message: string,
+) {
+  const number =
+    normaliseWhatsAppNumber(
+      mobilePhone,
+    );
+
+  return `https://wa.me/${number}?text=${encodeURIComponent(
+    message,
+  )}`;
+}
+
+function createSmsLink(
+  mobilePhone: string,
+  message: string,
+) {
+  return `sms:${normaliseTelephoneLink(
+    mobilePhone,
+  )}?body=${encodeURIComponent(
+    message,
+  )}`;
+}
+
+function normaliseWhatsAppNumber(
+  value: string,
+) {
+  const digits =
+    value.replace(/\D/g, "");
+
+  if (digits.startsWith("44")) {
+    return digits;
+  }
+
+  if (digits.startsWith("0")) {
+    return `44${digits.slice(1)}`;
+  }
+
+  return digits;
+}
+
 function isDateValue(
   value: string | null,
 ) {
@@ -1384,6 +1675,52 @@ function isDateValue(
         value,
       ),
   );
+}
+
+function formatTime(
+  value: string,
+) {
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  ).format(date);
+}
+
+function formatDateTime(
+  value: string,
+) {
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  ).format(date);
 }
 
 function getTomorrowDateValue() {
@@ -1797,6 +2134,51 @@ function WorkflowProgressCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function PolishedSummaryCard({
+  symbol,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  symbol: string;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "green" | "red" | "slate";
+}) {
+  const symbolClass =
+    tone === "red"
+      ? "bg-rose-100 text-rose-700"
+      : tone === "green"
+        ? "bg-green-100 text-green-800"
+        : "bg-slate-100 text-slate-700";
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-4">
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-black ${symbolClass}`}
+        >
+          {symbol}
+        </div>
+
+        <div className="min-w-0">
+          <div className="text-2xl font-black tracking-tight text-slate-950">
+            {value}
+          </div>
+          <div className="text-sm font-bold text-slate-800">
+            {label}
+          </div>
+          <div className="mt-0.5 text-xs leading-5 text-slate-500">
+            {detail}
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 

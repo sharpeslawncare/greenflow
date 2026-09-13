@@ -44,6 +44,7 @@ export type AdditionalCustomerJob = {
 export type StoredCustomer = Customer & {
   programmeStartDate: string;
   additionalJobs: AdditionalCustomerJob[];
+  gateCode: string;
 };
 
 type CustomerInput =
@@ -533,6 +534,9 @@ function normaliseStoredCustomer(
       customer.lockedGate ??
       false,
 
+    gateCode:
+      customer.gateCode?.trim() ?? "",
+
     dogOnProperty:
       customer.dogOnProperty ??
       false,
@@ -865,6 +869,9 @@ function mergeDuplicateCustomers(
     notes:
       preferred.notes ||
       secondary.notes,
+    gateCode:
+      preferred.gateCode ||
+      secondary.gateCode,
     programmeStartDate:
       preferred.programmeStartDate ||
       secondary.programmeStartDate,

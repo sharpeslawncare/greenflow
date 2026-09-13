@@ -79,8 +79,6 @@ type CustomerImportPreview = {
   rows: CustomerImportRow[];
 };
 
-const PAGE_SIZE = 25;
-
 export default function CustomersPage() {
   const {
     customers,
@@ -119,7 +117,7 @@ export default function CustomersPage() {
       "ascending",
     );
 
-  const [currentPage, setCurrentPage] =
+  const [, setCurrentPage] =
     useState(1);
 
   const [
@@ -346,40 +344,16 @@ export default function CustomersPage() {
       sortDirection,
     ]);
 
-  const totalPages =
-    Math.max(
-      1,
-      Math.ceil(
-        customerRows.length /
-          PAGE_SIZE,
-      ),
-    );
-
-  const safePage =
-    Math.min(
-      currentPage,
-      totalPages,
-    );
-
   const paginatedRows =
-    customerRows.slice(
-      (safePage - 1) *
-        PAGE_SIZE,
-      safePage * PAGE_SIZE,
-    );
+    customerRows;
 
   const firstDisplayed =
     customerRows.length === 0
       ? 0
-      : (safePage - 1) *
-          PAGE_SIZE +
-        1;
+      : 1;
 
   const lastDisplayed =
-    Math.min(
-      safePage * PAGE_SIZE,
-      customerRows.length,
-    );
+    customerRows.length;
 
   const ready =
     customersReady &&
@@ -1524,84 +1498,17 @@ export default function CustomersPage() {
             <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm">
               <span className="text-slate-500">
                 Showing{" "}
-                {
-                  firstDisplayed
-                }{" "}
+                {firstDisplayed}{" "}
                 to{" "}
-                {
-                  lastDisplayed
-                }{" "}
+                {lastDisplayed}{" "}
                 of{" "}
-                {
-                  customerRows.length
-                }{" "}
+                {customerRows.length}{" "}
                 customers
               </span>
 
-              <div className="flex items-center gap-2">
-                <PageButton
-                  label="‹"
-                  disabled={
-                    safePage === 1
-                  }
-                  onClick={() =>
-                    setCurrentPage(
-                      Math.max(
-                        1,
-                        safePage - 1,
-                      ),
-                    )
-                  }
-                />
-
-                {getPageNumbers(
-                  safePage,
-                  totalPages,
-                ).map(
-                  (page, index) =>
-                    page ===
-                    "ellipsis" ? (
-                      <span
-                        key={`ellipsis-${index}`}
-                        className="px-2 text-slate-400"
-                      >
-                        …
-                      </span>
-                    ) : (
-                      <PageButton
-                        key={page}
-                        label={String(
-                          page,
-                        )}
-                        active={
-                          page ===
-                          safePage
-                        }
-                        onClick={() =>
-                          setCurrentPage(
-                            page,
-                          )
-                        }
-                      />
-                    ),
-                )}
-
-                <PageButton
-                  label="›"
-                  disabled={
-                    safePage ===
-                    totalPages
-                  }
-                  onClick={() =>
-                    setCurrentPage(
-                      Math.min(
-                        totalPages,
-                        safePage + 1,
-                      ),
-                    )
-                  }
-                />
-              </div>
+              <span className="font-semibold text-slate-600">
+                All matching customers are shown in one continuous list.
+              </span>
             </footer>
           </section>
         </div>
@@ -3148,93 +3055,4 @@ function QuickActionLink({
       {label}
     </Link>
   );
-}
-
-function PageButton({
-  label,
-  onClick,
-  disabled = false,
-  active = false,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  active?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`min-w-9 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-        active
-          ? "border-[#176b37] bg-[#176b37] text-white"
-          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-      } disabled:cursor-not-allowed disabled:opacity-40`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function getPageNumbers(
-  currentPage: number,
-  totalPages: number,
-): Array<number | "ellipsis"> {
-  if (totalPages <= 7) {
-    return Array.from(
-      {
-        length:
-          totalPages,
-      },
-      (_, index) =>
-        index + 1,
-    );
-  }
-
-  const pages:
-    Array<
-      number | "ellipsis"
-    > = [1];
-
-  if (currentPage > 4) {
-    pages.push(
-      "ellipsis",
-    );
-  }
-
-  const start =
-    Math.max(
-      2,
-      currentPage - 1,
-    );
-
-  const end =
-    Math.min(
-      totalPages - 1,
-      currentPage + 1,
-    );
-
-  for (
-    let page = start;
-    page <= end;
-    page += 1
-  ) {
-    pages.push(page);
-  }
-
-  if (
-    currentPage <
-    totalPages - 3
-  ) {
-    pages.push(
-      "ellipsis",
-    );
-  }
-
-  pages.push(
-    totalPages,
-  );
-
-  return pages;
 }

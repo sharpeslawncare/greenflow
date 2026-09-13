@@ -511,24 +511,41 @@ function JobsPageContent() {
         @media print {
           html,
           body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: auto !important;
             height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
             overflow: visible !important;
             background: white !important;
           }
 
-          aside {
-            display: none !important;
+          body > div,
+          body > div > div,
+          body > div > div > div {
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
 
+          aside,
           .jobs-screen {
             display: none !important;
           }
 
           .jobs-print {
             display: block !important;
-            width: 190mm;
-            margin: 0 auto;
+            width: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
             color: #0f172a;
+            background: white !important;
             font-family:
               Arial,
               Helvetica,
@@ -543,33 +560,56 @@ function JobsPageContent() {
             box-sizing: border-box;
           }
 
+          .jobs-print-sheet {
+            display: block !important;
+            width: 188mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            overflow: visible !important;
+          }
+
           .jobs-print table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
           }
 
           .jobs-print thead {
             display: table-header-group;
           }
 
+          .jobs-print tbody {
+            display: table-row-group;
+          }
+
           .jobs-print tr {
-            break-inside: avoid;
-            page-break-inside: avoid;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
 
           .jobs-print th,
           .jobs-print td {
             border-bottom: 1px solid #d1d5db;
-            padding: 2.2mm 1.5mm;
+            padding: 2mm 1.2mm;
             vertical-align: top;
+            overflow-wrap: anywhere;
           }
 
           .jobs-print th {
             text-align: left;
             color: #176b37;
-            font-size: 7.5pt;
+            font-size: 7.2pt;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.03em;
+          }
+
+          .jobs-print-header,
+          .jobs-print-footer {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
         }
       `}</style>
@@ -1259,175 +1299,191 @@ function JobsPageContent() {
       </main>
 
       <section className="jobs-print">
-        <header className="mb-[5mm] border-b-2 border-[#176b37] pb-[3mm]">
-          <div className="flex items-end justify-between gap-[8mm]">
-            <div>
-              <div className="text-[18pt] font-bold text-[#176b37]">
-                Sharpes Lawn Care
+        <section className="jobs-print-sheet">
+          <header className="jobs-print-header mb-[5mm] border-b-2 border-[#176b37] pb-[3mm]">
+            <div className="flex items-end justify-between gap-[8mm]">
+              <div>
+                <div className="text-[18pt] font-bold text-[#176b37]">
+                  Sharpes Lawn Care
+                </div>
+
+                <div className="mt-[1mm] text-[8pt] text-slate-500">
+                  Daily Job Sheet · Powered by GreenFlow
+                </div>
               </div>
 
-              <div className="mt-[1mm] text-[8pt] text-slate-500">
-                Daily Job Sheet · Powered
-                by GreenFlow
+              <div className="text-right">
+                <div className="text-[13pt] font-bold">
+                  {formatDateWithDay(
+                    selectedDate,
+                  )}
+                </div>
+
+                <div className="mt-[1mm] text-[8pt] text-slate-600">
+                  {requestedGroup > 0
+                    ? `Group ${requestedGroup}`
+                    : groupNumbers.length ===
+                        1
+                      ? `Group ${groupNumbers[0]}`
+                      : `${groupNumbers.length} groups`}
+                  {requestedVan > 0
+                    ? ` · Van ${requestedVan}`
+                    : ""}
+                </div>
               </div>
             </div>
 
-            <div className="text-right">
-              <div className="text-[13pt] font-bold">
-                {formatDateWithDay(
-                  selectedDate,
+            <div className="mt-[3mm] grid grid-cols-3 gap-[4mm] border-t border-slate-200 pt-[2mm] text-[8pt]">
+              <PrintStat
+                label="Jobs"
+                value={String(
+                  scheduledJobs.length,
                 )}
-              </div>
-
-              <div className="mt-[1mm] text-[8pt] text-slate-600">
-                {requestedGroup > 0
-                  ? `Group ${requestedGroup}`
-                  : groupNumbers.length ===
-                      1
-                    ? `Group ${groupNumbers[0]}`
-                    : `${groupNumbers.length} groups`}
-                {requestedVan > 0
-                  ? ` · Van ${requestedVan}`
-                  : ""}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-[3mm] grid grid-cols-3 gap-[4mm] border-t border-slate-200 pt-[2mm] text-[8pt]">
-            <PrintStat
-              label="Jobs"
-              value={String(
-                scheduledJobs.length,
-              )}
-            />
-
-            <PrintStat
-              label="Lawn area"
-              value={`${totalArea.toLocaleString(
-                "en-GB",
-              )} m²`}
-            />
-
-            <PrintStat
-              label="Expected revenue"
-              value={`£${expectedRevenue.toFixed(
-                2,
-              )}`}
-            />
-          </div>
-        </header>
-
-        <table>
-          <thead>
-            <tr>
-              <th className="w-[7mm]">
-                #
-              </th>
-              <th className="w-[20mm]">
-                Customer
-              </th>
-              <th className="w-[34mm]">
-                Name
-              </th>
-              <th>Address</th>
-              <th className="w-[36mm]">
-                Treatment
-              </th>
-              <th className="w-[18mm]">
-                Area
-              </th>
-              <th className="w-[17mm]">
-                Price
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {scheduledJobs.map(
-              (job, index) => (
-                <tr key={job.id}>
-                  <td className="font-bold text-slate-500">
-                    {index + 1}
-                  </td>
-
-                  <td>
-                    <div className="font-bold">
-                      {
-                        job.customer
-                          .customerNumber
-                      }
-                    </div>
-
-                    <div className="text-[7pt] text-slate-500">
-                      G
-                      {
-                        job.customer
-                          .groupNumber
-                      }
-                    </div>
-                  </td>
-
-                  <td className="font-semibold">
-                    {
-                      job.customer
-                        .fullName
-                    }
-                  </td>
-
-                  <td>
-                    {
-                      job.customer
-                        .address
-                    }
-                    ,{" "}
-                    {
-                      job.customer
-                        .postcode
-                    }
-                  </td>
-
-                  <td>
-                    {
-                      job.visit
-                        .treatmentName
-                    }
-                  </td>
-
-                  <td>
-                    {job.customer.lawnSize.toLocaleString(
-                      "en-GB",
-                    )}{" "}
-                    m²
-                  </td>
-
-                  <td className="font-bold">
-                    £
-                    {job.price.toFixed(
-                      2,
-                    )}
-                  </td>
-                </tr>
-              ),
-            )}
-          </tbody>
-        </table>
-
-        <footer className="mt-[5mm] border-t border-slate-300 pt-[3mm]">
-          <div className="text-[7.5pt] font-bold uppercase tracking-wide text-[#176b37]">
-            Notes
-          </div>
-
-          <div className="mt-[2mm] space-y-[3mm]">
-            {Array.from({
-              length: 3,
-            }).map((_, index) => (
-              <div
-                key={index}
-                className="h-[3mm] border-b border-dashed border-slate-300"
               />
-            ))}
-          </div>
-        </footer>
+
+              <PrintStat
+                label="Lawn area"
+                value={`${totalArea.toLocaleString(
+                  "en-GB",
+                )} m²`}
+              />
+
+              <PrintStat
+                label="Expected revenue"
+                value={`£${expectedRevenue.toFixed(
+                  2,
+                )}`}
+              />
+            </div>
+          </header>
+
+          <table>
+            <thead>
+              <tr>
+                <th className="w-[7mm]">
+                  #
+                </th>
+                <th className="w-[19mm]">
+                  Customer
+                </th>
+                <th className="w-[32mm]">
+                  Name
+                </th>
+                <th>
+                  Address
+                </th>
+                <th className="w-[34mm]">
+                  Treatment
+                </th>
+                <th className="w-[17mm]">
+                  Area
+                </th>
+                <th className="w-[16mm]">
+                  Price
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {scheduledJobs.map(
+                (job, index) => (
+                  <tr key={job.id}>
+                    <td className="font-bold text-slate-500">
+                      {index + 1}
+                    </td>
+
+                    <td>
+                      <div className="font-bold">
+                        {
+                          job.customer
+                            .customerNumber
+                        }
+                      </div>
+
+                      <div className="text-[7pt] text-slate-500">
+                        G
+                        {
+                          job.customer
+                            .groupNumber
+                        }
+                      </div>
+                    </td>
+
+                    <td className="font-semibold">
+                      {
+                        job.customer
+                          .fullName
+                      }
+                    </td>
+
+                    <td>
+                      <div>
+                        {
+                          job.customer
+                            .address
+                        }
+                        ,{" "}
+                        {
+                          job.customer
+                            .postcode
+                        }
+                      </div>
+
+                      {job.customer
+                        .gateCode && (
+                        <div className="mt-[1mm] inline-block rounded border border-slate-400 px-[1.5mm] py-[0.5mm] text-[7.5pt] font-bold">
+                          GATE:{" "}
+                          {
+                            job.customer
+                              .gateCode
+                          }
+                        </div>
+                      )}
+                    </td>
+
+                    <td>
+                      {
+                        job.visit
+                          .treatmentName
+                      }
+                    </td>
+
+                    <td>
+                      {job.customer.lawnSize.toLocaleString(
+                        "en-GB",
+                      )}{" "}
+                      m²
+                    </td>
+
+                    <td className="font-bold">
+                      £
+                      {job.price.toFixed(
+                        2,
+                      )}
+                    </td>
+                  </tr>
+                ),
+              )}
+            </tbody>
+          </table>
+
+          <footer className="jobs-print-footer mt-[5mm] border-t border-slate-300 pt-[3mm]">
+            <div className="text-[7.5pt] font-bold uppercase tracking-wide text-[#176b37]">
+              Notes
+            </div>
+
+            <div className="mt-[2mm] space-y-[3mm]">
+              {Array.from({
+                length: 3,
+              }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-[3mm] border-b border-dashed border-slate-300"
+                />
+              ))}
+            </div>
+          </footer>
+        </section>
       </section>
     </AppShell>
   );

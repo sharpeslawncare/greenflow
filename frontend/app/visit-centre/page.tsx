@@ -105,6 +105,7 @@ type ProductRequirement = {
 type CompletionResult = {
   outcome: VisitOutcome;
   completedAt: string;
+  testDay: boolean;
   selectedCount: number;
   programmeUpdatesCount: number;
   treatmentRecords: Array<{
@@ -136,6 +137,9 @@ const STANDARD_MIX_STORAGE_KEY =
   "greenflow-visit-centre-standard-mixes-v1";
 
 const DEFAULT_SPOT_SPRAY_PERCENTAGE = 10;
+
+const TEST_DAY_NOTE =
+  "TEST DAY · Stock not deducted";
 
 const SPOT_SPRAY_PRESETS = [
   5,
@@ -258,6 +262,7 @@ function VisitCentrePageContent() {
 
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [outcome, setOutcome] = useState<VisitOutcome>("Completed");
+  const [testDayMode, setTestDayMode] = useState(false);
   const [observations, setObservations] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
 
@@ -1597,7 +1602,11 @@ function VisitCentrePageContent() {
 
     const stockProblem = findStockProblem(requirements);
 
-    if (outcome === "Completed" && stockProblem) {
+    if (
+      outcome === "Completed" &&
+      !testDayMode &&
+      stockProblem
+    ) {
       setReviewError(stockProblem);
       showMessage(
         stockProblem,
@@ -1653,6 +1662,9 @@ function VisitCentrePageContent() {
     }
 
     const notesWithObservations = [
+      testDayMode && outcome === "Completed"
+        ? TEST_DAY_NOTE
+        : "",
       observations.length > 0
         ? `Observations: ${observations.join(", ")}.`
         : "",
@@ -2164,7 +2176,7 @@ function VisitCentrePageContent() {
       );
     }
 
-    if (outcome === "Completed") {
+    if (outcome === "Completed" && !testDayMode) {
       const stockResult =
         deductChemicalStockBatch(
           requirements.map(
@@ -2219,6 +2231,9 @@ function VisitCentrePageContent() {
     setCompletionResult({
       outcome,
       completedAt: new Date().toISOString(),
+      testDay:
+        outcome === "Completed" &&
+        testDayMode,
       selectedCount:
         selectedJobs.length,
       programmeUpdatesCount:
@@ -2244,7 +2259,8 @@ function VisitCentrePageContent() {
         },
       ),
       stockDeductions:
-        outcome === "Completed"
+        outcome === "Completed" &&
+        !testDayMode
           ? requirements.map(
               (requirement) => ({
                 productName:
@@ -2671,6 +2687,52 @@ function VisitCentrePageContent() {
             </Field>
           </header>
 
+          <section
+            className={`mb-5 rounded-2xl border p-4 shadow-sm ${
+              testDayMode
+                ? "border-amber-300 bg-amber-50"
+                : "border-slate-200 bg-white"
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className={`text-xs font-bold uppercase tracking-[0.16em] ${
+                  testDayMode ? "text-amber-800" : "text-slate-500"
+                }`}>
+                  Working mode
+                </div>
+                <div className="mt-1 font-bold text-slate-950">
+                  {testDayMode
+                    ? "TEST DAY · Stock will not be deducted"
+                    : "LIVE DAY · Normal stock control"}
+                </div>
+                <p className="mt-1 max-w-4xl text-sm text-slate-600">
+                  {testDayMode
+                    ? "Completed visits, invoices and product application records will still be created so you can test and review the full workflow. Live chemical stock will remain unchanged."
+                    : "Completed product applications will be checked against available stock and deducted normally."}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTestDayMode((current) => !current);
+                  setReviewError("");
+                  setReviewOpen(false);
+                }}
+                className={`rounded-xl border px-5 py-2.5 text-sm font-bold transition ${
+                  testDayMode
+                    ? "border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {testDayMode
+                  ? "Switch to Live day"
+                  : "Run as Test day"}
+              </button>
+            </div>
+          </section>
+
           {closeWorkflow && (
             <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2813,8 +2875,16 @@ function VisitCentrePageContent() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-                    All selected jobs processed
+                    {completionResult.testDay
+                      ? "Test day processed"
+                      : "All selected jobs processed"}
                   </div>
+
+                  {completionResult.testDay && (
+                    <div className="mt-2 inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900">
+                      TEST DAY · Live stock unchanged
+                    </div>
+                  )}
 
                   <h2 className="mt-2 text-xl font-bold text-green-950">
                     ✓ {completionResult.selectedCount} job
@@ -2898,7 +2968,11 @@ function VisitCentrePageContent() {
                     Product stock
                   </div>
 
-                  {completionResult.stockDeductions.length > 0 ? (
+                  {completionResult.testDay ? (
+                    <div className="mt-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                      ✓ Product quantities were recorded for review, but no live chemical stock was deducted.
+                    </div>
+                  ) : completionResult.stockDeductions.length > 0 ? (
                     <>
                       <div className="mt-1 text-xs font-semibold text-green-800">
                         ✓ Stock deductions processed successfully
@@ -4466,6 +4540,23 @@ function VisitCentrePageContent() {
                         }
                       />
                     </div>
+
+                    {outcome === "Completed" &&
+                      testDayMode && (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <div className="font-bold">
+                          TEST DAY · No stock deduction
+                        </div>
+                        <div className="mt-1">
+                          GreenFlow will create the completed treatment records and invoices shown below, including all product quantities, but it will not check or reduce live chemical stock.
+                        </div>
+                        {findStockProblem(reviewRequirements) && (
+                          <div className="mt-2 font-semibold">
+                            Live-stock warning ignored for this test: {findStockProblem(reviewRequirements)}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {reviewError && (
                       <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">

@@ -105,6 +105,9 @@ type StockReconciliationRow = {
 
 const STOCK_RECONCILIATION_TOLERANCE_BASE = 1;
 
+const TEST_DAY_NOTE =
+  "TEST DAY · Stock not deducted";
+
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
 
@@ -316,6 +319,37 @@ export default function ChemicalUsagePage() {
       search,
     ]);
 
+  const testDayTreatmentIds =
+    useMemo(
+      () =>
+        new Set(
+          treatments
+            .filter(
+              (treatment) =>
+                treatment.status ===
+                  "Completed" &&
+                treatment.notes.includes(
+                  TEST_DAY_NOTE,
+                ),
+            )
+            .map(
+              (treatment) =>
+                treatment.id,
+            ),
+        ),
+      [treatments],
+    );
+
+  const visibleTestDayRows =
+    usageRows.filter((row) =>
+      testDayTreatmentIds.has(
+        row.treatmentId,
+      ),
+    );
+
+  const hasVisibleTestDayUsage =
+    visibleTestDayRows.length > 0;
+
   const productSummaries =
     useMemo<ProductSummary[]>(() => {
       const groups =
@@ -491,7 +525,10 @@ export default function ChemicalUsagePage() {
         .filter(
           (treatment) =>
             treatment.status ===
-            "Completed",
+              "Completed" &&
+            !treatment.notes.includes(
+              TEST_DAY_NOTE,
+            ),
         )
         .flatMap((treatment) => {
           const date =
@@ -1245,6 +1282,13 @@ export default function ChemicalUsagePage() {
   }
 
   function continueToQuickBooks() {
+    if (hasVisibleTestDayUsage) {
+      showMessage(
+        "This is a Test Day. Chemical usage can be reviewed here, but GreenFlow will not mark the chemical check complete or continue test invoices into the QuickBooks close-day workflow.",
+      );
+      return;
+    }
+
     if (reconciliationIssueCount > 0) {
       showMessage(
         `Resolve the ${reconciliationIssueCount} stock reconciliation issue${
@@ -1493,6 +1537,20 @@ export default function ChemicalUsagePage() {
             </div>
           </header>
 
+          {hasVisibleTestDayUsage && (
+            <section className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
+                Test day usage
+              </div>
+              <h2 className="mt-1 text-xl font-bold text-amber-950">
+                Product calculations shown · Live stock unchanged
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-amber-900">
+                {visibleTestDayRows.length} product application record{visibleTestDayRows.length === 1 ? "" : "s"} in the selected view came from Test Day completions. They remain available for chemical-usage review, but are deliberately excluded from live-stock reconciliation.
+              </p>
+            </section>
+          )}
+
           {closeWorkflow && (
             <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1519,7 +1577,7 @@ export default function ChemicalUsagePage() {
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <WorkflowProgressCard number="1" title="Complete work" state="done" />
                 <WorkflowProgressCard number="2" title="Check chemicals" state="current" />
-                <WorkflowProgressCard number="3" title="QuickBooks" state={reconciliationIssueCount === 0 && dateFrom === dateTo ? "next" : "later"} />
+                <WorkflowProgressCard number="3" title="QuickBooks" state={!hasVisibleTestDayUsage && reconciliationIssueCount === 0 && dateFrom === dateTo ? "next" : "later"} />
                 <WorkflowProgressCard number="4" title="Close day" state="later" />
               </div>
 
@@ -1527,15 +1585,19 @@ export default function ChemicalUsagePage() {
                 <div>
                   <div className="font-bold text-green-950">Stock reconciliation</div>
                   <div className="mt-1 text-sm text-green-800">
-                    {reconciliationRows.length === 0
-                      ? "No product usage needs reconciling for this day."
+                    {hasVisibleTestDayUsage
+                      ? "Test Day usage is available for review and is excluded from live-stock reconciliation."
+                      : reconciliationRows.length === 0
+                        ? "No product usage needs reconciling for this day."
                       : reconciliationIssueCount === 0
                         ? `${reconciliationMatchedCount} product${reconciliationMatchedCount === 1 ? "" : "s"} matched.`
                         : `${reconciliationIssueCount} product${reconciliationIssueCount === 1 ? "" : "s"} need review before continuing.`}
                   </div>
                 </div>
 
-                {reconciliationIssueCount === 0 && dateFrom === dateTo ? (
+                {!hasVisibleTestDayUsage &&
+                reconciliationIssueCount === 0 &&
+                dateFrom === dateTo ? (
                   <button
                     type="button"
                     onClick={continueToQuickBooks}
@@ -1545,7 +1607,11 @@ export default function ChemicalUsagePage() {
                   </button>
                 ) : (
                   <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800">
-                    {dateFrom !== dateTo ? "Select one working day" : `${reconciliationIssueCount} need review`}
+                    {hasVisibleTestDayUsage
+                      ? "Test Day · review only"
+                      : dateFrom !== dateTo
+                        ? "Select one working day"
+                        : `${reconciliationIssueCount} need review`}
                   </span>
                 )}
               </div>
@@ -1706,7 +1772,7 @@ export default function ChemicalUsagePage() {
                 </h2>
 
                 <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                  Compares the actual product quantities saved against completed customer treatments with the Usage movements automatically deducted by Visit Centre for the selected date range.
+                  Compares live-day product quantities saved against completed customer treatments with the Usage movements automatically deducted by Visit Centre. Test Day applications are excluded because they intentionally do not change live stock.
                 </p>
 
                 {search.trim() && (

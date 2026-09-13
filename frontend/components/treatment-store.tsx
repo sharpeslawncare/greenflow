@@ -190,6 +190,15 @@ const LEGACY_STORAGE_KEYS = [
   "greenflow-treatments-v1",
 ];
 
+const DEMO_AUTOSEED_CLEANUP_KEY =
+  "greenflow-treatment-demo-autoseed-cleanup-v1";
+
+const BUILT_IN_DEMO_TREATMENT_IDS =
+  new Set([
+    "treatment-demo-1",
+    "treatment-demo-2",
+  ]);
+
 const TreatmentStoreContext =
   createContext<TreatmentStoreValue | null>(null);
 
@@ -291,13 +300,21 @@ export function TreatmentStoreProvider({
   useEffect(() => {
     const saved = getSavedData();
 
+    /*
+     * A fresh/empty GreenFlow installation must stay empty.
+     *
+     * Older versions automatically inserted demo treatment
+     * records whenever no saved treatment data existed. That
+     * could leave orphaned records such as Customer 1002 in the
+     * rescheduling queue after customer data had been reset.
+     *
+     * Demo treatments are now only created when the user
+     * explicitly chooses Restore demo data.
+     */
     if (!saved) {
-      const demo =
-        cloneDemoTreatments();
-
-      treatmentsRef.current =
-        demo;
-      setTreatments(demo);
+      treatmentsRef.current = [];
+      setTreatments([]);
+      markDemoAutoseedCleanupComplete();
       setReady(true);
       return;
     }
@@ -307,14 +324,33 @@ export function TreatmentStoreProvider({
         Partial<TreatmentRecord>
       >;
 
-      const loadedTreatments =
+      const normalisedTreatments =
         Array.isArray(parsed)
           ? deduplicateTreatmentRecords(
               parsed.map(
                 normaliseTreatmentRecord,
               ),
             )
-          : cloneDemoTreatments();
+          : [];
+
+      /*
+       * One-time cleanup for installations that previously
+       * received GreenFlow's built-in treatment demo records
+       * automatically. Exact known demo IDs are removed only
+       * once, so a later explicit Restore demo data action still
+       * behaves normally and persists.
+       */
+      const loadedTreatments =
+        hasCompletedDemoAutoseedCleanup()
+          ? normalisedTreatments
+          : normalisedTreatments.filter(
+              (treatment) =>
+                !BUILT_IN_DEMO_TREATMENT_IDS.has(
+                  treatment.id,
+                ),
+            );
+
+      markDemoAutoseedCleanupComplete();
 
       treatmentsRef.current =
         loadedTreatments;
@@ -324,12 +360,9 @@ export function TreatmentStoreProvider({
     } catch {
       clearStoredData();
 
-      const demo =
-        cloneDemoTreatments();
-
-      treatmentsRef.current =
-        demo;
-      setTreatments(demo);
+      treatmentsRef.current = [];
+      setTreatments([]);
+      markDemoAutoseedCleanupComplete();
     }
 
     setReady(true);
@@ -1390,6 +1423,21 @@ function clearStoredData() {
   window.localStorage.removeItem(STORAGE_KEY);
   LEGACY_STORAGE_KEYS.forEach((key) =>
     window.localStorage.removeItem(key),
+  );
+}
+
+function hasCompletedDemoAutoseedCleanup() {
+  return (
+    window.localStorage.getItem(
+      DEMO_AUTOSEED_CLEANUP_KEY,
+    ) === "1"
+  );
+}
+
+function markDemoAutoseedCleanupComplete() {
+  window.localStorage.setItem(
+    DEMO_AUTOSEED_CLEANUP_KEY,
+    "1",
   );
 }
 

@@ -83,7 +83,7 @@ const tabs: Array<{
   },
   {
     id: "chemicals",
-    label: "Chemicals",
+    label: "Chemical applications",
   },
   {
     id: "notes",
@@ -208,6 +208,11 @@ export function CustomerProfileClient({
   const [
     addingAction,
     setAddingAction,
+  ] = useState(false);
+
+  const [
+    contactingCustomer,
+    setContactingCustomer,
   ] = useState(false);
 
   const [actionType, setActionType] =
@@ -1051,16 +1056,21 @@ function cancelEditing() {
         <section className="border-b border-slate-200 bg-slate-50 px-5 py-3 md:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
-              <Link
-                href={
-                  nextOverallVisit
-                    ? `/jobs?date=${nextOverallVisit.date}`
-                    : "/jobs"
-                }
+              <button
+                type="button"
+                onClick={() => setContactingCustomer(true)}
                 className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#125b2f]"
               >
-                Open jobs
-              </Link>
+                Contact
+              </button>
+
+              <button
+                type="button"
+                onClick={openAdditionalJobModal}
+                className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-bold text-green-800 transition hover:bg-green-50"
+              >
+                + Add job
+              </button>
 
               <button
                 type="button"
@@ -1277,6 +1287,100 @@ function cancelEditing() {
           )}
         </section>
       </div>
+
+      {contactingCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-bold">
+                  Contact customer
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {currentCustomer.fullName} · Preferred: {currentCustomer.preferredContact}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setContactingCustomer(false)}
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3 p-6">
+              {currentCustomer.mobilePhone ? (
+                <>
+                  <a
+                    href={`sms:${currentCustomer.mobilePhone.replace(/\s+/g, "")}`}
+                    className="flex items-center justify-between rounded-xl border border-green-200 bg-green-50 px-4 py-3 font-bold text-green-800 hover:bg-green-100"
+                  >
+                    <span>Send SMS</span>
+                    <span className="text-sm font-semibold">
+                      {currentCustomer.mobilePhone}
+                    </span>
+                  </a>
+
+                  <a
+                    href={`tel:${currentCustomer.mobilePhone.replace(/\s+/g, "")}`}
+                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-800 hover:bg-slate-50"
+                  >
+                    <span>Call mobile</span>
+                    <span className="text-sm font-semibold text-slate-500">
+                      {currentCustomer.mobilePhone}
+                    </span>
+                  </a>
+                </>
+              ) : null}
+
+              {currentCustomer.homePhone ? (
+                <a
+                  href={`tel:${currentCustomer.homePhone.replace(/\s+/g, "")}`}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-800 hover:bg-slate-50"
+                >
+                  <span>Call home</span>
+                  <span className="text-sm font-semibold text-slate-500">
+                    {currentCustomer.homePhone}
+                  </span>
+                </a>
+              ) : null}
+
+              {currentCustomer.email ? (
+                <a
+                  href={`mailto:${currentCustomer.email}`}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-800 hover:bg-slate-50"
+                >
+                  <span>Send email</span>
+                  <span className="max-w-[60%] truncate text-sm font-semibold text-slate-500">
+                    {currentCustomer.email}
+                  </span>
+                </a>
+              ) : null}
+
+              {!currentCustomer.mobilePhone &&
+              !currentCustomer.homePhone &&
+              !currentCustomer.email ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                  No phone number or email address is recorded for this customer.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex justify-end border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setContactingCustomer(false)}
+                className="rounded-xl border border-slate-300 px-5 py-2.5 font-semibold hover:bg-slate-50"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {addingAdditionalJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
@@ -1938,6 +2042,27 @@ function cancelEditing() {
                       })
                     }
                   />
+
+                  <div className="pt-2">
+                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Gate / access code
+                    </label>
+                    <input
+                      value={draft.gateCode}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          gateCode:
+                            event.target.value,
+                        })
+                      }
+                      placeholder="e.g. 1842"
+                      className={inputClass}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Printed on the Daily Job Sheet when recorded.
+                    </p>
+                  </div>
                 </div>
               </FormField>
 
@@ -2451,7 +2576,9 @@ function OverviewTab({
   scarificationPrice: number;
 }) {
   const hasAccessAlert =
-    customer.lockedGate || customer.dogOnProperty;
+    customer.lockedGate ||
+    Boolean(customer.gateCode) ||
+    customer.dogOnProperty;
 
   return (
     <div className="space-y-5">
@@ -2505,6 +2632,10 @@ function OverviewTab({
               value={`Group ${customer.groupNumber}`}
             />
             <AlertRow label="Locked gate" active={customer.lockedGate} />
+            <CompactRow
+              label="Gate / access code"
+              value={customer.gateCode || "Not recorded"}
+            />
             <AlertRow label="Dog on property" active={customer.dogOnProperty} />
           </CompactCard>
         </div>
@@ -2519,11 +2650,13 @@ function OverviewTab({
             Check access before the next visit
           </div>
           <p className="mt-1 text-sm leading-6 text-amber-800">
-            {customer.lockedGate && customer.dogOnProperty
-              ? "This customer has a locked-gate alert and a dog-on-property alert."
-              : customer.lockedGate
-                ? "This customer has a locked-gate alert."
-                : "This customer has a dog-on-property alert."}
+            {customer.gateCode
+              ? `Gate / access code: ${customer.gateCode}${customer.dogOnProperty ? " · Dog on property." : "."}`
+              : customer.lockedGate && customer.dogOnProperty
+                ? "This customer has a locked-gate alert and a dog-on-property alert."
+                : customer.lockedGate
+                  ? "This customer has a locked-gate alert."
+                  : "This customer has a dog-on-property alert."}
           </p>
         </section>
       )}
