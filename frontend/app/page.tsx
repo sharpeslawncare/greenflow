@@ -19,7 +19,10 @@ import { AppShell } from "@/components/app-shell";
 import { useActionStore } from "@/components/action-store";
 import { useChemicalStore } from "@/components/chemical-store";
 
-import { useCustomerStore } from "@/components/customer-store";
+import {
+  type StoredCustomer,
+  useCustomerStore,
+} from "@/components/customer-store";
 
 import { useEnquiryStore } from "@/components/enquiry-store";
 
@@ -455,8 +458,11 @@ export default function DashboardPage() {
   const reschedulingRecords =
     treatments.filter(
       (treatment) =>
-        treatment.status ===
-        "Needs Rescheduling",
+        treatmentStillNeedsRescheduling(
+          treatment,
+          programmes,
+          customers,
+        ),
     );
 
   const totalScheduledArea =
@@ -1148,7 +1154,12 @@ export default function DashboardPage() {
       (treatment) =>
         treatment.status !== "Completed" &&
         treatment.status !== "Cancelled" &&
-        treatment.status !== "Rescheduled",
+        treatment.status !== "Rescheduled" &&
+        treatmentStillNeedsRescheduling(
+          treatment,
+          programmes,
+          customers,
+        ),
     );
 
   const selectedDateReschedulingCount =
@@ -1372,14 +1383,14 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1600px]">
+      <main className="bg-slate-50/40 p-5 md:p-7">
+        <div className="mx-auto max-w-[1560px]">
           <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
                 Sharpes Lawn Care
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="mt-1 text-3xl font-black tracking-[-0.02em] text-slate-950">
                 Dashboard
               </h1>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
@@ -1457,47 +1468,6 @@ export default function DashboardPage() {
               dashboard or scroll to another date.
             </section>
           )}
-
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              label="Scheduled jobs"
-              value={String(
-                scheduledWork.length,
-              )}
-              detail={
-                selectedDate
-                  ? formatShortDate(
-                      selectedDate,
-                    )
-                  : "No date selected"
-              }
-            />
-
-            <MetricCard
-              label="Completed"
-              value={`${completedOnSelectedDate}/${
-                scheduledWork.length +
-                completedOnSelectedDate
-              }`}
-              detail="Recorded on selected date"
-            />
-
-            <MetricCard
-              label="Scheduled area"
-              value={`${totalScheduledArea.toLocaleString(
-                "en-GB",
-              )} m²`}
-              detail="Active customer lawns"
-            />
-
-            <MetricCard
-              label="Expected income"
-              value={`£${expectedIncome.toFixed(
-                2,
-              )}`}
-              detail="Programme + additional prices"
-            />
-          </section>
 
           <section className="mt-4 rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1596,7 +1566,7 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <section className="mt-4 rounded-2xl border border-green-200 bg-green-50/60 p-5 shadow-sm">
+          <section className="mt-5 rounded-[24px] border border-green-200/80 bg-green-50/45 p-5 shadow-[0_1px_2px_rgba(22,101,52,0.05)] md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
@@ -1711,227 +1681,595 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <section id="close-day" className="mt-4 scroll-mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-700">
-                  Close the day
-                </div>
+          <section
+            id="close-day"
+            className="mt-6 scroll-mt-6 overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_2px_10px_rgba(15,23,42,0.05)]"
+          >
+            <div className="relative overflow-hidden border-b border-stone-200 bg-stone-50/80 px-5 py-6 md:px-7">
+              <div className="absolute -right-12 -top-16 h-44 w-44 rounded-full bg-stone-100/70" />
+              <div className="absolute right-24 top-10 h-24 w-24 rounded-full bg-slate-100/60" />
 
-                <h2 className="mt-1 text-xl font-bold text-slate-950">
-                  {formatDateWithDay(selectedDate)}
-                </h2>
-
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                  Finish the normal working day in order. GreenFlow keeps the routine
-                  simple and only asks you to stop when something needs attention.
-                </p>
-              </div>
-
-              <CloseDayStatusBadge status={closeDayStatus} />
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <CloseDayMetric
-                label="Planned"
-                value={String(selectedDateTotalWorkCount)}
-                detail="Jobs for this working day"
-              />
-              <CloseDayMetric
-                label="Completed"
-                value={String(completedOnSelectedDate)}
-                detail="Completed treatment records"
-                positive={completedOnSelectedDate > 0 && remainingWorkCount === 0}
-              />
-              <CloseDayMetric
-                label="Still open"
-                value={String(remainingWorkCount)}
-                detail="Jobs still waiting for an outcome"
-                warning={remainingWorkCount > 0}
-              />
-              <CloseDayMetric
-                label="Exceptions"
-                value={String(selectedDateProblemRecords.length)}
-                detail={
-                  selectedDateProblemRecords.length === 0
-                    ? "No recorded problems"
-                    : `${selectedDateReschedulingCount} reschedule · ${selectedDateOtherProblemCount} other`
-                }
-                danger={selectedDateProblemRecords.length > 0}
-              />
-            </div>
-
-            <div className="mt-4 overflow-hidden rounded-2xl border border-indigo-200 bg-white">
-              <div className="border-b border-indigo-100 px-4 py-3">
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-700">
-                  End-of-day sequence
-                </div>
-                <div className="mt-1 text-sm text-slate-600">
-                  Work → Exceptions → Chemicals → QuickBooks → Finished
-                </div>
-              </div>
-
-              <div className="divide-y divide-slate-100">
-                <CloseDayStep
-                  number="1"
-                  title="Complete the work"
-                  detail={
-                    remainingWorkCount === 0
-                      ? `${completedOnSelectedDate} completed · no scheduled jobs remain.`
-                      : `${remainingWorkCount} job${remainingWorkCount === 1 ? "" : "s"} still need an outcome.`
-                  }
-                  href={`/visit-centre?date=${selectedDate}&workflow=close`}
-                  actionLabel={remainingWorkCount === 0 ? "Review Visit Centre" : "Start end-of-day workflow"}
-                  state={remainingWorkCount === 0 ? "clear" : "attention"}
-                />
-
-                <CloseDayStep
-                  number="2"
-                  title="Deal with exceptions"
-                  detail={
-                    selectedDateProblemRecords.length === 0
-                      ? "No recorded outcomes need attention."
-                      : `${selectedDateProblemRecords.length} outcome${selectedDateProblemRecords.length === 1 ? "" : "s"} need review before the day is tidy.`
-                  }
-                  href={
-                    selectedDateReschedulingCount > 0
-                      ? `/jobs?date=${selectedDate}&view=reschedule`
-                      : `/jobs?date=${selectedDate}`
-                  }
-                  actionLabel={selectedDateProblemRecords.length === 0 ? "Review Jobs" : "Resolve exceptions"}
-                  state={selectedDateProblemRecords.length === 0 ? "clear" : "attention"}
-                />
-
-                <CloseDayStep
-                  number="3"
-                  title="Check chemical usage"
-                  detail={
-                    chemicalsChecked
-                      ? "Chemical usage for this date has been checked."
-                      : "Confirm the day’s recorded applications and stock reconciliation, including any spot-spray exceptions."
-                  }
-                  href={`/chemical-usage?date=${selectedDate}&workflow=close`}
-                  actionLabel="Open chemical usage"
-                  state={
-                    chemicalsChecked
-                      ? "clear"
-                      : operationalDayClear
-                        ? "ready"
-                        : "waiting"
-                  }
-                  secondaryLabel={
-                    operationalDayClear
-                      ? chemicalsChecked
-                        ? "Undo check"
-                        : "Mark checked"
-                      : undefined
-                  }
-                  onSecondaryAction={
-                    operationalDayClear
-                      ? () =>
-                          updateCloseDayRecord({
-                            chemicalsChecked: !chemicalsChecked,
-                            closed: false,
-                          })
-                      : undefined
-                  }
-                />
-
-                <CloseDayStep
-                  number="4"
-                  title="Export QuickBooks"
-                  detail={
-                    quickbooksExported
-                      ? "QuickBooks export for this date has been marked as completed."
-                      : "Review the completed invoices for this date and download the QuickBooks CSV when it is ready."
-                  }
-                  href={`/quickbooks-export?date=${selectedDate}&workflow=close`}
-                  actionLabel="Open QuickBooks export"
-                  state={
-                    quickbooksExported
-                      ? "clear"
-                      : operationalDayClear
-                        ? "ready"
-                        : "waiting"
-                  }
-                  secondaryLabel={
-                    operationalDayClear
-                      ? quickbooksExported
-                        ? "Undo export"
-                        : "Mark exported"
-                      : undefined
-                  }
-                  onSecondaryAction={
-                    operationalDayClear
-                      ? () =>
-                          updateCloseDayRecord({
-                            quickbooksExported: !quickbooksExported,
-                            closed: false,
-                          })
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
-
-            {dayClosed ? (
-              <div className="mt-4 rounded-xl border border-green-300 bg-green-50 p-4">
-                <div className="font-bold text-green-950">
-                  ✓ Working day closed
-                </div>
-                <p className="mt-1 text-sm leading-6 text-green-800">
-                  Work is complete, exceptions are clear, chemicals are checked and the
-                  QuickBooks export has been dealt with.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => updateCloseDayRecord({ closed: false })}
-                  className="mt-3 rounded-xl border border-green-300 bg-white px-4 py-2 text-sm font-bold text-green-800 transition hover:bg-green-100"
-                >
-                  Reopen day
-                </button>
-              </div>
-            ) : readyToCloseDay ? (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-300 bg-green-50 p-4">
+              <div className="relative flex flex-wrap items-start justify-between gap-5">
                 <div>
-                  <div className="font-bold text-green-950">
-                    Everything is ready.
+                  <div className="text-xs font-black uppercase tracking-[0.2em] text-[#176b37]">
+                    Close the day
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-green-800">
-                    The working day can now be closed.
+
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
+                    {formatDateWithDay(selectedDate)}
+                  </h2>
+
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                    Finish the working day in order. Routine items stay simple and
+                    GreenFlow only stops you when something genuinely needs attention.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => updateCloseDayRecord({ closed: true })}
-                  className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#125b2f]"
-                >
-                  ✓ Close working day
-                </button>
+
+                <CloseDayStatusBadge status={closeDayStatus} />
               </div>
-            ) : closeDayOutstandingCount === 0 ? (
-              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                <div className="font-bold text-blue-950">
-                  The operational work is clear.
+            </div>
+
+            <div className="px-5 py-5 md:px-7 md:py-6">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <CloseDayMetric
+                  label="Planned"
+                  value={String(selectedDateTotalWorkCount)}
+                  detail="Jobs for this working day"
+                  icon="P"
+                />
+                <CloseDayMetric
+                  label="Completed"
+                  value={String(completedOnSelectedDate)}
+                  detail="Completed treatment records"
+                  positive={completedOnSelectedDate > 0 && remainingWorkCount === 0}
+                  icon="✓"
+                />
+                <CloseDayMetric
+                  label="Still open"
+                  value={String(remainingWorkCount)}
+                  detail="Jobs still waiting for an outcome"
+                  warning={remainingWorkCount > 0}
+                  icon="!"
+                />
+                <CloseDayMetric
+                  label="Exceptions"
+                  value={String(selectedDateProblemRecords.length)}
+                  detail={
+                    selectedDateProblemRecords.length === 0
+                      ? "No recorded problems"
+                      : `${selectedDateReschedulingCount} reschedule · ${selectedDateOtherProblemCount} other`
+                  }
+                  danger={selectedDateProblemRecords.length > 0}
+                  icon="!"
+                />
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50/80 p-4 md:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-700">
+                      End-of-day sequence
+                    </div>
+                  </div>
+
                 </div>
-                <p className="mt-1 text-sm leading-6 text-blue-800">
-                  Check chemicals and export QuickBooks, then mark those two steps done.
+
+                <div className="mt-4 space-y-3">
+                  <CloseDayStep
+                    number="1"
+                    title="Complete the work"
+                    detail={
+                      remainingWorkCount === 0
+                        ? `${completedOnSelectedDate} completed · no scheduled jobs remain.`
+                        : `${remainingWorkCount} job${remainingWorkCount === 1 ? "" : "s"} still need an outcome.`
+                    }
+                    href={`/visit-centre?date=${selectedDate}&workflow=close`}
+                    actionLabel={remainingWorkCount === 0 ? "Review Visit Centre" : "Start end-of-day workflow"}
+                    state={remainingWorkCount === 0 ? "clear" : "attention"}
+                    tone="work"
+                  />
+
+                  <CloseDayStep
+                    number="2"
+                    title="Deal with exceptions"
+                    detail={
+                      selectedDateProblemRecords.length === 0
+                        ? "No recorded outcomes need attention."
+                        : `${selectedDateProblemRecords.length} outcome${selectedDateProblemRecords.length === 1 ? "" : "s"} need review before the day is tidy.`
+                    }
+                    href={
+                      selectedDateReschedulingCount > 0
+                        ? `/jobs?date=${selectedDate}&view=reschedule`
+                        : `/jobs?date=${selectedDate}`
+                    }
+                    actionLabel={selectedDateProblemRecords.length === 0 ? "Review Jobs" : "Resolve exceptions"}
+                    state={selectedDateProblemRecords.length === 0 ? "clear" : "attention"}
+                    tone="exceptions"
+                  />
+
+                  <CloseDayStep
+                    number="3"
+                    title="Check chemical usage"
+                    detail={
+                      chemicalsChecked
+                        ? "Chemical usage for this date has been checked."
+                        : "Confirm the day’s recorded applications and stock reconciliation, including any spot-spray exceptions."
+                    }
+                    href={`/chemical-usage?date=${selectedDate}&workflow=close`}
+                    actionLabel="Open chemical usage"
+                    state={
+                      chemicalsChecked
+                        ? "clear"
+                        : operationalDayClear
+                          ? "ready"
+                          : "waiting"
+                    }
+                    secondaryLabel={
+                      operationalDayClear
+                        ? chemicalsChecked
+                          ? "Undo check"
+                          : "Mark checked"
+                        : undefined
+                    }
+                    onSecondaryAction={
+                      operationalDayClear
+                        ? () =>
+                            updateCloseDayRecord({
+                              chemicalsChecked: !chemicalsChecked,
+                              closed: false,
+                            })
+                        : undefined
+                    }
+                    tone="chemicals"
+                  />
+
+                  <CloseDayStep
+                    number="4"
+                    title="Export QuickBooks"
+                    detail={
+                      quickbooksExported
+                        ? "QuickBooks export for this date has been marked as completed."
+                        : "Review the completed invoices for this date and download the QuickBooks CSV when it is ready."
+                    }
+                    href={`/quickbooks-export?date=${selectedDate}&workflow=close`}
+                    actionLabel="Open QuickBooks export"
+                    state={
+                      quickbooksExported
+                        ? "clear"
+                        : operationalDayClear
+                          ? "ready"
+                          : "waiting"
+                    }
+                    secondaryLabel={
+                      operationalDayClear
+                        ? quickbooksExported
+                          ? "Undo export"
+                          : "Mark exported"
+                        : undefined
+                    }
+                    onSecondaryAction={
+                      operationalDayClear
+                        ? () =>
+                            updateCloseDayRecord({
+                              quickbooksExported: !quickbooksExported,
+                              closed: false,
+                            })
+                        : undefined
+                    }
+                    tone="quickbooks"
+                  />
+                </div>
+              </div>
+
+              {dayClosed ? (
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-green-300 bg-green-50 p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-600 text-xl font-black text-white">
+                      ✓
+                    </div>
+                    <div>
+                      <div className="text-lg font-black text-green-950">
+                        Working day closed
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-green-800">
+                        Work is complete, exceptions are clear, chemicals are checked and
+                        the QuickBooks export has been dealt with.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateCloseDayRecord({ closed: false })}
+                    className="rounded-xl border border-green-300 bg-white px-4 py-2.5 text-sm font-bold text-green-800 transition hover:bg-green-100"
+                  >
+                    Reopen day
+                  </button>
+                </div>
+              ) : readyToCloseDay ? (
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-green-300 bg-gradient-to-r from-green-50 to-emerald-50 p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-600 text-xl font-black text-white shadow-sm">
+                      ✓
+                    </div>
+                    <div>
+                      <div className="text-lg font-black text-green-950">
+                        Everything is ready.
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-green-800">
+                        The working day can now be closed.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateCloseDayRecord({ closed: true })}
+                    className="inline-flex min-w-[190px] items-center justify-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#125b2f]"
+                  >
+                    Finish the day →
+                  </button>
+                </div>
+              ) : closeDayOutstandingCount === 0 ? (
+                <div className="mt-5 flex items-start gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-black text-white">
+                    i
+                  </div>
+                  <div>
+                    <div className="font-black text-blue-950">
+                      The operational work is clear.
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-blue-800">
+                      Check chemicals and export QuickBooks, then mark those two steps done.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-5 flex items-start gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-black text-white">
+                    !
+                  </div>
+                  <div>
+                    <div className="font-black text-amber-950">
+                      Finish the highlighted items first.
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-amber-900">
+                      Once the work and exceptions are clear, move straight on to the chemical
+                      check and QuickBooks export.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="mt-6 overflow-hidden rounded-[28px] border border-blue-200/80 bg-blue-50/45 p-5 shadow-[0_2px_10px_rgba(30,64,175,0.05)] md:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+                  Prepare tomorrow
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-blue-950">
+                  Night-before checklist
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-blue-900">
+                  {formatDateWithDay(tomorrowDate)} · Contact the customers who need access
+                  help, check the route, then print the customer sheets. Everyone else can
+                  stay out of the way.
                 </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/communications?date=${tomorrowDate}&workflow=prepare`}
+                  className="inline-flex h-11 items-center rounded-xl bg-blue-700 px-5 text-sm font-bold text-white transition hover:bg-blue-800"
+                >
+                  Start preparation →
+                </Link>
+
+                <Link
+                  href={`/jobs?date=${tomorrowDate}`}
+                  className="inline-flex h-11 items-center rounded-xl border border-blue-300 bg-white px-5 text-sm font-bold text-blue-800 transition hover:bg-blue-100"
+                >
+                  Open tomorrow&apos;s jobs
+                </Link>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <ReminderMetric
+                label="Jobs"
+                value={tomorrowReminderSummary.scheduled}
+                detail={`${tomorrowReminderSummary.scheduledCustomers} customer${
+                  tomorrowReminderSummary.scheduledCustomers === 1 ? "" : "s"
+                }`}
+              />
+
+              <ReminderMetric
+                label="Access customers"
+                value={tomorrowReminderSummary.accessCustomers}
+                detail="Locked-gate warnings"
+                warning={tomorrowReminderSummary.needsAttention > 0}
+              />
+
+              <ReminderMetric
+                label="Ready to contact"
+                value={tomorrowReminderSummary.queued}
+                detail="Access message queued"
+              />
+
+              <ReminderMetric
+                label="Contacted"
+                value={tomorrowReminderSummary.sent}
+                detail="Access message sent"
+              />
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-white">
+              <div className="divide-y divide-slate-100">
+                <PrepareTomorrowStep
+                  number="1"
+                  title="Access customers"
+                  detail={
+                    tomorrowReminderSummary.accessCustomers === 0
+                      ? "No locked-gate customers are scheduled tomorrow."
+                      : tomorrowReminderSummary.needsAttention === 0
+                        ? `${tomorrowReminderSummary.accessCustomers} access customer${
+                            tomorrowReminderSummary.accessCustomers === 1 ? " is" : "s are"
+                          } already queued or contacted.`
+                        : `${tomorrowReminderSummary.needsAttention} access customer${
+                            tomorrowReminderSummary.needsAttention === 1 ? "" : "s"
+                          } still need preparing.`
+                  }
+                  href={`/communications?date=${tomorrowDate}&workflow=prepare`}
+                  actionLabel={
+                    tomorrowReminderSummary.needsAttention > 0
+                      ? "Prepare access contacts"
+                      : "Review communications"
+                  }
+                  state={tomorrowReminderSummary.needsAttention > 0 ? "attention" : "clear"}
+                />
+
+                <PrepareTomorrowStep
+                  number="2"
+                  title="Check route order"
+                  detail="Make sure tomorrow's saved customer-stop order is the order you want to work through on paper."
+                  href={`/routes?date=${tomorrowDate}&workflow=prepare`}
+                  actionLabel="Check tomorrow's route"
+                  state="ready"
+                />
+
+                <PrepareTomorrowStep
+                  number="3"
+                  title="Print customer sheets"
+                  detail="Print all programme and Additional Job sheets in the saved route order."
+                  href={`/jobs/print?date=${tomorrowDate}&workflow=prepare`}
+                  actionLabel="Print customer sheets"
+                  state="ready"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-blue-200 bg-white/70 p-4">
+              <div className="font-black text-blue-950">
+                All set for tomorrow.
+              </div>
+              <p className="mt-1 text-sm leading-6 text-blue-800">
+                When you&apos;re ready, start preparation or open tomorrow&apos;s jobs.
+              </p>
+            </div>
+          </section>
+
+          <section className="mt-5 rounded-[24px] border border-amber-200/80 bg-amber-50/65 p-5 shadow-[0_1px_2px_rgba(146,64,14,0.05)] md:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
+                  Action Centre
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-amber-950">
+                  Actions needing attention
+                </h2>
+
+                <p className="mt-1 text-sm leading-6 text-amber-900">
+                  Customer follow-ups due today or already overdue.
+                </p>
+              </div>
+
+              <Link
+                href="/actions"
+                className="inline-flex h-10 items-center rounded-xl bg-amber-700 px-4 text-sm font-bold text-white transition hover:bg-amber-800"
+              >
+                Open Action Centre
+              </Link>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <ActionMetric
+                label="Overdue"
+                value={overdueActions.length}
+                detail="Past their due date"
+                warning={
+                  overdueActions.length > 0
+                }
+              />
+
+              <ActionMetric
+                label="Due today"
+                value={dueTodayActions.length}
+                detail="Need dealing with today"
+                warning={
+                  dueTodayActions.length > 0
+                }
+              />
+
+              <ActionMetric
+                label="Urgent open"
+                value={urgentOpenActions.length}
+                detail="Urgent priority"
+                warning={
+                  urgentOpenActions.length > 0
+                }
+              />
+
+              <ActionMetric
+                label="Open actions"
+                value={openActions.length}
+                detail="All outstanding follow-ups"
+              />
+            </div>
+
+            {actionsNeedingAttention.length > 0 ? (
+              <div className="mt-4 divide-y divide-amber-200 overflow-hidden rounded-xl border border-amber-200 bg-white">
+                {actionsNeedingAttention.map(
+                  (action) => {
+                    const overdue =
+                      Boolean(
+                        action.dueDate,
+                      ) &&
+                      action.dueDate <
+                        todayDate;
+
+                    return (
+                      <div
+                        key={action.id}
+                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              href={`/customers/${action.customerNumber}?tab=actions`}
+                              className="font-bold text-slate-950 hover:text-[#176b37]"
+                            >
+                              {action.customerName ||
+                                `Customer ${action.customerNumber}`}
+                            </Link>
+
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                              {action.type}
+                            </span>
+
+                            {action.priority ===
+                              "Urgent" && (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
+                                Urgent
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-1 line-clamp-1 text-sm text-slate-600">
+                            {action.note}
+                          </p>
+                        </div>
+
+                        <div
+                          className={`shrink-0 text-xs font-bold ${
+                            overdue
+                              ? "text-red-700"
+                              : "text-amber-800"
+                          }`}
+                        >
+                          {overdue
+                            ? "Overdue · "
+                            : "Due today · "}
+                          {formatShortDate(
+                            action.dueDate,
+                          )}
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
               </div>
             ) : (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <div className="font-bold text-amber-950">
-                  Finish the highlighted items first.
-                </div>
-                <p className="mt-1 text-sm leading-6 text-amber-900">
-                  Once the work and exceptions are clear, move straight on to the chemical
-                  check and QuickBooks export.
-                </p>
+              <div className="mt-4 rounded-xl border border-green-200 bg-white p-4 text-sm font-semibold text-green-800">
+                Nothing overdue or due today.
               </div>
             )}
           </section>
 
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="mt-5 rounded-[24px] border border-emerald-200/80 bg-emerald-50/60 p-5 shadow-[0_1px_2px_rgba(6,95,70,0.05)] md:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+                  Additional Jobs
+                </div>
+
+                <h2 className="mt-1 text-xl font-bold text-emerald-950">
+                  Additional work pipeline
+                </h2>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-emerald-900">
+                  Scarification, Aeration, Overseeding and future additional services remain separate from the five-treatment seasonal programme until they are scheduled.
+                </p>
+              </div>
+
+              <Link
+                href="/additional-jobs"
+                className="inline-flex h-10 items-center rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white transition hover:bg-emerald-800"
+              >
+                Open Additional Jobs Planner
+              </Link>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <AdditionalJobMetric
+                label="Unscheduled"
+                value={String(
+                  additionalJobSummary.unscheduledCount,
+                )}
+                detail="Waiting to allocate"
+                warning={
+                  additionalJobSummary.unscheduledCount >
+                  0
+                }
+              />
+
+              <AdditionalJobMetric
+                label="Waiting value"
+                value={`£${additionalJobSummary.unscheduledValue.toFixed(
+                  2,
+                )}`}
+                detail="Unscheduled work"
+                warning={
+                  additionalJobSummary.unscheduledValue >
+                  0
+                }
+              />
+
+              <AdditionalJobMetric
+                label="Scheduled upcoming"
+                value={String(
+                  additionalJobSummary.scheduledCount,
+                )}
+                detail="Booked into working days"
+              />
+
+              <AdditionalJobMetric
+                label="Scheduled value"
+                value={`£${additionalJobSummary.scheduledValue.toFixed(
+                  2,
+                )}`}
+                detail="Upcoming additional work"
+              />
+
+              <AdditionalJobMetric
+                label="On selected date"
+                value={String(
+                  additionalJobSummary.selectedDateCount,
+                )}
+                detail={`£${additionalJobSummary.selectedDateValue.toFixed(
+                  2,
+                )} · ${formatShortDate(
+                  selectedDate,
+                )}`}
+              />
+            </div>
+          </section>
+
+          <section className="mt-5 rounded-[24px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -2043,322 +2381,6 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <section className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-                  Prepare tomorrow
-                </div>
-
-                <h2 className="mt-1 text-xl font-bold text-blue-950">
-                  Night-before checklist
-                </h2>
-
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-blue-900">
-                  {formatDateWithDay(tomorrowDate)} · Contact the customers who need access
-                  help, check the route, then print the customer sheets. Everyone else can
-                  stay out of the way.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  href={`/communications?date=${tomorrowDate}&workflow=prepare`}
-                  className="inline-flex h-11 items-center rounded-xl bg-blue-700 px-5 text-sm font-bold text-white transition hover:bg-blue-800"
-                >
-                  Start preparation →
-                </Link>
-
-                <Link
-                  href={`/jobs?date=${tomorrowDate}`}
-                  className="inline-flex h-11 items-center rounded-xl border border-blue-300 bg-white px-5 text-sm font-bold text-blue-800 transition hover:bg-blue-100"
-                >
-                  Open tomorrow&apos;s jobs
-                </Link>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <ReminderMetric
-                label="Jobs"
-                value={tomorrowReminderSummary.scheduled}
-                detail={`${tomorrowReminderSummary.scheduledCustomers} customer${
-                  tomorrowReminderSummary.scheduledCustomers === 1 ? "" : "s"
-                }`}
-              />
-
-              <ReminderMetric
-                label="Access customers"
-                value={tomorrowReminderSummary.accessCustomers}
-                detail="Locked-gate warnings"
-                warning={tomorrowReminderSummary.needsAttention > 0}
-              />
-
-              <ReminderMetric
-                label="Ready to contact"
-                value={tomorrowReminderSummary.queued}
-                detail="Access message queued"
-              />
-
-              <ReminderMetric
-                label="Contacted"
-                value={tomorrowReminderSummary.sent}
-                detail="Access message sent"
-              />
-            </div>
-
-            <div className="mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-white">
-              <div className="divide-y divide-slate-100">
-                <PrepareTomorrowStep
-                  number="1"
-                  title="Access customers"
-                  detail={
-                    tomorrowReminderSummary.accessCustomers === 0
-                      ? "No locked-gate customers are scheduled tomorrow."
-                      : tomorrowReminderSummary.needsAttention === 0
-                        ? `${tomorrowReminderSummary.accessCustomers} access customer${
-                            tomorrowReminderSummary.accessCustomers === 1 ? " is" : "s are"
-                          } already queued or contacted.`
-                        : `${tomorrowReminderSummary.needsAttention} access customer${
-                            tomorrowReminderSummary.needsAttention === 1 ? "" : "s"
-                          } still need preparing.`
-                  }
-                  href={`/communications?date=${tomorrowDate}&workflow=prepare`}
-                  actionLabel={
-                    tomorrowReminderSummary.needsAttention > 0
-                      ? "Prepare access contacts"
-                      : "Review communications"
-                  }
-                  state={tomorrowReminderSummary.needsAttention > 0 ? "attention" : "clear"}
-                />
-
-                <PrepareTomorrowStep
-                  number="2"
-                  title="Check route order"
-                  detail="Make sure tomorrow's saved customer-stop order is the order you want to work through on paper."
-                  href={`/routes?date=${tomorrowDate}&workflow=prepare`}
-                  actionLabel="Check tomorrow's route"
-                  state="ready"
-                />
-
-                <PrepareTomorrowStep
-                  number="3"
-                  title="Print customer sheets"
-                  detail="Print all programme and Additional Job sheets in the saved route order."
-                  href={`/jobs/print?date=${tomorrowDate}&workflow=prepare`}
-                  actionLabel="Print customer sheets"
-                  state="ready"
-                />
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
-                  Action Centre
-                </div>
-
-                <h2 className="mt-1 text-xl font-bold text-amber-950">
-                  Actions needing attention
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-amber-900">
-                  Customer follow-ups due today or already overdue.
-                </p>
-              </div>
-
-              <Link
-                href="/actions"
-                className="inline-flex h-11 items-center rounded-xl bg-amber-700 px-5 text-sm font-bold text-white transition hover:bg-amber-800"
-              >
-                Open Action Centre
-              </Link>
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <ActionMetric
-                label="Overdue"
-                value={overdueActions.length}
-                detail="Past their due date"
-                warning={
-                  overdueActions.length > 0
-                }
-              />
-
-              <ActionMetric
-                label="Due today"
-                value={dueTodayActions.length}
-                detail="Need dealing with today"
-                warning={
-                  dueTodayActions.length > 0
-                }
-              />
-
-              <ActionMetric
-                label="Urgent open"
-                value={urgentOpenActions.length}
-                detail="Urgent priority"
-                warning={
-                  urgentOpenActions.length > 0
-                }
-              />
-
-              <ActionMetric
-                label="Open actions"
-                value={openActions.length}
-                detail="All outstanding follow-ups"
-              />
-            </div>
-
-            {actionsNeedingAttention.length > 0 ? (
-              <div className="mt-4 divide-y divide-amber-200 overflow-hidden rounded-xl border border-amber-200 bg-white">
-                {actionsNeedingAttention.map(
-                  (action) => {
-                    const overdue =
-                      Boolean(
-                        action.dueDate,
-                      ) &&
-                      action.dueDate <
-                        todayDate;
-
-                    return (
-                      <div
-                        key={action.id}
-                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Link
-                              href={`/customers/${action.customerNumber}?tab=actions`}
-                              className="font-bold text-slate-950 hover:text-[#176b37]"
-                            >
-                              {action.customerName ||
-                                `Customer ${action.customerNumber}`}
-                            </Link>
-
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
-                              {action.type}
-                            </span>
-
-                            {action.priority ===
-                              "Urgent" && (
-                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                                Urgent
-                              </span>
-                            )}
-                          </div>
-
-                          <p className="mt-1 line-clamp-1 text-sm text-slate-600">
-                            {action.note}
-                          </p>
-                        </div>
-
-                        <div
-                          className={`shrink-0 text-xs font-bold ${
-                            overdue
-                              ? "text-red-700"
-                              : "text-amber-800"
-                          }`}
-                        >
-                          {overdue
-                            ? "Overdue · "
-                            : "Due today · "}
-                          {formatShortDate(
-                            action.dueDate,
-                          )}
-                        </div>
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-xl border border-green-200 bg-white p-4 text-sm font-semibold text-green-800">
-                Nothing overdue or due today.
-              </div>
-            )}
-          </section>
-
-          <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
-                  Additional Jobs
-                </div>
-
-                <h2 className="mt-1 text-xl font-bold text-emerald-950">
-                  Additional work pipeline
-                </h2>
-
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-emerald-900">
-                  Scarification, Aeration, Overseeding and future additional services remain separate from the five-treatment seasonal programme until they are scheduled.
-                </p>
-              </div>
-
-              <Link
-                href="/additional-jobs"
-                className="inline-flex h-11 items-center rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white transition hover:bg-emerald-800"
-              >
-                Open Additional Jobs Planner
-              </Link>
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <AdditionalJobMetric
-                label="Unscheduled"
-                value={String(
-                  additionalJobSummary.unscheduledCount,
-                )}
-                detail="Waiting to allocate"
-                warning={
-                  additionalJobSummary.unscheduledCount >
-                  0
-                }
-              />
-
-              <AdditionalJobMetric
-                label="Waiting value"
-                value={`£${additionalJobSummary.unscheduledValue.toFixed(
-                  2,
-                )}`}
-                detail="Unscheduled work"
-                warning={
-                  additionalJobSummary.unscheduledValue >
-                  0
-                }
-              />
-
-              <AdditionalJobMetric
-                label="Scheduled upcoming"
-                value={String(
-                  additionalJobSummary.scheduledCount,
-                )}
-                detail="Booked into working days"
-              />
-
-              <AdditionalJobMetric
-                label="Scheduled value"
-                value={`£${additionalJobSummary.scheduledValue.toFixed(
-                  2,
-                )}`}
-                detail="Upcoming additional work"
-              />
-
-              <AdditionalJobMetric
-                label="On selected date"
-                value={String(
-                  additionalJobSummary.selectedDateCount,
-                )}
-                detail={`£${additionalJobSummary.selectedDateValue.toFixed(
-                  2,
-                )} · ${formatShortDate(
-                  selectedDate,
-                )}`}
-              />
-            </div>
-          </section>
 
         </div>
       </main>
@@ -2485,14 +2507,21 @@ function hasFinalRecordedOutcome(
   customerNumber: string,
 ) {
   return treatments.some(
-    (treatment) =>
-      (
-        treatment.status ===
-          "Completed" ||
-        treatment.status ===
-          "Cancelled"
-      ) &&
-      (
+    (treatment) => {
+      const finalForThisDate =
+        treatment.status === "Completed" ||
+        treatment.status === "Cancelled" ||
+        (
+          treatment.status === "Rescheduled" &&
+          treatment.scheduledDate ===
+            visit.scheduledDate
+        );
+
+      if (!finalForThisDate) {
+        return false;
+      }
+
+      return (
         (
           treatment.programmeId ===
             programme.id &&
@@ -2508,7 +2537,80 @@ function hasFinalRecordedOutcome(
           treatment.treatmentName ===
             visit.treatmentName
         )
-      ),
+      );
+    },
+  );
+}
+
+function treatmentStillNeedsRescheduling(
+  treatment: TreatmentRecord,
+  programmes: CustomerProgramme[],
+  customers: StoredCustomer[],
+) {
+  return (
+    treatment.status === "Needs Rescheduling" &&
+    !replacementIsAlreadyScheduled(
+      treatment,
+      programmes,
+      customers,
+    )
+  );
+}
+
+function replacementIsAlreadyScheduled(
+  treatment: TreatmentRecord,
+  programmes: CustomerProgramme[],
+  customers: StoredCustomer[],
+) {
+  if (!isDateValue(treatment.nextVisitDate)) {
+    return false;
+  }
+
+  if (
+    treatment.jobType === "additional" ||
+    treatment.programmeId.startsWith(
+      "additional-jobs-",
+    )
+  ) {
+    const customer = customers.find(
+      (item) =>
+        item.customerNumber ===
+        treatment.customerNumber,
+    );
+
+    const job = customer?.additionalJobs.find(
+      (item) =>
+        item.id === treatment.programmeVisitId,
+    );
+
+    return Boolean(
+      job &&
+        job.status === "Scheduled" &&
+        job.scheduledDate ===
+          treatment.nextVisitDate,
+    );
+  }
+
+  const programme = programmes.find(
+    (item) =>
+      item.id === treatment.programmeId &&
+      item.customerNumber ===
+        treatment.customerNumber,
+  );
+
+  const visit = programme?.visits.find(
+    (item) =>
+      item.id === treatment.programmeVisitId,
+  );
+
+  return Boolean(
+    visit &&
+      (
+        visit.status === "Scheduled" ||
+        visit.status === "Planned"
+      ) &&
+      visit.scheduledDate ===
+        treatment.nextVisitDate,
   );
 }
 
@@ -2784,11 +2886,7 @@ function PrepareTomorrowStep({
         : "bg-blue-100 text-blue-800";
 
   return (
-    <div className="flex flex-wrap items-center gap-4 px-4 py-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-black text-blue-800">
-        {number}
-      </div>
-
+    <div className="flex flex-wrap items-center gap-4 px-4 py-4 md:px-5">
       <div className="min-w-[220px] flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-bold text-slate-950">{title}</div>
@@ -2818,6 +2916,7 @@ function CloseDayStep({
   state,
   secondaryLabel,
   onSecondaryAction,
+  tone,
 }: {
   number: string;
   title: string;
@@ -2827,6 +2926,7 @@ function CloseDayStep({
   state: "clear" | "attention" | "ready" | "waiting";
   secondaryLabel?: string;
   onSecondaryAction?: () => void;
+  tone: "work" | "exceptions" | "chemicals" | "quickbooks";
 }) {
   const badge =
     state === "clear"
@@ -2846,16 +2946,14 @@ function CloseDayStep({
           ? "bg-blue-100 text-blue-800"
           : "bg-slate-100 text-slate-600";
 
-  return (
-    <div className="flex flex-wrap items-center gap-4 px-4 py-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-black text-indigo-800">
-        {number}
-      </div>
 
-      <div className="min-w-[220px] flex-1">
+
+  return (
+    <div className="grid gap-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-stone-300 hover:shadow-[0_3px_10px_rgba(15,23,42,0.06)] md:grid-cols-[1fr_auto] md:items-center">
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="font-bold text-slate-950">{title}</div>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${badgeStyle}`}>
+          <div className="font-black text-slate-950">{title}</div>
+          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${badgeStyle}`}>
             {badge}
           </span>
         </div>
@@ -2865,7 +2963,7 @@ function CloseDayStep({
       <div className="flex flex-wrap justify-end gap-2">
         <Link
           href={href}
-          className="inline-flex min-w-[170px] justify-center rounded-xl border border-indigo-300 bg-white px-4 py-2.5 text-sm font-bold text-indigo-800 transition hover:bg-indigo-50"
+          className="inline-flex min-w-[170px] justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800"
         >
           {actionLabel}
         </Link>
@@ -2874,7 +2972,7 @@ function CloseDayStep({
           <button
             type="button"
             onClick={onSecondaryAction}
-            className="inline-flex min-w-[130px] justify-center rounded-xl bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-800"
+            className="inline-flex min-w-[130px] justify-center rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#125b2f]"
           >
             {secondaryLabel}
           </button>
@@ -2891,6 +2989,7 @@ function CloseDayMetric({
   warning = false,
   danger = false,
   positive = false,
+  icon,
 }: {
   label: string;
   value: string;
@@ -2898,14 +2997,15 @@ function CloseDayMetric({
   warning?: boolean;
   danger?: boolean;
   positive?: boolean;
+  icon: string;
 }) {
   const styles = danger
-    ? "border-red-200 bg-red-50"
+    ? "border-red-200 bg-red-50/70"
     : warning
-      ? "border-amber-200 bg-amber-50"
+      ? "border-amber-200 bg-amber-50/70"
       : positive
-        ? "border-green-200 bg-green-50"
-        : "border-indigo-200 bg-white";
+        ? "border-green-200 bg-green-50/80"
+        : "border-slate-200 bg-white";
 
   const valueStyle = danger
     ? "text-red-800"
@@ -2916,16 +3016,16 @@ function CloseDayMetric({
         : "text-slate-950";
 
   return (
-    <div className={`rounded-xl border p-4 ${styles}`}>
-      <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">
+    <div className={`rounded-2xl border p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${styles}`}>
+      <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
         {label}
       </div>
 
-      <div className={`mt-1 text-xl font-black ${valueStyle}`}>
+      <div className={`mt-1 text-2xl font-black ${valueStyle}`}>
         {value}
       </div>
 
-      <div className="mt-1 text-xs leading-5 text-slate-600">
+      <div className="mt-3 text-xs leading-5 text-slate-600">
         {detail}
       </div>
     </div>
@@ -2945,21 +3045,35 @@ function CloseDayStatusBadge({
 }) {
   const styles =
     status === "Closed"
-      ? "bg-green-100 text-green-800"
+      ? "border-green-200 bg-green-600 text-white"
       : status === "Ready to finish"
-        ? "bg-blue-100 text-blue-800"
+        ? "border-green-200 bg-green-600 text-white"
         : status === "Needs review"
-          ? "bg-red-100 text-red-700"
+          ? "border-red-200 bg-red-50 text-red-700"
           : status === "In progress"
-            ? "bg-amber-100 text-amber-800"
+            ? "border-amber-200 bg-amber-50 text-amber-800"
             : status === "Upcoming"
-              ? "bg-blue-100 text-blue-800"
-              : "bg-slate-100 text-slate-700";
+              ? "border-blue-200 bg-blue-50 text-blue-800"
+              : "border-slate-200 bg-white text-slate-700";
+
+  const icon =
+    status === "Closed" || status === "Ready to finish"
+      ? "✓"
+      : status === "Needs review"
+        ? "!"
+        : status === "In progress"
+          ? "…"
+          : status === "Upcoming"
+            ? "→"
+            : "–";
 
   return (
     <span
-      className={`inline-flex rounded-full px-4 py-2 text-sm font-black ${styles}`}
+      className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black shadow-sm ${styles}`}
     >
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#176b37]">
+        {icon}
+      </span>
       {status}
     </span>
   );

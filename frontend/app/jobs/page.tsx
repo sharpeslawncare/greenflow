@@ -227,9 +227,12 @@ function JobsPageContent() {
   const visitsNeedingRescheduling =
     useMemo(() => {
       return treatments
-        .filter(
-          (treatment) =>
-            treatment.status === "Needs Rescheduling",
+        .filter((treatment) =>
+          treatmentStillNeedsRescheduling(
+            treatment,
+            programmes,
+            customers,
+          ),
         )
         .map((treatment) => ({
           treatment,
@@ -243,7 +246,36 @@ function JobsPageContent() {
             second.treatment.scheduledDate,
           ),
         );
-    }, [treatments, customers]);
+    }, [
+      treatments,
+      programmes,
+      customers,
+    ]);
+
+  useEffect(() => {
+    const alreadyScheduled =
+      treatments.filter(
+        (treatment) =>
+          treatment.status === "Needs Rescheduling" &&
+          replacementIsAlreadyScheduled(
+            treatment,
+            programmes,
+            customers,
+          ),
+      );
+
+    alreadyScheduled.forEach((treatment) => {
+      updateTreatment({
+        ...treatment,
+        status: "Rescheduled",
+      });
+    });
+  }, [
+    treatments,
+    programmes,
+    customers,
+    updateTreatment,
+  ]);
 
   const showReschedulingAttention =
     requestedAttention === "rescheduling" ||
@@ -1891,12 +1923,20 @@ function hasRecordedOutcome(
   customerNumber: string,
 ) {
   return treatments.some(
-    (treatment) =>
-      (
+    (treatment) => {
+      const finalForThisDate =
         treatment.status === "Completed" ||
-        treatment.status === "Cancelled"
-      ) &&
-      (
+        treatment.status === "Cancelled" ||
+        (
+          treatment.status === "Rescheduled" &&
+          treatment.scheduledDate === visit.scheduledDate
+        );
+
+      if (!finalForThisDate) {
+        return false;
+      }
+
+      return (
         (
           treatment.programmeId === programme.id &&
           treatment.programmeVisitId === visit.id
@@ -1907,7 +1947,74 @@ function hasRecordedOutcome(
           treatment.scheduledDate === visit.scheduledDate &&
           treatment.treatmentName === visit.treatmentName
         )
-      ),
+      );
+    },
+  );
+}
+
+function treatmentStillNeedsRescheduling(
+  treatment: TreatmentRecord,
+  programmes: CustomerProgramme[],
+  customers: StoredCustomer[],
+) {
+  return (
+    treatment.status === "Needs Rescheduling" &&
+    !replacementIsAlreadyScheduled(
+      treatment,
+      programmes,
+      customers,
+    )
+  );
+}
+
+function replacementIsAlreadyScheduled(
+  treatment: TreatmentRecord,
+  programmes: CustomerProgramme[],
+  customers: StoredCustomer[],
+) {
+  if (!isDateValue(treatment.nextVisitDate)) {
+    return false;
+  }
+
+  if (
+    treatment.jobType === "additional" ||
+    treatment.programmeId.startsWith(
+      "additional-jobs-",
+    )
+  ) {
+    const customer = customers.find(
+      (item) =>
+        item.customerNumber ===
+        treatment.customerNumber,
+    );
+
+    const job = customer?.additionalJobs.find(
+      (item) =>
+        item.id === treatment.programmeVisitId,
+    );
+
+    return Boolean(
+      job &&
+        job.status === "Scheduled" &&
+        job.scheduledDate ===
+          treatment.nextVisitDate,
+    );
+  }
+
+  const linked =
+    findLinkedProgrammeVisit(
+      programmes,
+      treatment,
+    );
+
+  return Boolean(
+    linked &&
+      (
+        linked.visit.status === "Scheduled" ||
+        linked.visit.status === "Planned"
+      ) &&
+      linked.visit.scheduledDate ===
+        treatment.nextVisitDate,
   );
 }
 

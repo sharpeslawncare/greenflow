@@ -885,20 +885,32 @@ function hasFinalProgrammeOutcome(
   treatmentName: string,
 ) {
   return treatments.some(
-    (treatment) =>
-      (treatment.status === "Completed" ||
-        treatment.status === "Cancelled") &&
-      ((treatment.programmeId ===
-        programmeId &&
-        treatment.programmeVisitId ===
-          visitId) ||
+    (treatment) => {
+      const finalForThisDate =
+        treatment.status === "Completed" ||
+        treatment.status === "Cancelled" ||
+        (treatment.status === "Rescheduled" &&
+          treatment.scheduledDate ===
+            scheduledDate);
+
+      if (!finalForThisDate) {
+        return false;
+      }
+
+      return (
+        (treatment.programmeId ===
+          programmeId &&
+          treatment.programmeVisitId ===
+            visitId) ||
         (!treatment.programmeVisitId &&
           treatment.customerNumber ===
             customerNumber &&
           treatment.scheduledDate ===
             scheduledDate &&
           treatment.treatmentName ===
-            treatmentName)),
+            treatmentName)
+      );
+    },
   );
 }
 
