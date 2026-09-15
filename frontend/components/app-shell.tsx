@@ -24,14 +24,6 @@ const primaryNavigation: NavigationItem[] = [
     label: "Dashboard",
     href: "/",
   },
-  {
-    label: "Schedule",
-    href: "/jobs",
-  },
-  {
-    label: "Visit Centre",
-    href: "/visit-centre",
-  },
 ];
 
 const navigationSections: NavigationSection[] = [
@@ -57,6 +49,10 @@ const navigationSections: NavigationSection[] = [
     id: "planning",
     label: "Work Planning",
     items: [
+      {
+        label: "Schedule",
+        href: "/jobs",
+      },
       {
         label: "Groups & Routes",
         href: "/routes",
@@ -302,35 +298,12 @@ export function AppShell({
                 </div>
               </Link>
 
-              <div className="flex gap-2">
-                <Link
-                  href="/jobs"
-                  className={`rounded-lg px-3 py-2 text-xs font-bold ${
-                    isActivePath(
-                      pathname,
-                      "/jobs",
-                    )
-                      ? "bg-[#0d5333] text-white"
-                      : "border border-slate-300 bg-white text-slate-700"
-                  }`}
-                >
-                  Schedule
-                </Link>
-
-                <Link
-                  href="/visit-centre"
-                  className={`rounded-lg px-3 py-2 text-xs font-bold ${
-                    isActivePath(
-                      pathname,
-                      "/visit-centre",
-                    )
-                      ? "bg-[#0d5333] text-white"
-                      : "border border-slate-300 bg-white text-slate-700"
-                  }`}
-                >
-                  Visit Centre
-                </Link>
-              </div>
+              <Link
+                href="/"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700"
+              >
+                Dashboard
+              </Link>
             </div>
           </div>
 

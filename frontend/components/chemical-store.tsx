@@ -41,6 +41,10 @@ export type ChemicalRecord = {
   activeIngredients: string;
   registrationNumber: string;
 
+  productInformationUrl: string;
+  productLabelUrl: string;
+  safetyDataSheetUrl: string;
+
   packSize: number;
   packUnit: ChemicalUnit;
   costPerPack: number;
@@ -156,6 +160,11 @@ export type StockBatchDeductionResult = {
   message: string;
 };
 
+export type StockReconciliationResult = {
+  success: boolean;
+  message: string;
+};
+
 type ChemicalStoreValue = {
   chemicals: ChemicalRecord[];
   stockMovements: ChemicalStockMovement[];
@@ -197,6 +206,12 @@ type ChemicalStoreValue = {
   recordStockMovement: (
     movement: NewChemicalStockMovement,
   ) => ChemicalStockMovement;
+
+  reconcileChemicalStock: (
+    chemicalId: string,
+    actualPhysicalAmount: number,
+    note?: string,
+  ) => StockReconciliationResult;
 
   clearStockMovements: () => void;
 
@@ -252,6 +267,10 @@ const demoChemicals: ChemicalRecord[] = [
 
     registrationNumber: "",
 
+    productInformationUrl: "",
+    productLabelUrl: "",
+    safetyDataSheetUrl: "",
+
     packSize: 25,
     packUnit: "kg",
     costPerPack: 42,
@@ -304,6 +323,10 @@ const demoChemicals: ChemicalRecord[] = [
     registrationNumber:
       "MAPP 18092",
 
+    productInformationUrl: "",
+    productLabelUrl: "",
+    safetyDataSheetUrl: "",
+
     packSize: 2,
     packUnit: "L",
     costPerPack: 128,
@@ -354,6 +377,10 @@ const demoChemicals: ChemicalRecord[] = [
       "Ferrous sulphate",
 
     registrationNumber: "",
+
+    productInformationUrl: "",
+    productLabelUrl: "",
+    safetyDataSheetUrl: "",
 
     packSize: 10,
     packUnit: "L",
@@ -569,6 +596,10 @@ export function ChemicalStoreProvider({
         activeIngredients: "",
         registrationNumber: "",
 
+        productInformationUrl: "",
+        productLabelUrl: "",
+        safetyDataSheetUrl: "",
+
         packSize: 1,
         packUnit: "L",
         costPerPack: 0,
@@ -703,6 +734,72 @@ export function ChemicalStoreProvider({
     setStockMovements(next);
 
     return created;
+  }
+
+  function reconcileChemicalStock(
+    chemicalId: string,
+    actualPhysicalAmount: number,
+    note = "",
+  ): StockReconciliationResult {
+    const chemical = chemicalsRef.current.find(
+      (item) => item.id === chemicalId,
+    );
+
+    if (!chemical) {
+      return { success: false, message: "The selected product could not be found." };
+    }
+
+    if (!Number.isFinite(actualPhysicalAmount) || actualPhysicalAmount < 0) {
+      return { success: false, message: "Enter a valid physical stock amount of zero or more." };
+    }
+
+    if (!Number.isFinite(chemical.packSize) || chemical.packSize <= 0) {
+      return { success: false, message: `${chemical.name} does not have a valid pack size.` };
+    }
+
+    const previousPhysicalAmount = chemical.currentStock * chemical.packSize;
+    const nextPacks = roundToThreeDecimals(actualPhysicalAmount / chemical.packSize);
+    const physicalDifference = roundToThreeDecimals(actualPhysicalAmount - previousPhysicalAmount);
+    const packDifference = roundToThreeDecimals(nextPacks - chemical.currentStock);
+
+    if (Math.abs(physicalDifference) < 0.0005) {
+      return { success: true, message: "Physical stock already matches GreenFlow." };
+    }
+
+    const now = new Date().toISOString();
+    const nextChemicals = chemicalsRef.current.map((item) =>
+      item.id === chemicalId
+        ? { ...item, currentStock: nextPacks, updatedAt: now }
+        : item,
+    );
+
+    const movement: ChemicalStockMovement = {
+      id: createStockMovementId(),
+      chemicalId,
+      type: "Adjustment",
+      packQuantity: packDifference,
+      physicalAmount: physicalDifference,
+      physicalUnit: chemical.packUnit,
+      balanceAfterPacks: nextPacks,
+      date: toDateValue(new Date()),
+      reference: "Physical stocktake",
+      notes:
+        note.trim() ||
+        `Physical stock reconciled from ${roundToThreeDecimals(previousPhysicalAmount)} ${chemical.packUnit} to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}.`,
+      source: "Stock Page",
+      createdAt: now,
+    };
+
+    const nextMovements = [movement, ...stockMovementsRef.current];
+    chemicalsRef.current = nextChemicals;
+    stockMovementsRef.current = nextMovements;
+    setChemicals(nextChemicals);
+    setStockMovements(nextMovements);
+
+    return {
+      success: true,
+      message: `Stock updated to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}. Adjustment: ${physicalDifference > 0 ? "+" : ""}${physicalDifference} ${chemical.packUnit}.`,
+    };
   }
 
   function clearStockMovements() {
@@ -1109,6 +1206,7 @@ export function ChemicalStoreProvider({
         deductChemicalStockBatch,
 
         recordStockMovement,
+        reconcileChemicalStock,
         clearStockMovements,
 
         restoreDemoChemicals,
@@ -1167,6 +1265,15 @@ function normaliseChemical(
 
     registrationNumber:
       chemical.registrationNumber ?? "",
+
+    productInformationUrl:
+      chemical.productInformationUrl ?? "",
+
+    productLabelUrl:
+      chemical.productLabelUrl ?? "",
+
+    safetyDataSheetUrl:
+      chemical.safetyDataSheetUrl ?? "",
 
     packSize:
       toSafeNumber(

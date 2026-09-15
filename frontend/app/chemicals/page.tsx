@@ -19,9 +19,7 @@ import {
 } from "@/components/chemical-store";
 import { useTreatmentStore } from "@/components/treatment-store";
 
-type ChemicalFilter =
-  | ChemicalType
-  | "All";
+type ChemicalFilter = string;
 
 type StockFilter =
   | "All"
@@ -44,7 +42,7 @@ type ApplicationCalculation = {
   calibrationUsed: boolean;
 };
 
-const chemicalTypes: ChemicalType[] = [
+const standardChemicalTypes: ChemicalType[] = [
   "Fertiliser",
   "Herbicide",
   "Moss Control",
@@ -53,6 +51,12 @@ const chemicalTypes: ChemicalType[] = [
   "Seed",
   "Other",
 ];
+
+const CUSTOM_CHEMICAL_TYPES_STORAGE_KEY =
+  "greenflow-custom-chemical-types-v1";
+
+const ADD_PRODUCT_TYPE_VALUE =
+  "__greenflow_add_product_type__";
 
 const chemicalUnits: ChemicalUnit[] = [
   "kg",
@@ -78,6 +82,7 @@ export default function ChemicalsPage() {
     updateChemical,
     deleteChemical,
     restoreDemoChemicals,
+    reconcileChemicalStock,
   } = useChemicalStore();
 
   const {
@@ -108,6 +113,22 @@ export default function ChemicalsPage() {
     setCalculatorArea,
   ] = useState(250);
 
+  const [customChemicalTypes, setCustomChemicalTypes] =
+    useState<string[]>([]);
+
+  const [addingProductType, setAddingProductType] =
+    useState(false);
+
+  const [newProductType, setNewProductType] =
+    useState("");
+
+  const [reviewingStock, setReviewingStock] =
+    useState(false);
+  const [actualStockAmount, setActualStockAmount] =
+    useState("");
+  const [stockReviewNote, setStockReviewNote] =
+    useState("");
+
   const [message, setMessage] =
     useState("");
 
@@ -115,6 +136,140 @@ export default function ChemicalsPage() {
     useState<ChemicalMessageTone>(
       "success",
     );
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(
+        CUSTOM_CHEMICAL_TYPES_STORAGE_KEY,
+      );
+
+      const parsed = saved
+        ? (JSON.parse(saved) as unknown)
+        : [];
+
+      if (Array.isArray(parsed)) {
+        setCustomChemicalTypes(
+          parsed
+            .filter(
+              (value): value is string =>
+                typeof value === "string" &&
+                value.trim().length > 0,
+            )
+            .map((value) => value.trim()),
+        );
+      }
+    } catch {
+      setCustomChemicalTypes([]);
+    }
+  }, []);
+
+  const availableChemicalTypes = useMemo(() => {
+    const usedTypes = chemicals
+      .map((chemical) => String(chemical.type).trim())
+      .filter(Boolean);
+
+    return Array.from(
+      new Set([
+        ...standardChemicalTypes,
+        ...customChemicalTypes,
+        ...usedTypes,
+      ]),
+    );
+  }, [chemicals, customChemicalTypes]);
+
+  function saveCustomProductType() {
+    const trimmed = newProductType.trim();
+
+    if (!trimmed) {
+      showMessage(
+        "Enter a name for the new product type.",
+        "error",
+      );
+      return;
+    }
+
+    const existing = availableChemicalTypes.find(
+      (type) =>
+        type.toLowerCase() === trimmed.toLowerCase(),
+    );
+
+    if (existing) {
+      if (draft) {
+        updateDraft(
+          "type",
+          existing as ChemicalType,
+        );
+      }
+
+      setAddingProductType(false);
+      setNewProductType("");
+      showMessage(
+        `"${existing}" is already available and has been selected.`,
+      );
+      return;
+    }
+
+    const nextTypes = [
+      ...customChemicalTypes,
+      trimmed,
+    ];
+
+    setCustomChemicalTypes(nextTypes);
+
+    window.localStorage.setItem(
+      CUSTOM_CHEMICAL_TYPES_STORAGE_KEY,
+      JSON.stringify(nextTypes),
+    );
+
+    if (draft) {
+      updateDraft(
+        "type",
+        trimmed as ChemicalType,
+      );
+    }
+
+    setAddingProductType(false);
+    setNewProductType("");
+
+    showMessage(
+      `"${trimmed}" added to product types.`,
+    );
+  }
+
+  function openStockReview() {
+    if (!selectedChemical) return;
+
+    const physical =
+      selectedChemical.currentStock *
+      selectedChemical.packSize;
+
+    setActualStockAmount(
+      physical.toFixed(3).replace(/\.?0+$/, ""),
+    );
+    setStockReviewNote("");
+    setReviewingStock(true);
+  }
+
+  function saveStockReview() {
+    if (!selectedChemical) return;
+
+    const result = reconcileChemicalStock(
+      selectedChemical.id,
+      Number(actualStockAmount),
+      stockReviewNote,
+    );
+
+    showMessage(
+      result.message,
+      result.success ? "success" : "error",
+    );
+
+    if (result.success) {
+      setReviewingStock(false);
+      setActualStockAmount("");
+      setStockReviewNote("");
+    }
+  }
 
   const filteredChemicals =
     useMemo(() => {
@@ -660,14 +815,14 @@ export default function ChemicalsPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1650px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <main className="bg-slate-50/50 p-4 md:p-6">
+        <div className="mx-auto max-w-[1500px]">
+          <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
                 Products & stock
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
                 Chemical Centre
               </h1>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
@@ -705,157 +860,8 @@ export default function ChemicalsPage() {
             </div>
           )}
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard
-              label="Active products"
-              value={String(activeChemicals.length)}
-              detail="Available in Visit Centre"
-            />
-            <SummaryCard
-              label="Low stock"
-              value={String(lowStockChemicals.length)}
-              detail={
-                lowStockChemicals.length === 0
-                  ? "Nothing currently needs attention"
-                  : "At or below reorder level"
-              }
-              warning={lowStockChemicals.length > 0}
-            />
-            <SummaryCard
-              label="Product types"
-              value={String(
-                new Set(
-                  activeChemicals.map(
-                    (chemical) => chemical.type,
-                  ),
-                ).size,
-              )}
-              detail={`${herbicideCount} active herbicide${herbicideCount === 1 ? "" : "s"}`}
-            />
-            <SummaryCard
-              label="Estimated stock value"
-              value={`£${totalStockValue.toFixed(2)}`}
-              detail="Current packs × pack cost"
-            />
-          </section>
-
-          {lowStockChemicals.length > 0 && (
-            <section className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">
-                    Needs attention
-                  </div>
-                  <h2 className="mt-1 text-lg font-bold text-red-950">
-                    Low stock
-                  </h2>
-                  <p className="mt-1 text-sm text-red-800">
-                    These active products are at or below their saved reorder level.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setStockFilter("Low stock")}
-                  className="rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-800 hover:bg-red-100"
-                >
-                  Show low stock only
-                </button>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {lowStockChemicals.map((chemical) => (
-                  <button
-                    key={chemical.id}
-                    type="button"
-                    onClick={() => selectChemical(chemical)}
-                    className="rounded-xl border border-red-200 bg-white px-3 py-2 text-left hover:bg-red-100"
-                  >
-                    <span className="font-bold text-red-950">
-                      {chemical.name}
-                    </span>
-                    <span className="ml-2 text-sm text-red-700">
-                      {chemical.currentStock} pack{chemical.currentStock === 1 ? "" : "s"} · reorder {chemical.reorderLevel}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                  Stock activity
-                </div>
-                <h2 className="mt-1 text-lg font-bold text-slate-950">
-                  Recent movements
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  A quick view of the latest deliveries, treatment usage and stock adjustments.
-                </p>
-              </div>
-
-              <Link
-                href="/chemical-usage"
-                className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-bold text-[#176b37] hover:bg-green-50"
-              >
-                Open Chemical Usage
-              </Link>
-            </div>
-
-            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {recentStockMovements.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500 md:col-span-2 xl:col-span-3">
-                  No stock movements have been recorded yet.
-                </div>
-              ) : (
-                recentStockMovements.map((movement) => {
-                  const chemical = chemicals.find(
-                    (item) =>
-                      item.id === movement.chemicalId,
-                  );
-
-                  return (
-                    <div
-                      key={movement.id}
-                      className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-slate-950">
-                            {chemical?.name || "Unknown product"}
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {formatShortDate(movement.date)} · {movement.type}
-                          </div>
-                        </div>
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                            movement.type === "Delivery"
-                              ? "bg-green-100 text-green-800"
-                              : movement.type === "Usage"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-amber-100 text-amber-800"
-                          }`}
-                        >
-                          {formatSignedMovement(movement.physicalAmount, movement.physicalUnit)}
-                        </span>
-                      </div>
-                      {(movement.reference || movement.notes) && (
-                        <div className="mt-2 text-xs leading-5 text-slate-600">
-                          {movement.reference || movement.notes}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
-
-          <section className="mt-4 grid gap-4 xl:grid-cols-[360px_1fr]">
-            <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+            <aside className="self-start rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-4">
               <div className="mb-4">
                 <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                   Product library
@@ -897,7 +903,7 @@ export default function ChemicalsPage() {
                       All types
                     </option>
 
-                    {chemicalTypes.map(
+                    {availableChemicalTypes.map(
                       (type) => (
                         <option
                           key={type}
@@ -1071,7 +1077,7 @@ export default function ChemicalsPage() {
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap items-center gap-3">
-                          <h2 className="text-2xl font-bold">
+                          <h2 className="text-2xl font-black tracking-tight text-slate-950">
                             {
                               selectedChemical.name
                             }
@@ -1142,51 +1148,16 @@ export default function ChemicalsPage() {
                       detail={selectedChemical.type}
                     />
                     <ResultBox
-                      label="Recent movements"
-                      value={String(selectedChemicalMovements.length)}
-                      detail="Latest stock records shown below"
+                      label="Stock value"
+                      value={`£${(
+                        selectedChemical.currentStock *
+                        selectedChemical.costPerPack
+                      ).toFixed(2)}`}
+                      detail={`${selectedChemical.currentStock} pack${
+                        selectedChemical.currentStock === 1 ? "" : "s"
+                      } in stock`}
                     />
                   </section>
-
-                  {selectedChemicalMovements.length > 0 && (
-                    <Panel>
-                      <SectionHeading
-                        title="Recent stock history"
-                        description="The latest stock movements recorded against this product."
-                      />
-                      <div className="mt-4 divide-y divide-slate-200">
-                        {selectedChemicalMovements.map((movement) => (
-                          <div
-                            key={movement.id}
-                            className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                          >
-                            <div>
-                              <div className="font-semibold text-slate-900">
-                                {movement.type}
-                              </div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {formatShortDate(movement.date)}
-                                {movement.reference ? ` · ${movement.reference}` : ""}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-slate-950">
-                                {formatSignedMovement(
-                                  movement.physicalAmount,
-                                  movement.physicalUnit,
-                                )}
-                              </div>
-                              {movement.notes && (
-                                <div className="mt-1 max-w-md text-xs text-slate-500">
-                                  {movement.notes}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Panel>
-                  )}
 
                   <section className="grid gap-4 lg:grid-cols-2">
                     <Panel>
@@ -1241,20 +1212,27 @@ export default function ChemicalsPage() {
                             value={
                               selectedChemical.type
                             }
-                            onChange={(
-                              event,
-                            ) =>
+                            onChange={(event) => {
+                              if (
+                                event.target.value ===
+                                ADD_PRODUCT_TYPE_VALUE
+                              ) {
+                                setAddingProductType(true);
+                                setNewProductType("");
+                                return;
+                              }
+
                               updateDraft(
                                 "type",
                                 event.target
                                   .value as ChemicalType,
-                              )
-                            }
+                              );
+                            }}
                             className={
                               inputClass
                             }
                           >
-                            {chemicalTypes.map(
+                            {availableChemicalTypes.map(
                               (type) => (
                                 <option
                                   key={type}
@@ -1264,7 +1242,68 @@ export default function ChemicalsPage() {
                                 </option>
                               ),
                             )}
+                            <option
+                              value={ADD_PRODUCT_TYPE_VALUE}
+                            >
+                              + Add product type…
+                            </option>
                           </select>
+
+                          {addingProductType && (
+                            <div className="mt-2 rounded-xl border border-green-200 bg-green-50 p-3">
+                              <div className="text-xs font-bold text-green-900">
+                                New product type
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <input
+                                  autoFocus
+                                  value={newProductType}
+                                  onChange={(event) =>
+                                    setNewProductType(
+                                      event.target.value,
+                                    )
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (
+                                      event.key === "Enter"
+                                    ) {
+                                      event.preventDefault();
+                                      saveCustomProductType();
+                                    }
+
+                                    if (
+                                      event.key === "Escape"
+                                    ) {
+                                      setAddingProductType(false);
+                                      setNewProductType("");
+                                    }
+                                  }}
+                                  placeholder="For example, Soil Conditioner"
+                                  className={`${inputClass} min-w-[220px] flex-1`}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={saveCustomProductType}
+                                  className="rounded-xl bg-[#176b37] px-4 py-2 text-sm font-bold text-white hover:bg-[#125b2f]"
+                                >
+                                  Save type
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAddingProductType(false);
+                                    setNewProductType("");
+                                  }}
+                                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                              <p className="mt-2 text-xs leading-5 text-green-800">
+                                Saved product types will appear here for future chemical additions.
+                              </p>
+                            </div>
+                          )}
                         </Field>
 
                         <Field label="MAPP / PCS number">
@@ -1340,6 +1379,49 @@ export default function ChemicalsPage() {
 
                     <Panel>
                       <SectionHeading
+                        title="Product documents & links"
+                        description="Save official manufacturer or supplier links for quick reference."
+                      />
+
+                      <div className="mt-5 space-y-4">
+                        <ExternalLinkField
+                          label="Product information"
+                          value={selectedChemical.productInformationUrl}
+                          placeholder="https://manufacturer.com/product-page"
+                          buttonLabel="View product page ↗"
+                          onChange={(value) =>
+                            updateDraft("productInformationUrl", value)
+                          }
+                        />
+
+                        <ExternalLinkField
+                          label="Product label"
+                          value={selectedChemical.productLabelUrl}
+                          placeholder="https://manufacturer.com/product-label.pdf"
+                          buttonLabel="View label ↗"
+                          onChange={(value) =>
+                            updateDraft("productLabelUrl", value)
+                          }
+                        />
+
+                        <ExternalLinkField
+                          label="Safety Data Sheet (SDS)"
+                          value={selectedChemical.safetyDataSheetUrl}
+                          placeholder="https://manufacturer.com/safety-data-sheet.pdf"
+                          buttonLabel="View SDS ↗"
+                          onChange={(value) =>
+                            updateDraft("safetyDataSheetUrl", value)
+                          }
+                        />
+
+                        <p className="text-xs leading-5 text-slate-500">
+                          Use official manufacturer or supplier links where possible. Saved links open in a new browser tab.
+                        </p>
+                      </div>
+                    </Panel>
+
+                    <Panel>
+                      <SectionHeading
                         title="Pack and stock"
                         description="Store pack size, purchase cost, current stock and reorder information."
                       />
@@ -1408,21 +1490,88 @@ export default function ChemicalsPage() {
                           }
                         />
 
-                        <NumberField
-                          label="Current stock (packs)"
-                          value={
-                            selectedChemical.currentStock
-                          }
-                          step="0.01"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "currentStock",
-                              value,
-                            )
-                          }
-                        />
+                        <div>
+                          <div className="text-xs font-bold text-slate-700">
+                            Current stock
+                          </div>
+                          <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <div className="text-lg font-black text-slate-950">
+                              {(
+                                selectedChemical.currentStock *
+                                selectedChemical.packSize
+                              ).toFixed(3).replace(/\.?0+$/, "")}{" "}
+                              {selectedChemical.packUnit}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {selectedChemical.currentStock.toFixed(3).replace(/\.?0+$/, "")} pack equivalents
+                            </div>
+                            <button
+                              type="button"
+                              onClick={openStockReview}
+                              className="mt-3 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 hover:bg-slate-100"
+                            >
+                              Review stock
+                            </button>
+                          </div>
+
+                          {reviewingStock && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                              <div className="text-sm font-black text-amber-950">
+                                Physical stocktake
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-amber-900">
+                                Enter what is physically in stock now. GreenFlow will record the difference as an Adjustment without changing treatment history.
+                              </p>
+
+                              <div className="mt-3">
+                                <label className="block text-xs font-bold text-slate-700">
+                                  Actual physical stock ({selectedChemical.packUnit})
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.001"
+                                  value={actualStockAmount}
+                                  onChange={(event) =>
+                                    setActualStockAmount(event.target.value)
+                                  }
+                                  className={`${inputClass} mt-1`}
+                                />
+                              </div>
+
+                              <div className="mt-3">
+                                <label className="block text-xs font-bold text-slate-700">
+                                  Note / reason (optional)
+                                </label>
+                                <input
+                                  value={stockReviewNote}
+                                  onChange={(event) =>
+                                    setStockReviewNote(event.target.value)
+                                  }
+                                  placeholder="For example, physical stocktake"
+                                  className={`${inputClass} mt-1`}
+                                />
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={saveStockReview}
+                                  className="rounded-xl bg-[#176b37] px-4 py-2 text-sm font-bold text-white hover:bg-[#125b2f]"
+                                >
+                                  Update stock
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setReviewingStock(false)}
+                                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
 
                         <NumberField
                           label="Reorder level (packs)"
@@ -1926,6 +2075,47 @@ export default function ChemicalsPage() {
                     </Panel>
                   </section>
 
+                  {selectedChemicalMovements.length > 0 && (
+                    <Panel>
+                      <SectionHeading
+                        title="Recent stock history"
+                        description="The latest stock movements recorded against this product."
+                      />
+                      <div className="mt-4 divide-y divide-slate-200">
+                        {selectedChemicalMovements.map((movement) => (
+                          <div
+                            key={movement.id}
+                            className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                          >
+                            <div>
+                              <div className="font-semibold text-slate-900">
+                                {movement.type}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {formatShortDate(movement.date)}
+                                {movement.reference ? ` · ${movement.reference}` : ""}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-slate-950">
+                                {formatSignedMovement(
+                                  movement.physicalAmount,
+                                  movement.physicalUnit,
+                                )}
+                              </div>
+                              {movement.notes && (
+                                <div className="mt-1 max-w-md text-xs text-slate-500">
+                                  {movement.notes}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Panel>
+                  )}
+
+
                   <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -2218,6 +2408,68 @@ function Panel({
   );
 }
 
+function normaliseExternalUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function isUsableExternalUrl(value: string) {
+  const normalised = normaliseExternalUrl(value);
+  if (!normalised) return false;
+
+  try {
+    const parsed = new URL(normalised);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function ExternalLinkField({
+  label,
+  value,
+  placeholder,
+  buttonLabel,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  buttonLabel: string;
+  onChange: (value: string) => void;
+}) {
+  const href = normaliseExternalUrl(value);
+  const canOpen = isUsableExternalUrl(value);
+
+  return (
+    <div>
+      <label className="block text-xs font-bold text-slate-700">
+        {label}
+      </label>
+      <div className="mt-1 flex flex-wrap gap-2">
+        <input
+          type="url"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className={`${inputClass} min-w-[260px] flex-1`}
+        />
+        {canOpen && (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-xl border border-green-300 bg-green-50 px-4 py-2 text-sm font-bold text-green-800 hover:bg-green-100"
+          >
+            {buttonLabel}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Field({
   label,
   children,
@@ -2330,11 +2582,11 @@ function SectionHeading({
 }) {
   return (
     <div>
-      <h2 className="text-lg font-bold">
+      <h2 className="text-base font-bold text-slate-950">
         {title}
       </h2>
 
-      <p className="mt-1 text-sm leading-6 text-slate-500">
+      <p className="mt-1 text-xs leading-5 text-slate-500">
         {description}
       </p>
     </div>
@@ -2387,7 +2639,7 @@ function ResultBox({
   detail: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
       <div className="text-xs font-semibold text-slate-500">
         {label}
       </div>
