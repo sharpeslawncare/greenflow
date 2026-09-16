@@ -41,9 +41,19 @@ type BusinessWithVat = {
 
 export default function TreatmentDocumentPage() {
   const params =
-    useParams<{
-      treatmentId: string;
-    }>();
+    useParams<
+      Record<
+        string,
+        string | string[]
+      >
+    >();
+
+  const treatmentId =
+    getRouteParameter(
+      params,
+      "treatmentId",
+      "id",
+    );
 
   const {
     customers,
@@ -522,12 +532,63 @@ export default function TreatmentDocumentPage() {
           showPayment={
             completed
           }
+          informationOnly={
+            completed &&
+            (
+              treatment.invoicePaymentSnapshotCaptured
+                ? treatment.invoiceInformationOnly
+                : customer.paymentMethod ===
+                  "Direct Debit"
+            )
+          }
           previewShadow
         />
         )}
       </div>
     </main>
   );
+}
+
+
+function getRouteParameter(
+  params: Record<
+    string,
+    string | string[]
+  >,
+  ...preferredKeys: string[]
+) {
+  for (const key of preferredKeys) {
+    const value = params[key];
+
+    if (Array.isArray(value)) {
+      if (value[0]) {
+        return decodeURIComponent(
+          value[0],
+        );
+      }
+
+      continue;
+    }
+
+    if (value) {
+      return decodeURIComponent(value);
+    }
+  }
+
+  const fallback =
+    Object.values(params)[0];
+
+  if (Array.isArray(fallback)) {
+    return fallback[0]
+      ? decodeURIComponent(
+          fallback[0],
+        )
+      : "";
+  }
+
+  return fallback
+    ? decodeURIComponent(fallback)
+    : "";
 }
 
 function getNextVisitTreatmentName({

@@ -1825,6 +1825,14 @@ function VisitCentrePageContent() {
             ?.wordingSnapshot ??
           "",
 
+        invoiceInformationOnly:
+          outcome === "Completed" &&
+          job.customer.paymentMethod ===
+            "Direct Debit",
+
+        invoicePaymentSnapshotCaptured:
+          outcome === "Completed",
+
         treatmentAreaSquareMetres:
           outcome === "Completed"
             ? job.customer.lawnSize

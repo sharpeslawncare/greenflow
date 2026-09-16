@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 
 import {
   CustomerTreatmentDocument,
@@ -45,6 +45,22 @@ type BusinessWithVat = {
 };
 
 export default function DailyPaperworkPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+          <div className="rounded-2xl bg-white p-10 text-slate-500 shadow-sm">
+            Preparing daily paperwork...
+          </div>
+        </main>
+      }
+    >
+      <DailyPaperworkPageContent />
+    </Suspense>
+  );
+}
+
+function DailyPaperworkPageContent() {
   const searchParams = useSearchParams();
 
   const requestedDate =
@@ -586,6 +602,10 @@ export default function DailyPaperworkPage() {
                     }
                     showAftercare
                     showPayment
+                    informationOnly={
+                      item.customer.paymentMethod ===
+                      "Direct Debit"
+                    }
                     pageBreakAfter={
                       index <
                       paperworkItems.length -

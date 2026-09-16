@@ -43,6 +43,7 @@ export type CustomerTreatmentDocumentProps = {
 
   showAftercare?: boolean;
   showPayment?: boolean;
+  informationOnly?: boolean;
   pageBreakAfter?: boolean;
   previewShadow?: boolean;
 };
@@ -133,6 +134,7 @@ export function CustomerTreatmentDocument({
   nextVisit,
   showAftercare = true,
   showPayment = true,
+  informationOnly = false,
   pageBreakAfter = false,
   previewShadow = false,
 }: CustomerTreatmentDocumentProps) {
@@ -326,36 +328,49 @@ export function CustomerTreatmentDocument({
                 Invoice / payment details
               </DocumentHeading>
 
-              <div className="mt-[1.6mm] grid grid-cols-[23mm_1fr] gap-x-[2mm] gap-y-[0.6mm] text-[7.8pt] leading-[1.35] text-slate-700">
-                <div className="font-semibold text-slate-500">
-                  Bank
+              {informationOnly ? (
+                <div className="mt-[1.6mm] rounded-[2.5mm] border border-blue-200 bg-blue-50 px-[3mm] py-[2.5mm]">
+                  <div className="text-[9pt] font-bold uppercase tracking-[0.08em] text-blue-900">
+                    Information only
+                  </div>
+                  <div className="mt-[1mm] text-[8pt] leading-[1.45] text-blue-900">
+                    Payment will be collected by Direct Debit. No payment action is required.
+                  </div>
                 </div>
-                <div className="font-semibold text-slate-900">
-                  Greenfield Bank
-                </div>
+              ) : (
+                <>
+                  <div className="mt-[1.6mm] grid grid-cols-[23mm_1fr] gap-x-[2mm] gap-y-[0.6mm] text-[7.8pt] leading-[1.35] text-slate-700">
+                    <div className="font-semibold text-slate-500">
+                      Bank
+                    </div>
+                    <div className="font-semibold text-slate-900">
+                      Greenfield Bank
+                    </div>
 
-                <div className="font-semibold text-slate-500">
-                  Sort code
-                </div>
-                <div className="font-semibold text-slate-900">
-                  12-34-56
-                </div>
+                    <div className="font-semibold text-slate-500">
+                      Sort code
+                    </div>
+                    <div className="font-semibold text-slate-900">
+                      12-34-56
+                    </div>
 
-                <div className="font-semibold text-slate-500">
-                  Account no.
-                </div>
-                <div className="font-semibold text-slate-900">
-                  12345678
-                </div>
-              </div>
+                    <div className="font-semibold text-slate-500">
+                      Account no.
+                    </div>
+                    <div className="font-semibold text-slate-900">
+                      12345678
+                    </div>
+                  </div>
 
-              <div className="mt-[1.8mm] border-t border-slate-200 pt-[1.5mm] text-[7.8pt] leading-[1.4] text-slate-700">
-                Please use customer reference{" "}
-                <span className="font-bold text-slate-950">
-                  {customerNumber}
-                </span>{" "}
-                with any payment or correspondence.
-              </div>
+                  <div className="mt-[1.8mm] border-t border-slate-200 pt-[1.5mm] text-[7.8pt] leading-[1.4] text-slate-700">
+                    Please use customer reference{" "}
+                    <span className="font-bold text-slate-950">
+                      {customerNumber}
+                    </span>{" "}
+                    with any payment or correspondence.
+                  </div>
+                </>
+              )}
 
             </div>
 

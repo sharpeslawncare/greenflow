@@ -1990,6 +1990,33 @@ function cancelEditing() {
                 />
               </FormField>
 
+              <FormField label="Payment method">
+                <select
+                  value={draft.paymentMethod}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      paymentMethod:
+                        event.target.value ===
+                        "Direct Debit"
+                          ? "Direct Debit"
+                          : "Standard",
+                    })
+                  }
+                  className={inputClass}
+                >
+                  <option value="Standard">
+                    Standard payment
+                  </option>
+                  <option value="Direct Debit">
+                    Direct Debit
+                  </option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Direct Debit invoices are marked information only. Payment status remains separate.
+                </p>
+              </FormField>
+
               <FormField label="Van number">
                 <input
                   type="number"
@@ -2615,6 +2642,14 @@ function OverviewTab({
             <CompactRow
               label="Preferred"
               value={customer.preferredContact}
+            />
+            <CompactRow
+              label="Payment"
+              value={
+                customer.paymentMethod === "Direct Debit"
+                  ? "Direct Debit"
+                  : "Standard"
+              }
             />
             <CompactRow
               label="Open actions"

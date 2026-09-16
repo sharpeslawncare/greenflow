@@ -163,6 +163,7 @@ export type StockBatchDeductionResult = {
 export type StockReconciliationResult = {
   success: boolean;
   message: string;
+  currentStockPacks?: number;
 };
 
 type ChemicalStoreValue = {
@@ -210,6 +211,12 @@ type ChemicalStoreValue = {
   reconcileChemicalStock: (
     chemicalId: string,
     actualPhysicalAmount: number,
+    note?: string,
+  ) => StockReconciliationResult;
+
+  setChemicalStockPacks: (
+    chemicalId: string,
+    packQuantity: number,
     note?: string,
   ) => StockReconciliationResult;
 
@@ -763,7 +770,11 @@ export function ChemicalStoreProvider({
     const packDifference = roundToThreeDecimals(nextPacks - chemical.currentStock);
 
     if (Math.abs(physicalDifference) < 0.0005) {
-      return { success: true, message: "Physical stock already matches GreenFlow." };
+      return {
+        success: true,
+        message: "Physical stock already matches GreenFlow.",
+        currentStockPacks: chemical.currentStock,
+      };
     }
 
     const now = new Date().toISOString();
@@ -799,6 +810,72 @@ export function ChemicalStoreProvider({
     return {
       success: true,
       message: `Stock updated to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}. Adjustment: ${physicalDifference > 0 ? "+" : ""}${physicalDifference} ${chemical.packUnit}.`,
+      currentStockPacks: nextPacks,
+    };
+  }
+
+  function setChemicalStockPacks(
+    chemicalId: string,
+    packQuantity: number,
+    note = "",
+  ): StockReconciliationResult {
+    const chemical = chemicalsRef.current.find(
+      (item) => item.id === chemicalId,
+    );
+
+    if (!chemical) {
+      return { success: false, message: "The selected product could not be found." };
+    }
+
+    if (!Number.isFinite(packQuantity) || packQuantity < 0) {
+      return { success: false, message: "Enter a valid stock quantity of zero packs or more." };
+    }
+
+    const nextPacks = roundToThreeDecimals(packQuantity);
+    const packDifference = roundToThreeDecimals(nextPacks - chemical.currentStock);
+
+    if (Math.abs(packDifference) < 0.0005) {
+      return {
+        success: true,
+        message: "Stock already matches the entered quantity.",
+        currentStockPacks: chemical.currentStock,
+      };
+    }
+
+    const physicalDifference = roundToThreeDecimals(packDifference * chemical.packSize);
+    const now = new Date().toISOString();
+
+    const nextChemicals = chemicalsRef.current.map((item) =>
+      item.id === chemicalId
+        ? { ...item, currentStock: nextPacks, updatedAt: now }
+        : item,
+    );
+
+    const movement: ChemicalStockMovement = {
+      id: createStockMovementId(),
+      chemicalId,
+      type: "Adjustment",
+      packQuantity: packDifference,
+      physicalAmount: physicalDifference,
+      physicalUnit: chemical.packUnit,
+      balanceAfterPacks: nextPacks,
+      date: toDateValue(new Date()),
+      reference: chemical.currentStock === 0 ? "Opening stock" : "Manual stock entry",
+      notes: note.trim() || `Stock set from ${roundToThreeDecimals(chemical.currentStock)} to ${nextPacks} pack equivalents.`,
+      source: "Stock Page",
+      createdAt: now,
+    };
+
+    const nextMovements = [movement, ...stockMovementsRef.current];
+    chemicalsRef.current = nextChemicals;
+    stockMovementsRef.current = nextMovements;
+    setChemicals(nextChemicals);
+    setStockMovements(nextMovements);
+
+    return {
+      success: true,
+      message: `Stock saved at ${nextPacks} pack${nextPacks === 1 ? "" : "s"} (${roundToThreeDecimals(nextPacks * chemical.packSize)} ${chemical.packUnit}).`,
+      currentStockPacks: nextPacks,
     };
   }
 
@@ -1207,6 +1284,7 @@ export function ChemicalStoreProvider({
 
         recordStockMovement,
         reconcileChemicalStock,
+        setChemicalStockPacks,
         clearStockMovements,
 
         restoreDemoChemicals,

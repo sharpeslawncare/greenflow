@@ -100,6 +100,8 @@ export type TreatmentRecord = {
   jobType: "programme" | "additional";
   invoiceAmount: number;
   customerWording: string;
+  invoiceInformationOnly: boolean;
+  invoicePaymentSnapshotCaptured: boolean;
 
   treatmentAreaSquareMetres: number;
   applications: TreatmentApplication[];
@@ -891,6 +893,12 @@ function normaliseTreatmentRecord(
     customerWording:
       treatment.customerWording ??
       "",
+
+    invoiceInformationOnly:
+      treatment.invoiceInformationOnly === true,
+
+    invoicePaymentSnapshotCaptured:
+      treatment.invoicePaymentSnapshotCaptured === true,
 
     treatmentAreaSquareMetres: safeNumber(
       treatment.treatmentAreaSquareMetres,

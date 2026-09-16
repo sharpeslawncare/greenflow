@@ -41,10 +41,15 @@ export type AdditionalCustomerJob = {
   createdAt: string;
 };
 
+export type CustomerPaymentMethod =
+  | "Standard"
+  | "Direct Debit";
+
 export type StoredCustomer = Customer & {
   programmeStartDate: string;
   additionalJobs: AdditionalCustomerJob[];
   gateCode: string;
+  paymentMethod: CustomerPaymentMethod;
 };
 
 type CustomerInput =
@@ -537,6 +542,11 @@ function normaliseStoredCustomer(
     gateCode:
       customer.gateCode?.trim() ?? "",
 
+    paymentMethod:
+      normaliseCustomerPaymentMethod(
+        customer.paymentMethod,
+      ),
+
     dogOnProperty:
       customer.dogOnProperty ??
       false,
@@ -728,6 +738,14 @@ function normaliseCustomerStatus(
   }
 
   return "Active";
+}
+
+function normaliseCustomerPaymentMethod(
+  value: unknown,
+): CustomerPaymentMethod {
+  return value === "Direct Debit"
+    ? "Direct Debit"
+    : "Standard";
 }
 
 function normalisePreferredContact(

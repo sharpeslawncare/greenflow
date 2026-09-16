@@ -83,6 +83,7 @@ export default function ChemicalsPage() {
     deleteChemical,
     restoreDemoChemicals,
     reconcileChemicalStock,
+    setChemicalStockPacks,
   } = useChemicalStore();
 
   const {
@@ -122,6 +123,8 @@ export default function ChemicalsPage() {
   const [newProductType, setNewProductType] =
     useState("");
 
+  const [editingStockPacks, setEditingStockPacks] =
+    useState("");
   const [reviewingStock, setReviewingStock] =
     useState(false);
   const [actualStockAmount, setActualStockAmount] =
@@ -236,6 +239,39 @@ export default function ChemicalsPage() {
     );
   }
 
+  function saveEnteredStock() {
+    if (!selectedChemical) return;
+
+    const result = setChemicalStockPacks(
+      selectedChemical.id,
+      Number(editingStockPacks),
+      selectedChemical.currentStock === 0
+        ? "Opening stock entered in Chemical Centre."
+        : "Current stock manually updated in Chemical Centre.",
+    );
+
+    showMessage(result.message, result.success ? "success" : "error");
+
+    if (result.success) {
+      const nextPacks =
+        result.currentStockPacks ??
+        Number(editingStockPacks);
+
+      setEditingStockPacks(
+        String(nextPacks),
+      );
+
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              currentStock: nextPacks,
+            }
+          : current,
+      );
+    }
+  }
+
   function openStockReview() {
     if (!selectedChemical) return;
 
@@ -265,6 +301,21 @@ export default function ChemicalsPage() {
     );
 
     if (result.success) {
+      const nextPacks =
+        result.currentStockPacks ??
+        selectedChemical.currentStock;
+
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              currentStock: nextPacks,
+            }
+          : current,
+      );
+      setEditingStockPacks(
+        String(nextPacks),
+      );
       setReviewingStock(false);
       setActualStockAmount("");
       setStockReviewNote("");
@@ -440,6 +491,7 @@ export default function ChemicalsPage() {
     setDraft({
       ...chemical,
     });
+    setEditingStockPacks(String(chemical.currentStock));
   }
 
   function createChemical() {
@@ -460,6 +512,7 @@ export default function ChemicalsPage() {
     setDraft({
       ...chemical,
     });
+    setEditingStockPacks("0");
 
     showMessage(
       "New chemical record created.",
@@ -620,9 +673,21 @@ export default function ChemicalsPage() {
       return;
     }
 
+    const liveChemical =
+      chemicals.find(
+        (chemical) =>
+          chemical.id === draft.id,
+      );
+
     const savedChemical: ChemicalRecord =
       {
         ...draft,
+
+        // Stock is managed by Save stock / Review physical stock.
+        // Never let an older form draft overwrite the live stock ledger balance.
+        currentStock:
+          liveChemical?.currentStock ??
+          draft.currentStock,
 
         name:
           draft.name.trim(),
@@ -1492,25 +1557,41 @@ export default function ChemicalsPage() {
 
                         <div>
                           <div className="text-xs font-bold text-slate-700">
-                            Current stock
+                            Current stock (packs)
                           </div>
                           <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="text-lg font-black text-slate-950">
+                            <div className="flex flex-wrap items-end gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.001"
+                                value={editingStockPacks}
+                                onChange={(event) =>
+                                  setEditingStockPacks(event.target.value)
+                                }
+                                className={`${inputClass} min-w-[120px] flex-1`}
+                              />
+                              <button
+                                type="button"
+                                onClick={saveEnteredStock}
+                                className="rounded-xl bg-[#176b37] px-4 py-2 text-sm font-bold text-white hover:bg-[#125b2f]"
+                              >
+                                Save stock
+                              </button>
+                            </div>
+                            <div className="mt-2 text-xs text-slate-500">
                               {(
                                 selectedChemical.currentStock *
                                 selectedChemical.packSize
                               ).toFixed(3).replace(/\.?0+$/, "")}{" "}
-                              {selectedChemical.packUnit}
-                            </div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              {selectedChemical.currentStock.toFixed(3).replace(/\.?0+$/, "")} pack equivalents
+                              {selectedChemical.packUnit} currently recorded
                             </div>
                             <button
                               type="button"
                               onClick={openStockReview}
                               className="mt-3 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 hover:bg-slate-100"
                             >
-                              Review stock
+                              Review physical stock
                             </button>
                           </div>
 
