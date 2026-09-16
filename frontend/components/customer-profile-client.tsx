@@ -1325,6 +1325,18 @@ function cancelEditing() {
                   </a>
 
                   <a
+                    href={getWhatsAppUrl(currentCustomer.mobilePhone)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between rounded-xl border border-green-200 bg-white px-4 py-3 font-bold text-green-800 hover:bg-green-50"
+                  >
+                    <span>Open WhatsApp</span>
+                    <span className="text-sm font-semibold text-slate-500">
+                      {currentCustomer.mobilePhone}
+                    </span>
+                  </a>
+
+                  <a
                     href={`tel:${currentCustomer.mobilePhone.replace(/\s+/g, "")}`}
                     className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-800 hover:bg-slate-50"
                   >
@@ -3902,4 +3914,17 @@ function EmptyState({
       {children}
     </div>
   );
+}
+
+function getWhatsAppUrl(phoneNumber: string) {
+  const digits = phoneNumber.replace(/\D/g, "");
+
+  const internationalNumber =
+    digits.startsWith("44")
+      ? digits
+      : digits.startsWith("0")
+        ? `44${digits.slice(1)}`
+        : digits;
+
+  return `https://wa.me/${internationalNumber}`;
 }
