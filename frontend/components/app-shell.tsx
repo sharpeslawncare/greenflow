@@ -24,6 +24,14 @@ const primaryNavigation: NavigationItem[] = [
     label: "Dashboard",
     href: "/",
   },
+  {
+    label: "Schedule",
+    href: "/jobs",
+  },
+  {
+    label: "Visit Centre",
+    href: "/visit-centre",
+  },
 ];
 
 const navigationSections: NavigationSection[] = [
@@ -49,10 +57,6 @@ const navigationSections: NavigationSection[] = [
     id: "planning",
     label: "Work Planning",
     items: [
-      {
-        label: "Schedule",
-        href: "/jobs",
-      },
       {
         label: "Groups & Routes",
         href: "/routes",
@@ -298,12 +302,20 @@ export function AppShell({
                 </div>
               </Link>
 
-              <Link
-                href="/"
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700"
-              >
-                Dashboard
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/jobs"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700"
+                >
+                  Schedule
+                </Link>
+                <Link
+                  href="/visit-centre"
+                  className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white"
+                >
+                  Visit Centre
+                </Link>
+              </div>
             </div>
           </div>
 

@@ -814,7 +814,7 @@ function JobsPageContent() {
                     scheduledJobs.length === 0 ? "pointer-events-none opacity-50" : ""
                   }`}
                 >
-                  Customer sheets
+                  Print Customer Invoices
                 </Link>
                 <button
                   type="button"
@@ -822,7 +822,7 @@ function JobsPageContent() {
                   disabled={scheduledJobs.length === 0}
                   className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Daily job sheet
+                  Daily Jobs List
                 </button>
                 <Link
                   href={`/communications?date=${selectedDate}`}
@@ -830,7 +830,7 @@ function JobsPageContent() {
                     scheduledJobs.length === 0 ? "pointer-events-none opacity-50" : ""
                   }`}
                 >
-                  Customer reminders
+                  Customer Reminders
                 </Link>
                 <Link
                   href="/additional-jobs"

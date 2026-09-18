@@ -69,6 +69,11 @@ type VisitProductMode =
   | "today"
   | "custom";
 
+type CustomerHerbicideOverride = {
+  method: HerbicideApplicationMethod | "No Herbicide";
+  percentage: number;
+};
+
 type VisitMessageTone =
   | "success"
   | "error";
@@ -281,7 +286,7 @@ function VisitCentrePageContent() {
   const [
     spotSprayOverrides,
     setSpotSprayOverrides,
-  ] = useState<Record<string, number>>({});
+  ] = useState<Record<string, CustomerHerbicideOverride>>({});
 
   const [visitProductMode, setVisitProductMode] =
     useState<VisitProductMode>("today");
@@ -582,6 +587,59 @@ function VisitCentrePageContent() {
     ]);
 
 
+  const allDayRemainingCount = useMemo(() => {
+    const remainingProgrammeVisits = programmes.reduce(
+      (count, programme) => {
+        const customer = customers.find(
+          (item) => item.customerNumber === programme.customerNumber,
+        );
+
+        if (!customer || customer.status !== "Active") {
+          return count;
+        }
+
+        return (
+          count +
+          programme.visits.filter(
+            (visit) =>
+              visit.scheduledDate === selectedDate &&
+              (visit.status === "Scheduled" || visit.status === "Planned") &&
+              !hasRecordedOutcome(
+                treatments,
+                programme,
+                visit,
+                customer.customerNumber,
+              ),
+          ).length
+        );
+      },
+      0,
+    );
+
+    const remainingAdditionalJobs = customers.reduce(
+      (count, customer) => {
+        if (customer.status !== "Active") {
+          return count;
+        }
+
+        return (
+          count +
+          customer.additionalJobs.filter(
+            (job) =>
+              job.status === "Scheduled" &&
+              job.scheduledDate === selectedDate,
+          ).length
+        );
+      },
+      0,
+    );
+
+    return remainingProgrammeVisits + remainingAdditionalJobs;
+  }, [programmes, customers, treatments, selectedDate]);
+
+  const routeFilterActive = requestedGroup > 0 || requestedVan > 0;
+  const wholeDayWorkClear = allDayRemainingCount === 0;
+
   useEffect(() => {
     if (jobs.length === 0) {
       setSelectedJobIds(
@@ -739,10 +797,7 @@ function VisitCentrePageContent() {
     );
 
   const spotSprayAvailable =
-    selectedJobs.length > 0 &&
-    selectedJobs.every((job) =>
-      isSeasonalWeedAndFeed(job.visit.treatmentName),
-    );
+    selectedJobs.length > 0;
 
   const activeChemicals = useMemo(
     () =>
@@ -898,14 +953,71 @@ function VisitCentrePageContent() {
         totalSelectedArea,
       );
 
-    const calculation =
-      applyHerbicideApplicationMethod(
+    const customerCalculations = selectedJobs.map((job) => {
+      const customerFullLawn = calculateApplication(
         chemical,
-        fullLawnCalculation,
-        herbicideApplicationMethod,
-        spotSprayAvailable,
-        spotSprayPercentage,
+        job.customer.lawnSize,
       );
+      const override = spotSprayOverrides[job.id];
+
+      if (
+        isProductType(chemical.type, "herbicide") &&
+        override?.method === "No Herbicide"
+      ) {
+        return {
+          ...customerFullLawn,
+          productRequired: 0,
+          waterRequiredLitres: 0,
+          tankFills: 0,
+          estimatedProductCost: 0,
+        };
+      }
+
+      const method =
+        override && override.method !== "No Herbicide"
+          ? override.method
+          : herbicideApplicationMethod;
+      const percentage =
+        override?.method === "Spot Spray"
+          ? override.percentage
+          : spotSprayPercentage;
+
+      return applyHerbicideApplicationMethod(
+        chemical,
+        customerFullLawn,
+        method,
+        spotSprayAvailable,
+        percentage,
+      );
+    });
+
+    const calculation: ApplicationCalculation = {
+      ...fullLawnCalculation,
+      productRequired: roundToThreeDecimals(
+        customerCalculations.reduce(
+          (total, item) => total + item.productRequired,
+          0,
+        ),
+      ),
+      waterRequiredLitres: roundToThreeDecimals(
+        customerCalculations.reduce(
+          (total, item) => total + item.waterRequiredLitres,
+          0,
+        ),
+      ),
+      tankFills: roundToThreeDecimals(
+        customerCalculations.reduce(
+          (total, item) => total + item.tankFills,
+          0,
+        ),
+      ),
+      estimatedProductCost: roundToTwoDecimals(
+        customerCalculations.reduce(
+          (total, item) => total + item.estimatedProductCost,
+          0,
+        ),
+      ),
+    };
 
     return {
       chemical,
@@ -1152,7 +1264,9 @@ function VisitCentrePageContent() {
       jobs.map((job) => job.id),
     );
     setHerbicideApplicationMethod(
-      "Full Lawn Spray",
+      effectiveHerbicideId && spotSprayAvailable
+        ? "Spot Spray"
+        : "Full Lawn Spray",
     );
     setSpotSprayPercentage(
       DEFAULT_SPOT_SPRAY_PERCENTAGE,
@@ -1164,19 +1278,29 @@ function VisitCentrePageContent() {
     showMessage(
       treatmentKeys.length > 1
         ? "All remaining visits are selected, but they contain different treatment types. Complete one treatment type at a time so the correct product mix is recorded."
-        : `${jobs.length} remaining visit${jobs.length === 1 ? "" : "s"} selected as completed. Full lawn spray is assumed unless you mark a customer as a spot-spray exception.`,
+        : `${jobs.length} remaining visit${jobs.length === 1 ? "" : "s"} selected as completed. Confirm the day’s herbicide method once, then record only the customers who were different.`,
       treatmentKeys.length > 1
         ? "error"
         : "success",
     );
   }
 
-  function setCustomerFullLawn(jobId: string) {
+  function clearCustomerHerbicideOverride(jobId: string) {
     setSpotSprayOverrides((current) => {
       const next = { ...current };
       delete next[jobId];
       return next;
     });
+  }
+
+  function setCustomerFullLawn(jobId: string) {
+    setSpotSprayOverrides((current) => ({
+      ...current,
+      [jobId]: {
+        method: "Full Lawn Spray",
+        percentage: 100,
+      },
+    }));
   }
 
   function setCustomerSpotSpray(
@@ -1185,10 +1309,20 @@ function VisitCentrePageContent() {
   ) {
     setSpotSprayOverrides((current) => ({
       ...current,
-      [jobId]:
-        normaliseSpotSprayPercentage(
-          percentage,
-        ),
+      [jobId]: {
+        method: "Spot Spray",
+        percentage: normaliseSpotSprayPercentage(percentage),
+      },
+    }));
+  }
+
+  function setCustomerNoHerbicide(jobId: string) {
+    setSpotSprayOverrides((current) => ({
+      ...current,
+      [jobId]: {
+        method: "No Herbicide",
+        percentage: 0,
+      },
     }));
   }
 
@@ -1752,19 +1886,33 @@ function VisitCentrePageContent() {
     for (const [index, job] of selectedJobs.entries()) {
       const applications =
         outcome === "Completed"
-          ? selectedProducts.map((chemical) =>
-              createApplicationForCustomer(
-                chemical,
-                job.customer.lawnSize,
-                spotSprayOverrides[job.id] !==
-                  undefined
-                  ? "Spot Spray"
-                  : herbicideApplicationMethod,
-                spotSprayAvailable,
-                spotSprayOverrides[job.id] ??
-                  spotSprayPercentage,
-              ),
-            )
+          ? selectedProducts
+              .filter((chemical) => {
+                const override = spotSprayOverrides[job.id];
+                return !(
+                  isProductType(chemical.type, "herbicide") &&
+                  override?.method === "No Herbicide"
+                );
+              })
+              .map((chemical) => {
+                const override = spotSprayOverrides[job.id];
+                const method =
+                  override && override.method !== "No Herbicide"
+                    ? override.method
+                    : herbicideApplicationMethod;
+                const percentage =
+                  override?.method === "Spot Spray"
+                    ? override.percentage
+                    : spotSprayPercentage;
+
+                return createApplicationForCustomer(
+                  chemical,
+                  job.customer.lawnSize,
+                  method,
+                  spotSprayAvailable,
+                  percentage,
+                );
+              })
           : [];
 
       const existingPendingTreatment =
@@ -2783,16 +2931,16 @@ function VisitCentrePageContent() {
                   </p>
                 </div>
 
-                {jobs.length > 0 && (
+                {allDayRemainingCount > 0 && (
                   <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800">
-                    {jobs.length} visit{jobs.length === 1 ? "" : "s"} remaining
+                    {allDayRemainingCount} visit{allDayRemainingCount === 1 ? "" : "s"} remaining today
                   </span>
                 )}
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <WorkflowProgressCard number="1" title="Complete work" state="current" />
-                <WorkflowProgressCard number="2" title="Check chemicals" state={jobs.length === 0 ? "next" : "later"} />
+                <WorkflowProgressCard number="2" title="Check chemicals" state={wholeDayWorkClear ? "next" : "later"} />
                 <WorkflowProgressCard number="3" title="QuickBooks" state="later" />
                 <WorkflowProgressCard number="4" title="Close day" state="later" />
               </div>
@@ -2800,27 +2948,75 @@ function VisitCentrePageContent() {
               <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
                 <div>
                   <div className="font-bold text-green-950">
-                    {jobs.length === 0 ? "All scheduled work has an outcome" : "Complete the remaining work"}
+                    {wholeDayWorkClear
+                      ? "All scheduled work has an outcome"
+                      : jobs.length === 0 && routeFilterActive
+                        ? "This route section is complete"
+                        : "Complete the remaining work"}
                   </div>
                   <div className="mt-1 text-sm text-green-800">
-                    {jobs.length === 0
+                    {wholeDayWorkClear
                       ? "The next step is the day&apos;s chemical and stock check."
-                      : "Use Complete All for the normal day, then adjust only the exceptions."}
+                      : jobs.length === 0 && routeFilterActive
+                        ? `${allDayRemainingCount} visit${allDayRemainingCount === 1 ? "" : "s"} still need an outcome elsewhere in today&apos;s schedule.`
+                        : "Use Complete All for the normal day, then adjust only the exceptions."}
                   </div>
                 </div>
 
-                {jobs.length === 0 && (
+                {wholeDayWorkClear ? (
                   <Link
                     href={`/chemical-usage?date=${selectedDate}&workflow=close`}
                     className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
                   >
                     Next: Check chemical usage →
                   </Link>
-                )}
+                ) : jobs.length === 0 && routeFilterActive ? (
+                  <Link
+                    href={`/visit-centre?date=${selectedDate}&workflow=close`}
+                    className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                  >
+                    Continue remaining work →
+                  </Link>
+                ) : null}
               </div>
             </section>
           )}
 
+
+          {wholeDayWorkClear && !closeWorkflow && (
+            <section className="mb-5 rounded-2xl border border-green-300 bg-green-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+                    End of day
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold text-green-950">
+                    ✓ All scheduled work is complete
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-green-800">
+                    {completedOnDate} of {totalScheduled} visits are complete. Continue to the chemical and stock check, then QuickBooks and final close.
+                  </p>
+                </div>
+                <Link
+                  href={`/chemical-usage?date=${selectedDate}&workflow=close`}
+                  className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#125b2f]"
+                >
+                  Next: Check chemical usage →
+                </Link>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <WorkflowProgressCard number="1" title="Complete work" state="done" />
+                <WorkflowProgressCard number="2" title="Check chemicals" state="next" />
+                <WorkflowProgressCard number="3" title="QuickBooks" state="later" />
+                <WorkflowProgressCard number="4" title="Close day" state="later" />
+              </div>
+              {completedTreatmentsOnDate.length > 0 && (
+                <div className="mt-4 text-xs font-semibold text-green-800">
+                  Need to fix a missed product first? Use Correct products below before continuing.
+                </div>
+              )}
+            </section>
+          )}
 
           {(requestedGroup > 0 ||
             requestedVan > 0) && (
@@ -3095,12 +3291,19 @@ function VisitCentrePageContent() {
                   </Link>
                 )}
 
-                {jobs.length === 0 ? (
+                {wholeDayWorkClear ? (
                   <Link
                     href={`/chemical-usage?date=${selectedDate}&workflow=close`}
                     className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
                   >
                     Next: Check chemical usage →
+                  </Link>
+                ) : jobs.length === 0 && routeFilterActive ? (
+                  <Link
+                    href={`/visit-centre?date=${selectedDate}&workflow=close`}
+                    className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                  >
+                    Continue remaining work →
                   </Link>
                 ) : (
                   <Link
@@ -3589,7 +3792,7 @@ function VisitCentrePageContent() {
                     Did the day go as planned?
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-green-800">
-                    Select every remaining visit as completed in one click. Full lawn is assumed, then you only change the customers who were spot sprayed before confirming.
+                    Select every remaining visit in one click. Confirm the normal herbicide method for the day once, then record only the customers who were different before confirming.
                   </p>
                 </div>
                 <button
@@ -3603,7 +3806,8 @@ function VisitCentrePageContent() {
             </section>
           )}
 
-          <form onSubmit={saveVisits}>
+          {!wholeDayWorkClear && (
+            <form onSubmit={saveVisits}>
             <section className="grid gap-4 xl:grid-cols-[390px_1fr]">
               <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex items-center justify-between gap-3 px-2 pt-1">
@@ -4178,7 +4382,7 @@ function VisitCentrePageContent() {
                           </div>
 
                           <p className="mt-1 text-sm text-green-800">
-                            This choice applies to every selected Spring, Summer or Autumn weed-and-feed visit.
+                            This is the normal herbicide method for every selected visit. Other fertilisers, moss controls and liquid products remain whole-lawn applications. Customer exceptions can be recorded below.
                           </p>
 
                           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -4297,7 +4501,7 @@ function VisitCentrePageContent() {
                       !spotSprayAvailable &&
                       selectedJobs.length > 0 && (
                         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                          Spot spray is available only when all selected visits are Spring, Summer or Autumn weed-and-feed treatments.
+                          Spot spray is available whenever a herbicide is selected. Select one or more visits to record how it was applied.
                         </div>
                       )}
 
@@ -4310,16 +4514,22 @@ function VisitCentrePageContent() {
                               Customer spray exceptions
                             </div>
                             <p className="mt-1 text-sm leading-6 text-blue-800">
-                              Full lawn is the normal assumption. Only change customers who actually received a spot spray.
+                              The day setting above is applied to everyone. Only change customers who were different: full lawn, a different spot-spray percentage, or no herbicide.
                             </p>
                           </div>
 
                           <div className="mt-4 space-y-2">
                             {selectedJobs.map((job) => {
-                              const exceptionPercentage =
+                              const override =
                                 spotSprayOverrides[job.id];
-                              const isSpot =
-                                exceptionPercentage !== undefined;
+                              const effectiveMethod =
+                                override?.method ??
+                                herbicideApplicationMethod;
+                              const effectivePercentage =
+                                effectiveMethod === "Spot Spray"
+                                  ? override?.percentage ??
+                                    spotSprayPercentage
+                                  : 100;
 
                               return (
                                 <div key={job.id} className="rounded-xl border border-blue-200 bg-white p-3">
@@ -4329,17 +4539,28 @@ function VisitCentrePageContent() {
                                         {job.customer.fullName}
                                       </div>
                                       <div className="mt-0.5 text-xs text-slate-500">
-                                        {job.customer.lawnSize.toLocaleString("en-GB")} m²
+                                        {job.customer.lawnSize.toLocaleString("en-GB")} m² · {override ? "Exception" : "Same as day"}
                                       </div>
                                     </div>
 
                                     <div className="flex flex-wrap gap-2">
                                       <button
                                         type="button"
+                                        onClick={() => clearCustomerHerbicideOverride(job.id)}
+                                        className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                                          !override
+                                            ? "border-green-600 bg-green-600 text-white"
+                                            : "border-slate-300 bg-white text-slate-700"
+                                        }`}
+                                      >
+                                        Same as day
+                                      </button>
+                                      <button
+                                        type="button"
                                         onClick={() => setCustomerFullLawn(job.id)}
                                         className={`rounded-lg border px-3 py-2 text-xs font-bold ${
-                                          !isSpot
-                                            ? "border-green-600 bg-green-600 text-white"
+                                          override?.method === "Full Lawn Spray"
+                                            ? "border-blue-600 bg-blue-600 text-white"
                                             : "border-slate-300 bg-white text-slate-700"
                                         }`}
                                       >
@@ -4347,19 +4568,30 @@ function VisitCentrePageContent() {
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => setCustomerSpotSpray(job.id)}
+                                        onClick={() => setCustomerSpotSpray(job.id, effectiveMethod === "Spot Spray" ? effectivePercentage : spotSprayPercentage)}
                                         className={`rounded-lg border px-3 py-2 text-xs font-bold ${
-                                          isSpot
+                                          override?.method === "Spot Spray"
                                             ? "border-blue-600 bg-blue-600 text-white"
                                             : "border-slate-300 bg-white text-slate-700"
                                         }`}
                                       >
                                         Spot spray
                                       </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setCustomerNoHerbicide(job.id)}
+                                        className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                                          override?.method === "No Herbicide"
+                                            ? "border-amber-600 bg-amber-600 text-white"
+                                            : "border-slate-300 bg-white text-slate-700"
+                                        }`}
+                                      >
+                                        No herbicide
+                                      </button>
                                     </div>
                                   </div>
 
-                                  {isSpot && (
+                                  {override?.method === "Spot Spray" && (
                                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                                       <span className="text-xs font-bold text-slate-600">
                                         Approx. lawn sprayed:
@@ -4370,7 +4602,7 @@ function VisitCentrePageContent() {
                                           type="button"
                                           onClick={() => setCustomerSpotSpray(job.id, percentage)}
                                           className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${
-                                            exceptionPercentage === percentage
+                                            override.percentage === percentage
                                               ? "border-blue-600 bg-blue-600 text-white"
                                               : "border-slate-300 bg-white text-slate-700"
                                           }`}
@@ -4385,7 +4617,7 @@ function VisitCentrePageContent() {
                                           min={1}
                                           max={100}
                                           step={1}
-                                          value={exceptionPercentage}
+                                          value={override.percentage}
                                           onChange={(event) =>
                                             setCustomerSpotSpray(
                                               job.id,
@@ -4455,7 +4687,7 @@ function VisitCentrePageContent() {
                                     "Spot Spray" &&
                                   spotSprayAvailable && (
                                     <div className="mt-3 text-xs text-slate-500">
-                                      {spotSprayPercentage}% spot-spray quantity shown above. Full-lawn equivalent:{" "}
+                                      Day default: {spotSprayPercentage}% spot spray. The quantity above includes customer exceptions. Full-lawn equivalent:{" "}
                                       <strong>
                                         {formatApplicationAmount(
                                           fullLawnCalculation.productRequired,
@@ -4866,6 +5098,7 @@ function VisitCentrePageContent() {
               </div>
             )}
           </form>
+          )}
         </div>
       </main>
     </AppShell>
@@ -5021,7 +5254,7 @@ function aggregateProductRequirements(
     HerbicideApplicationMethod,
   spotSprayAvailable: boolean,
   spotSprayPercentage: number,
-  spotSprayOverrides: Record<string, number> = {},
+  spotSprayOverrides: Record<string, CustomerHerbicideOverride> = {},
 ): ProductRequirement[] {
   return products.map((chemical) => {
     const calculations = jobs.map((job) => {
@@ -5031,18 +5264,37 @@ function aggregateProductRequirements(
           job.customer.lawnSize,
         );
 
-      const customerSpotPercentage =
+      const override =
         spotSprayOverrides[job.id];
+
+      if (
+        isProductType(chemical.type, "herbicide") &&
+        override?.method === "No Herbicide"
+      ) {
+        return {
+          ...fullLawnCalculation,
+          productRequired: 0,
+          waterRequiredLitres: 0,
+          tankFills: 0,
+          estimatedProductCost: 0,
+        };
+      }
+
+      const method =
+        override && override.method !== "No Herbicide"
+          ? override.method
+          : herbicideApplicationMethod;
+      const percentage =
+        override?.method === "Spot Spray"
+          ? override.percentage
+          : spotSprayPercentage;
 
       return applyHerbicideApplicationMethod(
         chemical,
         fullLawnCalculation,
-        customerSpotPercentage !== undefined
-          ? "Spot Spray"
-          : herbicideApplicationMethod,
+        method,
         spotSprayAvailable,
-        customerSpotPercentage ??
-          spotSprayPercentage,
+        percentage,
       );
     });
 
@@ -5794,23 +6046,6 @@ function ApplicationMethodOption({
       </div>
     </label>
   );
-}
-
-function isSeasonalWeedAndFeed(treatmentName: string) {
-  const normalised = treatmentName
-    .trim()
-    .toLowerCase();
-
-  const seasonal =
-    normalised.includes("spring") ||
-    normalised.includes("summer") ||
-    normalised.includes("autumn");
-
-  const weedAndFeed =
-    normalised.includes("weed") &&
-    normalised.includes("feed");
-
-  return seasonal && weedAndFeed;
 }
 
 function isProductType(value: string, expected: string) {
