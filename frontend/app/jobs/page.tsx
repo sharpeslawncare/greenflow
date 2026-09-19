@@ -32,7 +32,6 @@ import {
 import {
   useRouteOrderStore,
 } from "@/components/route-order-store";
-import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
 export default function JobsPage() {
   return (
@@ -227,12 +226,9 @@ function JobsPageContent() {
   const visitsNeedingRescheduling =
     useMemo(() => {
       return treatments
-        .filter((treatment) =>
-          treatmentStillNeedsRescheduling(
-            treatment,
-            programmes,
-            customers,
-          ),
+        .filter(
+          (treatment) =>
+            treatment.status === "Needs Rescheduling",
         )
         .map((treatment) => ({
           treatment,
@@ -246,36 +242,7 @@ function JobsPageContent() {
             second.treatment.scheduledDate,
           ),
         );
-    }, [
-      treatments,
-      programmes,
-      customers,
-    ]);
-
-  useEffect(() => {
-    const alreadyScheduled =
-      treatments.filter(
-        (treatment) =>
-          treatment.status === "Needs Rescheduling" &&
-          replacementIsAlreadyScheduled(
-            treatment,
-            programmes,
-            customers,
-          ),
-      );
-
-    alreadyScheduled.forEach((treatment) => {
-      updateTreatment({
-        ...treatment,
-        status: "Rescheduled",
-      });
-    });
-  }, [
-    treatments,
-    programmes,
-    customers,
-    updateTreatment,
-  ]);
+    }, [treatments, customers]);
 
   const showReschedulingAttention =
     requestedAttention === "rescheduling" ||
@@ -543,41 +510,24 @@ function JobsPageContent() {
         @media print {
           html,
           body {
-            margin: 0 !important;
-            padding: 0 !important;
-            width: auto !important;
             height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
             overflow: visible !important;
             background: white !important;
           }
 
-          body > div,
-          body > div > div,
-          body > div > div > div {
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            overflow: visible !important;
+          aside {
+            display: none !important;
           }
 
-          aside,
           .jobs-screen {
             display: none !important;
           }
 
           .jobs-print {
             display: block !important;
-            width: auto !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
+            width: 190mm;
+            margin: 0 auto;
             color: #0f172a;
-            background: white !important;
             font-family:
               Arial,
               Helvetica,
@@ -592,63 +542,40 @@ function JobsPageContent() {
             box-sizing: border-box;
           }
 
-          .jobs-print-sheet {
-            display: block !important;
-            width: 188mm !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            margin: 0 auto !important;
-            padding: 0 !important;
-            overflow: visible !important;
-          }
-
           .jobs-print table {
             width: 100%;
             border-collapse: collapse;
-            table-layout: fixed;
           }
 
           .jobs-print thead {
             display: table-header-group;
           }
 
-          .jobs-print tbody {
-            display: table-row-group;
-          }
-
           .jobs-print tr {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
 
           .jobs-print th,
           .jobs-print td {
             border-bottom: 1px solid #d1d5db;
-            padding: 2mm 1.2mm;
+            padding: 2.2mm 1.5mm;
             vertical-align: top;
-            overflow-wrap: anywhere;
           }
 
           .jobs-print th {
             text-align: left;
             color: #176b37;
-            font-size: 7.2pt;
+            font-size: 7.5pt;
             text-transform: uppercase;
-            letter-spacing: 0.03em;
-          }
-
-          .jobs-print-header,
-          .jobs-print-footer {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
+            letter-spacing: 0.04em;
           }
         }
       `}</style>
 
       <main className="jobs-screen p-5 md:p-7">
-        <div className="mx-auto max-w-[1500px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="mx-auto max-w-[1560px]">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4 border-l-4 border-green-500 pl-4">
             <div>
               <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
                 Schedule
@@ -669,7 +596,7 @@ function JobsPageContent() {
             </Link>
           </header>
 
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="mb-4 rounded-2xl border-2 border-green-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -702,26 +629,30 @@ function JobsPageContent() {
                 label="Remaining jobs"
                 value={String(scheduledJobs.length)}
                 detail="Programme + Additional Jobs"
+                tone="green"
               />
               <SummaryCard
                 label="Completed"
                 value={String(completedTreatments.length)}
                 detail="Treatment records on this date"
+                tone="blue"
               />
               <SummaryCard
                 label="Remaining area"
                 value={`${totalArea.toLocaleString("en-GB")} m²`}
                 detail="Scheduled lawn area"
+                tone="purple"
               />
               <SummaryCard
                 label="Remaining value"
                 value={`£${expectedRevenue.toFixed(2)}`}
                 detail="Scheduled work"
+                tone="amber"
               />
             </div>
           </section>
 
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="mb-4 rounded-2xl border-2 border-green-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
@@ -794,7 +725,7 @@ function JobsPageContent() {
             </div>
           </section>
 
-          <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="mb-4 rounded-2xl border-2 border-green-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -830,7 +761,7 @@ function JobsPageContent() {
                     scheduledJobs.length === 0 ? "pointer-events-none opacity-50" : ""
                   }`}
                 >
-                  Customer Reminders
+                  Customer reminders
                 </Link>
                 <Link
                   href="/additional-jobs"
@@ -951,7 +882,7 @@ function JobsPageContent() {
                                 Failed visit
                               </div>
                               <div className="mt-1 font-bold text-amber-950">
-                                {formatProgrammeTreatmentLabel(treatment.treatmentName)}
+                                {treatment.treatmentName}
                               </div>
                               <div className="mt-0.5 text-xs text-amber-800">
                                 Original date:{" "}
@@ -973,7 +904,7 @@ function JobsPageContent() {
                                   <>
                                     Linked programme visit:{" "}
                                     <strong>
-                                      {formatProgrammeTreatmentLabel(automaticLinked.visit.treatmentName)}
+                                      {automaticLinked.visit.treatmentName}
                                     </strong>
                                     {" · "}
                                     currently{" "}
@@ -1045,7 +976,7 @@ function JobsPageContent() {
                                             key={`${programme.id}::${visit.id}`}
                                             value={`${programme.id}::${visit.id}`}
                                           >
-                                            Round {visit.visitNumber} · {formatProgrammeTreatmentLabel(visit.treatmentName)} · {formatDateWithDay(visit.scheduledDate)} · {visit.status}
+                                            Round {visit.visitNumber} · {visit.treatmentName} · {formatDateWithDay(visit.scheduledDate)} · {visit.status}
                                           </option>
                                         ),
                                       )}
@@ -1290,7 +1221,7 @@ function JobsPageContent() {
 
                         <div>
                           <div className="font-semibold">
-                            {formatProgrammeTreatmentLabel(job.visit.treatmentName)}
+                            {job.visit.treatmentName}
                           </div>
                           <div className="mt-1">
                             <span
@@ -1331,191 +1262,175 @@ function JobsPageContent() {
       </main>
 
       <section className="jobs-print">
-        <section className="jobs-print-sheet">
-          <header className="jobs-print-header mb-[5mm] border-b-2 border-[#176b37] pb-[3mm]">
-            <div className="flex items-end justify-between gap-[8mm]">
-              <div>
-                <div className="text-[18pt] font-bold text-[#176b37]">
-                  Sharpes Lawn Care
-                </div>
-
-                <div className="mt-[1mm] text-[8pt] text-slate-500">
-                  Daily Job Sheet · Powered by GreenFlow
-                </div>
+        <header className="mb-[5mm] border-b-2 border-[#176b37] pb-[3mm]">
+          <div className="flex items-end justify-between gap-[8mm]">
+            <div>
+              <div className="text-[18pt] font-bold text-[#176b37]">
+                Sharpes Lawn Care
               </div>
 
-              <div className="text-right">
-                <div className="text-[13pt] font-bold">
-                  {formatDateWithDay(
-                    selectedDate,
-                  )}
-                </div>
-
-                <div className="mt-[1mm] text-[8pt] text-slate-600">
-                  {requestedGroup > 0
-                    ? `Group ${requestedGroup}`
-                    : groupNumbers.length ===
-                        1
-                      ? `Group ${groupNumbers[0]}`
-                      : `${groupNumbers.length} groups`}
-                  {requestedVan > 0
-                    ? ` · Van ${requestedVan}`
-                    : ""}
-                </div>
+              <div className="mt-[1mm] text-[8pt] text-slate-500">
+                Daily Job Sheet · Powered
+                by GreenFlow
               </div>
             </div>
 
-            <div className="mt-[3mm] grid grid-cols-3 gap-[4mm] border-t border-slate-200 pt-[2mm] text-[8pt]">
-              <PrintStat
-                label="Jobs"
-                value={String(
-                  scheduledJobs.length,
+            <div className="text-right">
+              <div className="text-[13pt] font-bold">
+                {formatDateWithDay(
+                  selectedDate,
                 )}
-              />
+              </div>
 
-              <PrintStat
-                label="Lawn area"
-                value={`${totalArea.toLocaleString(
-                  "en-GB",
-                )} m²`}
-              />
-
-              <PrintStat
-                label="Expected revenue"
-                value={`£${expectedRevenue.toFixed(
-                  2,
-                )}`}
-              />
+              <div className="mt-[1mm] text-[8pt] text-slate-600">
+                {requestedGroup > 0
+                  ? `Group ${requestedGroup}`
+                  : groupNumbers.length ===
+                      1
+                    ? `Group ${groupNumbers[0]}`
+                    : `${groupNumbers.length} groups`}
+                {requestedVan > 0
+                  ? ` · Van ${requestedVan}`
+                  : ""}
+              </div>
             </div>
-          </header>
+          </div>
 
-          <table>
-            <thead>
-              <tr>
-                <th className="w-[7mm]">
-                  #
-                </th>
-                <th className="w-[19mm]">
-                  Customer
-                </th>
-                <th className="w-[32mm]">
-                  Name
-                </th>
-                <th>
-                  Address
-                </th>
-                <th className="w-[34mm]">
-                  Treatment
-                </th>
-                <th className="w-[17mm]">
-                  Area
-                </th>
-                <th className="w-[16mm]">
-                  Price
-                </th>
-              </tr>
-            </thead>
+          <div className="mt-[3mm] grid grid-cols-3 gap-[4mm] border-t border-slate-200 pt-[2mm] text-[8pt]">
+            <PrintStat
+              label="Jobs"
+              value={String(
+                scheduledJobs.length,
+              )}
+            />
 
-            <tbody>
-              {scheduledJobs.map(
-                (job, index) => (
-                  <tr key={job.id}>
-                    <td className="font-bold text-slate-500">
-                      {index + 1}
-                    </td>
+            <PrintStat
+              label="Lawn area"
+              value={`${totalArea.toLocaleString(
+                "en-GB",
+              )} m²`}
+            />
 
-                    <td>
-                      <div className="font-bold">
-                        {
-                          job.customer
-                            .customerNumber
-                        }
-                      </div>
+            <PrintStat
+              label="Expected revenue"
+              value={`£${expectedRevenue.toFixed(
+                2,
+              )}`}
+            />
+          </div>
+        </header>
 
-                      <div className="text-[7pt] text-slate-500">
-                        G
-                        {
-                          job.customer
-                            .groupNumber
-                        }
-                      </div>
-                    </td>
+        <table>
+          <thead>
+            <tr>
+              <th className="w-[7mm]">
+                #
+              </th>
+              <th className="w-[20mm]">
+                Customer
+              </th>
+              <th className="w-[34mm]">
+                Name
+              </th>
+              <th>Address</th>
+              <th className="w-[36mm]">
+                Treatment
+              </th>
+              <th className="w-[18mm]">
+                Area
+              </th>
+              <th className="w-[17mm]">
+                Price
+              </th>
+            </tr>
+          </thead>
 
-                    <td className="font-semibold">
+          <tbody>
+            {scheduledJobs.map(
+              (job, index) => (
+                <tr key={job.id}>
+                  <td className="font-bold text-slate-500">
+                    {index + 1}
+                  </td>
+
+                  <td>
+                    <div className="font-bold">
                       {
                         job.customer
-                          .fullName
+                          .customerNumber
                       }
-                    </td>
+                    </div>
 
-                    <td>
-                      <div>
-                        {
-                          job.customer
-                            .address
-                        }
-                        ,{" "}
-                        {
-                          job.customer
-                            .postcode
-                        }
-                      </div>
-
-                      {job.customer
-                        .gateCode && (
-                        <div className="mt-[1mm] inline-block rounded border border-slate-400 px-[1.5mm] py-[0.5mm] text-[7.5pt] font-bold">
-                          GATE:{" "}
-                          {
-                            job.customer
-                              .gateCode
-                          }
-                        </div>
-                      )}
-                    </td>
-
-                    <td>
+                    <div className="text-[7pt] text-slate-500">
+                      G
                       {
-                        job.visit
-                          .treatmentName
+                        job.customer
+                          .groupNumber
                       }
-                    </td>
+                    </div>
+                  </td>
 
-                    <td>
-                      {job.customer.lawnSize.toLocaleString(
-                        "en-GB",
-                      )}{" "}
-                      m²
-                    </td>
+                  <td className="font-semibold">
+                    {
+                      job.customer
+                        .fullName
+                    }
+                  </td>
 
-                    <td className="font-bold">
-                      £
-                      {job.price.toFixed(
-                        2,
-                      )}
-                    </td>
-                  </tr>
-                ),
-              )}
-            </tbody>
-          </table>
+                  <td>
+                    {
+                      job.customer
+                        .address
+                    }
+                    ,{" "}
+                    {
+                      job.customer
+                        .postcode
+                    }
+                  </td>
 
-          <footer className="jobs-print-footer mt-[5mm] border-t border-slate-300 pt-[3mm]">
-            <div className="text-[7.5pt] font-bold uppercase tracking-wide text-[#176b37]">
-              Notes
-            </div>
+                  <td>
+                    {
+                      job.visit
+                        .treatmentName
+                    }
+                  </td>
 
-            <div className="mt-[2mm] space-y-[3mm]">
-              {Array.from({
-                length: 3,
-              }).map((_, index) => (
-                <div
-                  key={index}
-                  className="h-[3mm] border-b border-dashed border-slate-300"
-                />
-              ))}
-            </div>
-          </footer>
-        </section>
+                  <td>
+                    {job.customer.lawnSize.toLocaleString(
+                      "en-GB",
+                    )}{" "}
+                    m²
+                  </td>
+
+                  <td className="font-bold">
+                    £
+                    {job.price.toFixed(
+                      2,
+                    )}
+                  </td>
+                </tr>
+              ),
+            )}
+          </tbody>
+        </table>
+
+        <footer className="mt-[5mm] border-t border-slate-300 pt-[3mm]">
+          <div className="text-[7.5pt] font-bold uppercase tracking-wide text-[#176b37]">
+            Notes
+          </div>
+
+          <div className="mt-[2mm] space-y-[3mm]">
+            {Array.from({
+              length: 3,
+            }).map((_, index) => (
+              <div
+                key={index}
+                className="h-[3mm] border-b border-dashed border-slate-300"
+              />
+            ))}
+          </div>
+        </footer>
       </section>
     </AppShell>
   );
@@ -1541,7 +1456,7 @@ function JobsWorkflowCard({
           ? "border-[#338b45] bg-green-50"
           : state === "next"
             ? "border-blue-200 bg-blue-50"
-            : "border-slate-200 bg-slate-50"
+            : "border-purple-200 bg-purple-50"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -1551,7 +1466,7 @@ function JobsWorkflowCard({
               ? "bg-[#176b37] text-white"
               : state === "next"
                 ? "bg-blue-700 text-white"
-                : "bg-slate-200 text-slate-600"
+                : "bg-purple-700 text-white"
           }`}
         >
           {number}
@@ -1580,14 +1495,30 @@ function SummaryCard({
   label,
   value,
   detail,
+  tone = "green",
 }: {
   label: string;
   value: string;
   detail: string;
+  tone?: "green" | "blue" | "purple" | "amber";
 }) {
+  const toneClasses = {
+    green: "border-green-200 bg-green-50/70 text-green-950",
+    blue: "border-blue-200 bg-blue-50/70 text-blue-950",
+    purple: "border-purple-200 bg-purple-50/70 text-purple-950",
+    amber: "border-amber-200 bg-amber-50/70 text-amber-950",
+  }[tone];
+
+  const labelClasses = {
+    green: "text-green-700",
+    blue: "text-blue-700",
+    purple: "text-purple-700",
+    amber: "text-amber-700",
+  }[tone];
+
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+    <article className={`rounded-2xl border p-4 shadow-sm ${toneClasses}`}>
+      <div className={`text-xs font-bold uppercase tracking-wide ${labelClasses}`}>
         {label}
       </div>
 
@@ -1595,7 +1526,7 @@ function SummaryCard({
         {value}
       </div>
 
-      <div className="mt-1 text-xs text-slate-500">
+      <div className="mt-1 text-xs opacity-75">
         {detail}
       </div>
     </article>
@@ -1923,20 +1854,12 @@ function hasRecordedOutcome(
   customerNumber: string,
 ) {
   return treatments.some(
-    (treatment) => {
-      const finalForThisDate =
+    (treatment) =>
+      (
         treatment.status === "Completed" ||
-        treatment.status === "Cancelled" ||
-        (
-          treatment.status === "Rescheduled" &&
-          treatment.scheduledDate === visit.scheduledDate
-        );
-
-      if (!finalForThisDate) {
-        return false;
-      }
-
-      return (
+        treatment.status === "Cancelled"
+      ) &&
+      (
         (
           treatment.programmeId === programme.id &&
           treatment.programmeVisitId === visit.id
@@ -1947,74 +1870,7 @@ function hasRecordedOutcome(
           treatment.scheduledDate === visit.scheduledDate &&
           treatment.treatmentName === visit.treatmentName
         )
-      );
-    },
-  );
-}
-
-function treatmentStillNeedsRescheduling(
-  treatment: TreatmentRecord,
-  programmes: CustomerProgramme[],
-  customers: StoredCustomer[],
-) {
-  return (
-    treatment.status === "Needs Rescheduling" &&
-    !replacementIsAlreadyScheduled(
-      treatment,
-      programmes,
-      customers,
-    )
-  );
-}
-
-function replacementIsAlreadyScheduled(
-  treatment: TreatmentRecord,
-  programmes: CustomerProgramme[],
-  customers: StoredCustomer[],
-) {
-  if (!isDateValue(treatment.nextVisitDate)) {
-    return false;
-  }
-
-  if (
-    treatment.jobType === "additional" ||
-    treatment.programmeId.startsWith(
-      "additional-jobs-",
-    )
-  ) {
-    const customer = customers.find(
-      (item) =>
-        item.customerNumber ===
-        treatment.customerNumber,
-    );
-
-    const job = customer?.additionalJobs.find(
-      (item) =>
-        item.id === treatment.programmeVisitId,
-    );
-
-    return Boolean(
-      job &&
-        job.status === "Scheduled" &&
-        job.scheduledDate ===
-          treatment.nextVisitDate,
-    );
-  }
-
-  const linked =
-    findLinkedProgrammeVisit(
-      programmes,
-      treatment,
-    );
-
-  return Boolean(
-    linked &&
-      (
-        linked.visit.status === "Scheduled" ||
-        linked.visit.status === "Planned"
-      ) &&
-      linked.visit.scheduledDate ===
-        treatment.nextVisitDate,
+      ),
   );
 }
 

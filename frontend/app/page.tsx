@@ -1456,10 +1456,31 @@ export default function DashboardPage() {
             </div>
           </header>
 
+          <section className="mb-5 rounded-[24px] border border-green-200/80 bg-green-50/45 p-5 shadow-sm md:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">Selected working day</div>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">{formatDateWithDay(selectedDate)}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">A quick position only. Use Schedule to plan it or Visit Centre to work through it.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <WorkflowLink href={`/jobs?date=${selectedDate}`} label="Open Schedule" />
+                <WorkflowLink href={`/visit-centre?date=${selectedDate}`} label="Open Visit Centre" />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <WorkStatusMetric label="Planned" value={String(selectedDateTotalWorkCount)} detail="Jobs for this working day" />
+              <WorkStatusMetric label="Completed" value={String(completedOnSelectedDate)} detail="Completed treatment records" positive={completedOnSelectedDate > 0} />
+              <WorkStatusMetric label="Remaining" value={String(remainingWorkCount)} detail="Still need an outcome" warning={remainingWorkCount > 0} />
+              <WorkStatusMetric label="Exceptions" value={String(selectedDateProblemRecords.length)} detail={selectedDateProblemRecords.length === 0 ? "No recorded problems" : "Need review"} danger={selectedDateProblemRecords.length > 0} />
+            </div>
+          </section>
+
           <section className="grid gap-4 lg:grid-cols-2">
             <Link
               href={`/jobs?date=${selectedDate}`}
-              className="group rounded-[24px] border border-green-200 bg-white p-6 shadow-sm transition hover:border-[#338b45] hover:shadow-md"
+              className="group rounded-[24px] border-2 border-green-300 bg-white p-6 shadow-sm transition hover:border-[#338b45] hover:shadow-md"
             >
               <div className="text-xs font-black uppercase tracking-[0.18em] text-[#176b37]">
                 Plan the work
@@ -1484,7 +1505,7 @@ export default function DashboardPage() {
 
             <Link
               href={`/visit-centre?date=${selectedDate}`}
-              className="group rounded-[24px] border border-blue-200 bg-white p-6 shadow-sm transition hover:border-blue-400 hover:shadow-md"
+              className="group rounded-[24px] border-2 border-blue-300 bg-white p-6 shadow-sm transition hover:border-blue-400 hover:shadow-md"
             >
               <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">
                 Run the day
@@ -1513,7 +1534,7 @@ export default function DashboardPage() {
           <section className="mt-4 grid gap-4 lg:grid-cols-2">
             <Link
               href="/additional-jobs"
-              className="group rounded-[24px] border border-amber-200 bg-white p-6 shadow-sm transition hover:border-amber-400 hover:shadow-md"
+              className="group rounded-[24px] border-2 border-amber-300 bg-white p-6 shadow-sm transition hover:border-amber-400 hover:shadow-md"
             >
               <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">
                 Add some work
@@ -1539,7 +1560,7 @@ export default function DashboardPage() {
 
             <Link
               href="/actions"
-              className="group rounded-[24px] border border-violet-200 bg-white p-6 shadow-sm transition hover:border-violet-400 hover:shadow-md"
+              className="group rounded-[24px] border-2 border-violet-300 bg-white p-6 shadow-sm transition hover:border-violet-400 hover:shadow-md"
             >
               <div className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">
                 Remember something
@@ -1611,26 +1632,7 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <section className="mt-5 rounded-[24px] border border-green-200/80 bg-green-50/45 p-5 shadow-sm md:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">Selected working day</div>
-                <h2 className="mt-1 text-xl font-bold text-slate-950">{formatDateWithDay(selectedDate)}</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">A quick position only. Use Schedule to plan it or Visit Centre to work through it.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <WorkflowLink href={`/jobs?date=${selectedDate}`} label="Open Schedule" />
-                <WorkflowLink href={`/visit-centre?date=${selectedDate}`} label="Open Visit Centre" />
-              </div>
-            </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <WorkStatusMetric label="Planned" value={String(selectedDateTotalWorkCount)} detail="Jobs for this working day" />
-              <WorkStatusMetric label="Completed" value={String(completedOnSelectedDate)} detail="Completed treatment records" positive={completedOnSelectedDate > 0} />
-              <WorkStatusMetric label="Remaining" value={String(remainingWorkCount)} detail="Still need an outcome" warning={remainingWorkCount > 0} />
-              <WorkStatusMetric label="Exceptions" value={String(selectedDateProblemRecords.length)} detail={selectedDateProblemRecords.length === 0 ? "No recorded problems" : "Need review"} danger={selectedDateProblemRecords.length > 0} />
-            </div>
-          </section>
 
 
         </div>

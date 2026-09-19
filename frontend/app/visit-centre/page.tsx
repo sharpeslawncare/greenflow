@@ -161,7 +161,7 @@ const emptyStandardMix: StandardMix = {
 };
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#3b82f6] focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
 export default function VisitCentrePage() {
   return (
@@ -2820,13 +2820,13 @@ function VisitCentrePageContent() {
 
   return (
     <AppShell>
-      <main className="p-4 md:p-6">
-        <div className="mx-auto max-w-[1550px]">
-          <header className="mb-4 flex flex-wrap items-end justify-between gap-4">
+      <main className="p-5 md:p-7">
+        <div className="mx-auto max-w-[1560px]">
+          <header className="mb-4 flex flex-wrap items-end justify-between gap-4 border-l-4 border-blue-500 pl-4">
             <div>
               <Link
                 href={`/jobs?date=${selectedDate}`}
-                className="text-sm font-semibold text-[#176b37] hover:underline"
+                className="text-sm font-semibold text-[#1d4ed8] hover:underline"
               >
                 ← Back to Jobs
               </Link>
@@ -2852,7 +2852,7 @@ function VisitCentrePageContent() {
                     setSelectedJobIds([]);
                     resetSharedForm();
                   }}
-                  className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                  className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#3b82f6] focus:ring-4 focus:ring-blue-100"
                 />
 
                 <button
@@ -2920,7 +2920,7 @@ function VisitCentrePageContent() {
             <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#1d4ed8]">
                     End-of-day workflow
                   </div>
                   <h2 className="mt-1 text-xl font-bold text-slate-950">
@@ -2966,14 +2966,14 @@ function VisitCentrePageContent() {
                 {wholeDayWorkClear ? (
                   <Link
                     href={`/chemical-usage?date=${selectedDate}&workflow=close`}
-                    className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                    className="inline-flex items-center rounded-xl bg-[#1d4ed8] px-5 py-3 text-sm font-bold text-white hover:bg-[#1e40af]"
                   >
                     Next: Check chemical usage →
                   </Link>
                 ) : jobs.length === 0 && routeFilterActive ? (
                   <Link
                     href={`/visit-centre?date=${selectedDate}&workflow=close`}
-                    className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                    className="inline-flex items-center rounded-xl bg-[#1d4ed8] px-5 py-3 text-sm font-bold text-white hover:bg-[#1e40af]"
                   >
                     Continue remaining work →
                   </Link>
@@ -2999,7 +2999,7 @@ function VisitCentrePageContent() {
                 </div>
                 <Link
                   href={`/chemical-usage?date=${selectedDate}&workflow=close`}
-                  className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#125b2f]"
+                  className="inline-flex items-center rounded-xl bg-[#1d4ed8] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#1e40af]"
                 >
                   Next: Check chemical usage →
                 </Link>
@@ -3057,7 +3057,7 @@ function VisitCentrePageContent() {
 
                   <Link
                     href={`/visit-centre?date=${selectedDate}`}
-                    className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                    className="rounded-xl bg-[#1d4ed8] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1e40af]"
                   >
                     Clear route filter
                   </Link>
@@ -3263,7 +3263,7 @@ function VisitCentrePageContent() {
                         {completionResult.outcome === "Completed" && (
                           <Link
                             href={`/documents/${record.treatmentId}`}
-                            className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-semibold text-white hover:bg-[#125b2f]"
+                            className="rounded-lg bg-[#1d4ed8] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1e40af]"
                           >
                             Open document
                           </Link>
@@ -3294,14 +3294,14 @@ function VisitCentrePageContent() {
                 {wholeDayWorkClear ? (
                   <Link
                     href={`/chemical-usage?date=${selectedDate}&workflow=close`}
-                    className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                    className="rounded-xl bg-[#1d4ed8] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#1e40af]"
                   >
                     Next: Check chemical usage →
                   </Link>
                 ) : jobs.length === 0 && routeFilterActive ? (
                   <Link
                     href={`/visit-centre?date=${selectedDate}&workflow=close`}
-                    className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                    className="rounded-xl bg-[#1d4ed8] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#1e40af]"
                   >
                     Continue remaining work →
                   </Link>
@@ -3446,7 +3446,7 @@ function VisitCentrePageContent() {
                                   }
                                   className={`rounded-xl border p-3 text-left transition ${
                                     selected
-                                      ? "border-[#338b45] bg-green-50"
+                                      ? "border-[#3b82f6] bg-green-50"
                                       : "border-slate-200 bg-white hover:bg-slate-50"
                                   }`}
                                 >
@@ -3538,7 +3538,7 @@ function VisitCentrePageContent() {
                                     className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
                                       correctionPercentage ===
                                       percentage
-                                        ? "border-[#176b37] bg-green-50 text-[#176b37]"
+                                        ? "border-[#1d4ed8] bg-green-50 text-[#1d4ed8]"
                                         : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                                     }`}
                                   >
@@ -3739,7 +3739,7 @@ function VisitCentrePageContent() {
                           onClick={
                             applyMissingProductsToCompletedVisits
                           }
-                          className="rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-400"
+                          className="rounded-xl bg-[#1d4ed8] px-5 py-3 text-sm font-bold text-white hover:bg-[#1e40af] disabled:cursor-not-allowed disabled:bg-slate-400"
                         >
                           Apply selected products
                         </button>
@@ -3767,7 +3767,7 @@ function VisitCentrePageContent() {
               <div className="min-w-[260px] flex-1">
                 <div className="h-3 overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full rounded-full bg-[#176b37] transition-all"
+                    className="h-full rounded-full bg-[#1d4ed8] transition-all"
                     style={{
                       width: `${progress}%`,
                     }}
@@ -3798,7 +3798,7 @@ function VisitCentrePageContent() {
                 <button
                   type="button"
                   onClick={prepareCompleteAll}
-                  className="rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#125b2f]"
+                  className="rounded-xl bg-[#1d4ed8] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#1e40af]"
                 >
                   ✓ Complete all remaining
                 </button>
@@ -3874,7 +3874,7 @@ function VisitCentrePageContent() {
                           key={job.id}
                           className={`block cursor-pointer rounded-xl border p-3 transition ${
                             selected
-                              ? "border-[#338b45] bg-green-50"
+                              ? "border-[#3b82f6] bg-green-50"
                               : "border-slate-200 hover:bg-slate-50"
                           }`}
                         >
@@ -3929,7 +3929,7 @@ function VisitCentrePageContent() {
                                 {job.customer.address}, {job.customer.postcode}
                               </div>
 
-                              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#176b37]">
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#1d4ed8]">
                                 <span>
                                   {formatProgrammeTreatmentLabel(job.visit.treatmentName)}
                                 </span>
@@ -4026,7 +4026,7 @@ function VisitCentrePageContent() {
                           onClick={() => setOutcome(option)}
                           className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
                             outcome === option
-                              ? "border-[#176b37] bg-green-50 text-[#176b37]"
+                              ? "border-[#1d4ed8] bg-green-50 text-[#1d4ed8]"
                               : "border-slate-200 hover:bg-slate-50"
                           }`}
                         >
@@ -4072,7 +4072,7 @@ function VisitCentrePageContent() {
                             onClick={() => toggleObservation(observation)}
                             className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
                               active
-                                ? "border-[#176b37] bg-[#176b37] text-white"
+                                ? "border-[#1d4ed8] bg-[#1d4ed8] text-white"
                                 : "border-slate-300 bg-white hover:bg-slate-50"
                             }`}
                           >
@@ -4149,7 +4149,7 @@ function VisitCentrePageContent() {
                                   }
                                   className={`rounded-xl border p-3 text-left transition ${
                                     selected
-                                      ? "border-[#338b45] bg-green-50"
+                                      ? "border-[#3b82f6] bg-green-50"
                                       : "border-slate-200 bg-white hover:bg-slate-50"
                                   }`}
                                 >
@@ -4191,7 +4191,7 @@ function VisitCentrePageContent() {
                           <button
                             type="button"
                             onClick={saveStandardMix}
-                            className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                            className="rounded-xl bg-[#1d4ed8] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#1e40af]"
                           >
                             Save {selectedTreatmentName} mix
                           </button>
@@ -4333,7 +4333,7 @@ function VisitCentrePageContent() {
                                     }
                                     className={`rounded-xl border p-3 text-left transition ${
                                       selected
-                                        ? "border-[#338b45] bg-green-50"
+                                        ? "border-[#3b82f6] bg-green-50"
                                         : "border-slate-200 bg-white hover:bg-slate-50"
                                     }`}
                                   >
@@ -4453,7 +4453,7 @@ function VisitCentrePageContent() {
                                       className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
                                         spotSprayPercentage ===
                                         percentage
-                                          ? "border-[#176b37] bg-green-50 text-[#176b37]"
+                                          ? "border-[#1d4ed8] bg-green-50 text-[#1d4ed8]"
                                           : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                                       }`}
                                     >
@@ -4736,7 +4736,7 @@ function VisitCentrePageContent() {
                       (outcome !== "Completed" &&
                         selectedJobs.length > 1)
                     }
-                    className="rounded-xl bg-[#176b37] px-8 py-3 text-base font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
+                    className="rounded-xl bg-[#1d4ed8] px-8 py-3 text-base font-bold text-white hover:bg-[#1e40af] disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {outcome === "Completed"
                       ? mixedTreatmentSelection
@@ -4907,7 +4907,7 @@ function VisitCentrePageContent() {
                                 </span>
                               </div>
 
-                              <div className="mt-1 text-xs font-semibold text-[#176b37]">
+                              <div className="mt-1 text-xs font-semibold text-[#1d4ed8]">
                                 {formatProgrammeTreatmentLabel(job.visit.treatmentName)}
                                 {customerJobs.length > 1
                                   ? ` · Stop ${stopNumber} · Visit ${visitNumber} of ${customerJobs.length}`
@@ -5084,7 +5084,7 @@ function VisitCentrePageContent() {
                       <button
                         type="button"
                         onClick={() => saveVisits()}
-                        className="rounded-xl bg-[#176b37] px-6 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                        className="rounded-xl bg-[#1d4ed8] px-6 py-3 text-sm font-bold text-white hover:bg-[#1e40af]"
                       >
                         {outcome === "Completed"
                           ? `Complete ${selectedJobs.length} visit${selectedJobs.length === 1 ? "" : "s"}`
@@ -5975,7 +5975,7 @@ function ProductModeOption({
       disabled={disabled}
       className={`rounded-xl border p-4 text-left transition ${
         checked
-          ? "border-[#176b37] bg-green-50"
+          ? "border-[#1d4ed8] bg-green-50"
           : "border-slate-200 bg-white hover:bg-slate-50"
       } disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
     >
@@ -5983,12 +5983,12 @@ function ProductModeOption({
         <span
           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
             checked
-              ? "border-[#176b37]"
+              ? "border-[#1d4ed8]"
               : "border-slate-300"
           }`}
         >
           {checked && (
-            <span className="h-2.5 w-2.5 rounded-full bg-[#176b37]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-[#1d4ed8]" />
           )}
         </span>
 
@@ -6021,7 +6021,7 @@ function ApplicationMethodOption({
     <label
       className={`cursor-pointer rounded-xl border bg-white p-4 transition ${
         checked
-          ? "border-[#338b45] ring-2 ring-green-100"
+          ? "border-[#3b82f6] ring-2 ring-green-100"
           : "border-slate-200 hover:border-green-300"
       }`}
     >
@@ -6098,7 +6098,7 @@ function WorkflowProgressCard({
         state === "done"
           ? "border-green-200 bg-green-50"
           : state === "current"
-            ? "border-[#338b45] bg-green-50"
+            ? "border-[#3b82f6] bg-green-50"
             : state === "next"
               ? "border-blue-200 bg-blue-50"
               : "border-slate-200 bg-slate-50"
@@ -6108,7 +6108,7 @@ function WorkflowProgressCard({
         <span
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
             state === "done" || state === "current"
-              ? "bg-[#176b37] text-white"
+              ? "bg-[#1d4ed8] text-white"
               : state === "next"
                 ? "bg-blue-700 text-white"
                 : "bg-slate-200 text-slate-600"

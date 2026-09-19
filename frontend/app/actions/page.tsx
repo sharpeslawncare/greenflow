@@ -203,11 +203,11 @@ export default function ActionsPage() {
 
   return (
     <AppShell>
-      <main className="min-h-screen bg-slate-50 p-4 md:p-6">
-        <div className="mx-auto max-w-7xl">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <main className="min-h-screen bg-slate-50 p-5 md:p-7">
+        <div className="mx-auto max-w-[1560px]">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4 border-l-4 border-violet-500 pl-4">
             <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#6d28d9]">
                 Customer follow-up
               </div>
               <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
@@ -229,7 +229,7 @@ export default function ActionsPage() {
               <button
                 type="button"
                 onClick={() => setShowNew(true)}
-                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                className="inline-flex h-11 items-center rounded-xl bg-[#6d28d9] px-5 text-sm font-bold text-white hover:bg-[#5b21b6]"
               >
                 + New action
               </button>
@@ -265,9 +265,9 @@ export default function ActionsPage() {
             />
           </section>
 
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="mt-4 rounded-2xl border-2 border-violet-200 bg-white p-4 shadow-sm">
             <div className="mb-4">
-              <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#6d28d9]">
                 Action list
               </div>
               <h2 className="mt-1 text-lg font-bold text-slate-950">
@@ -395,7 +395,7 @@ export default function ActionsPage() {
                         <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                           <Link
                             href={`/customers/${action.customerNumber}`}
-                            className="text-lg font-black text-slate-950 hover:text-[#176b37]"
+                            className="text-lg font-black text-slate-950 hover:text-[#6d28d9]"
                           >
                             {action.customerName ||
                               `Customer ${action.customerNumber}`}
@@ -430,7 +430,7 @@ export default function ActionsPage() {
                                   action.id,
                                 )
                               }
-                              className="rounded-xl bg-[#176b37] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#125b2f]"
+                              className="rounded-xl bg-[#6d28d9] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#5b21b6]"
                             >
                               Complete
                             </button>
@@ -650,7 +650,7 @@ export default function ActionsPage() {
                     !customerNumber ||
                     !note.trim()
                   }
-                  className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="rounded-xl bg-[#6d28d9] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Save action
                 </button>
@@ -664,7 +664,7 @@ export default function ActionsPage() {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#338b45] focus:ring-2 focus:ring-green-100";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#8b5cf6] focus:ring-2 focus:ring-violet-100";
 
 function Field({
   label,

@@ -357,7 +357,7 @@ function DailyCustomerSheetsPageContent() {
               <h1 className="mt-2 text-3xl font-bold">
                 {preparationWorkflow
                   ? "Print Working Day Pack"
-                  : "Customer Sheets"}
+                  : "Print Customer Invoices"}
               </h1>
 
               <p className="mt-1 max-w-3xl text-sm text-slate-500">
@@ -800,6 +800,7 @@ function DailyCustomerSheetsPageContent() {
                       colour={
                         primaryColour
                       }
+                      tone="mowing"
                     />
 
                     <AdvicePanel
@@ -811,6 +812,7 @@ function DailyCustomerSheetsPageContent() {
                       colour={
                         primaryColour
                       }
+                      tone="watering"
                     />
 
                     <AdvicePanel
@@ -822,6 +824,7 @@ function DailyCustomerSheetsPageContent() {
                       colour={
                         primaryColour
                       }
+                      tone="safety"
                     />
                   </div>
                 </div>
@@ -1022,18 +1025,34 @@ function AdvicePanel({
   title,
   detail,
   colour,
+  tone,
 }: {
   title: string;
   detail: string;
   colour: string;
+  tone:
+    | "mowing"
+    | "watering"
+    | "safety";
 }) {
+  const toneClass =
+    tone === "mowing"
+      ? "bg-amber-50/70"
+      : tone === "watering"
+        ? "bg-sky-50/70"
+        : "bg-red-50/60";
+
+  const headingClass =
+    tone === "mowing"
+      ? "text-amber-800"
+      : tone === "watering"
+        ? "text-sky-800"
+        : "text-red-800";
+
   return (
-    <div className="p-[3.5mm]">
+    <div className={`p-[3.5mm] ${toneClass}`}>
       <div
-        className="text-[8.6pt] font-bold uppercase tracking-[0.12em]"
-        style={{
-          color: colour,
-        }}
+        className={`text-[8.6pt] font-bold uppercase tracking-[0.12em] ${headingClass}`}
       >
         {title}
       </div>

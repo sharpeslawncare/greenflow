@@ -33,7 +33,7 @@ type PlannerRow = {
 };
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#d97706] focus:ring-4 focus:ring-amber-100";
 
 export default function AdditionalJobsPlannerPage() {
   const {
@@ -1025,10 +1025,10 @@ export default function AdditionalJobsPlannerPage() {
   return (
     <AppShell>
       <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1750px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="mx-auto max-w-[1560px]">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4 border-l-4 border-amber-400 pl-4">
             <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#b45309]">
                 Additional work
               </div>
               <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
@@ -1054,7 +1054,7 @@ export default function AdditionalJobsPlannerPage() {
                     (current) => !current,
                   )
                 }
-                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                className="inline-flex h-11 items-center rounded-xl bg-[#b45309] px-5 text-sm font-bold text-white hover:bg-[#92400e]"
               >
                 {showBulkCreator
                   ? "Close add jobs"
@@ -1077,10 +1077,10 @@ export default function AdditionalJobsPlannerPage() {
           )}
 
           {showBulkCreator && (
-            <section className="mb-4 rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
+            <section className="mb-4 rounded-2xl border-2 border-amber-200 bg-amber-50 p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">
                     Add additional work
                   </div>
                   <h2 className="mt-1 text-xl font-bold">
@@ -1091,7 +1091,7 @@ export default function AdditionalJobsPlannerPage() {
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-green-200 bg-white px-4 py-3 text-right">
+                <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-right">
                   <div className="text-xs font-semibold text-slate-500">
                     Selected
                   </div>
@@ -1164,7 +1164,7 @@ export default function AdditionalJobsPlannerPage() {
                     bulkCustomerNumbers.length ===
                     0
                   }
-                  className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-400"
+                  className="h-11 rounded-xl bg-[#b45309] px-5 text-sm font-bold text-white hover:bg-[#92400e] disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
                   Add {bulkCustomerNumbers.length || ""} job
                   {bulkCustomerNumbers.length === 1
@@ -1254,7 +1254,7 @@ export default function AdditionalJobsPlannerPage() {
                           className={`rounded-lg px-3 py-2 text-xs font-bold ${
                             bulkCustomerMode ===
                             "scheduled"
-                              ? "bg-[#176b37] text-white"
+                              ? "bg-[#b45309] text-white"
                               : "border border-slate-300 bg-white hover:bg-slate-50"
                           }`}
                         >
@@ -1277,7 +1277,7 @@ export default function AdditionalJobsPlannerPage() {
                           className={`rounded-lg px-3 py-2 text-xs font-bold ${
                             bulkCustomerMode ===
                             "all"
-                              ? "bg-[#176b37] text-white"
+                              ? "bg-[#b45309] text-white"
                               : "border border-slate-300 bg-white hover:bg-slate-50"
                           }`}
                         >
@@ -1360,7 +1360,7 @@ export default function AdditionalJobsPlannerPage() {
                               }
                               className="h-4 w-4"
                             />
-                            <span className="font-bold text-[#176b37]">
+                            <span className="font-bold text-[#b45309]">
                               {customer.customerNumber}
                             </span>
                             <span>
@@ -1503,7 +1503,7 @@ export default function AdditionalJobsPlannerPage() {
                       }
                       className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${
                         activeTab === tab
-                          ? "bg-[#176b37] text-white"
+                          ? "bg-[#b45309] text-white"
                           : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
@@ -1714,7 +1714,7 @@ export default function AdditionalJobsPlannerPage() {
                             0 ||
                           !workingDate
                         }
-                        className="whitespace-nowrap rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-400"
+                        className="whitespace-nowrap rounded-xl bg-[#b45309] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#92400e] disabled:cursor-not-allowed disabled:bg-slate-400"
                       >
                         {activeTab ===
                         "Scheduled"
@@ -1880,7 +1880,7 @@ function PlannerRowView({
 
       <Link
         href={`/customers/${customer.customerNumber}`}
-        className="font-bold text-[#176b37] hover:underline"
+        className="font-bold text-[#b45309] hover:underline"
       >
         {customer.customerNumber}
       </Link>
@@ -1954,7 +1954,7 @@ function PlannerRowView({
 
       <Link
         href={`/customers/${customer.customerNumber}?tab=additionalJobs`}
-        className="w-fit rounded-lg border border-[#338b45] px-3 py-2 text-xs font-semibold text-[#176b37] hover:bg-green-50"
+        className="w-fit rounded-lg border border-[#d97706] px-3 py-2 text-xs font-semibold text-[#b45309] hover:bg-green-50"
       >
         View account
       </Link>
