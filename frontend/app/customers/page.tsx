@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   type ChangeEvent,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
   useMemo,
@@ -940,17 +941,24 @@ export default function CustomersPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1750px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
                 Customer accounts
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Customers
               </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 Find a customer quickly, open their account and keep the core contact, property and programme details accurate.
               </p>
             </div>
@@ -1049,7 +1057,7 @@ export default function CustomersPage() {
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                 Customer list
               </div>
-              <h2 className="mt-1 text-lg font-bold text-slate-950">
+              <h2 className="gf-h2 mt-1">
                 Find an account
               </h2>
               <p className="mt-1 text-sm text-slate-500">

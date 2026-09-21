@@ -168,9 +168,11 @@ export default function VisitCentrePage() {
     <Suspense
       fallback={
         <AppShell>
-          <main className="p-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-              Loading Visit Centre...
+          <main className="gf-page">
+            <div className="gf-page-inner">
+              <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+                Loading Visit Centre...
+              </div>
             </div>
           </main>
         </AppShell>
@@ -1223,9 +1225,11 @@ function VisitCentrePageContent() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading Visit Centre...
+        <main className="gf-page">
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading Visit Centre...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -2820,26 +2824,28 @@ function VisitCentrePageContent() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1560px]">
-          <header className="mb-4 flex flex-wrap items-end justify-between gap-4 border-l-4 border-blue-500 pl-4">
+      <main className="gf-page gf-theme-visit">
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
             <div>
-              <Link
-                href={`/jobs?date=${selectedDate}`}
-                className="text-sm font-semibold text-[#1d4ed8] hover:underline"
-              >
-                ← Back to Jobs
-              </Link>
+              <div className="gf-eyebrow">Run the day</div>
 
-              <h1 className="mt-2 text-3xl font-bold">
+              <h1 className="gf-h1">
                 Visit Centre
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              <p className="gf-page-description">
                 Select one or several customers, choose the products used once,
                 and create an individual treatment record and invoice for every
                 selected visit.
               </p>
+
+              <Link
+                href={`/jobs?date=${selectedDate}`}
+                className="mt-2 inline-flex text-sm font-semibold text-[#1d4ed8] hover:underline"
+              >
+                ← Back to Jobs
+              </Link>
             </div>
 
             <Field label="Working date">

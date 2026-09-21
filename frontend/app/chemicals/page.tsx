@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
   useEffect,
@@ -869,9 +870,18 @@ export default function ChemicalsPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading chemical database...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#b42318",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading chemical database...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -880,17 +890,24 @@ export default function ChemicalsPage() {
 
   return (
     <AppShell>
-      <main className="bg-slate-50/50 p-4 md:p-6">
-        <div className="mx-auto max-w-[1500px]">
-          <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
-                Products & stock
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#b42318",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                Chemicals & Stock
               </div>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Chemical Centre
               </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 Keep the product library accurate, see the stock position at a glance and maintain the application settings used by Visit Centre.
               </p>
             </div>
@@ -905,7 +922,7 @@ export default function ChemicalsPage() {
               <button
                 type="button"
                 onClick={createChemical}
-                className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                className="rounded-xl bg-[#b42318] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#8f1d14]"
               >
                 + Add product
               </button>
@@ -918,7 +935,7 @@ export default function ChemicalsPage() {
               className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
                 messageTone === "error"
                   ? "border-red-200 bg-red-50 text-red-800"
-                  : "border-green-200 bg-green-50 text-green-800"
+                  : "border-green-200 bg-red-50 text-green-800"
               }`}
             >
               {message}
@@ -928,10 +945,10 @@ export default function ChemicalsPage() {
           <section className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
             <aside className="self-start rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-4">
               <div className="mb-4">
-                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#b42318]">
                   Product library
                 </div>
-                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                <h2 className="gf-h2 mt-1">
                   Products
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -1043,7 +1060,7 @@ export default function ChemicalsPage() {
                           }
                           className={`w-full rounded-xl border p-4 text-left transition ${
                             isSelected
-                              ? "border-[#338b45] bg-green-50"
+                              ? "border-[#dc6b62] bg-red-50"
                               : "border-slate-200 hover:bg-slate-50"
                           }`}
                         >
@@ -1120,7 +1137,7 @@ export default function ChemicalsPage() {
             <section className="min-w-0">
               {!selectedChemical ? (
                 <article className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
-                  <h2 className="text-xl font-bold">
+                  <h2 className="gf-h2">
                     Select or add a
                     chemical
                   </h2>
@@ -1181,14 +1198,14 @@ export default function ChemicalsPage() {
 
   <Link
     href={`/chemicals/${selectedChemical.id}`}
-    className="inline-flex items-center justify-center rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+    className="inline-flex items-center justify-center rounded-xl border border-[#dc6b62] bg-white px-4 py-2.5 text-sm font-semibold text-[#b42318] hover:bg-red-50"
   >
     View chemical sheet
   </Link>
 
   <button
     type="submit"
-    className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+    className="rounded-xl bg-[#b42318] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#8f1d14]"
   >
     Save chemical
   </button>
@@ -1315,7 +1332,7 @@ export default function ChemicalsPage() {
                           </select>
 
                           {addingProductType && (
-                            <div className="mt-2 rounded-xl border border-green-200 bg-green-50 p-3">
+                            <div className="mt-2 rounded-xl border border-green-200 bg-red-50 p-3">
                               <div className="text-xs font-bold text-green-900">
                                 New product type
                               </div>
@@ -1349,7 +1366,7 @@ export default function ChemicalsPage() {
                                 <button
                                   type="button"
                                   onClick={saveCustomProductType}
-                                  className="rounded-xl bg-[#176b37] px-4 py-2 text-sm font-bold text-white hover:bg-[#125b2f]"
+                                  className="rounded-xl bg-[#b42318] px-4 py-2 text-sm font-bold text-white hover:bg-[#8f1d14]"
                                 >
                                   Save type
                                 </button>
@@ -1574,7 +1591,7 @@ export default function ChemicalsPage() {
                               <button
                                 type="button"
                                 onClick={saveEnteredStock}
-                                className="rounded-xl bg-[#176b37] px-4 py-2 text-sm font-bold text-white hover:bg-[#125b2f]"
+                                className="rounded-xl bg-[#b42318] px-4 py-2 text-sm font-bold text-white hover:bg-[#8f1d14]"
                               >
                                 Save stock
                               </button>
@@ -1638,7 +1655,7 @@ export default function ChemicalsPage() {
                                 <button
                                   type="button"
                                   onClick={saveStockReview}
-                                  className="rounded-xl bg-[#176b37] px-4 py-2 text-sm font-bold text-white hover:bg-[#125b2f]"
+                                  className="rounded-xl bg-[#b42318] px-4 py-2 text-sm font-bold text-white hover:bg-[#8f1d14]"
                                 >
                                   Update stock
                                 </button>
@@ -2217,7 +2234,7 @@ export default function ChemicalsPage() {
 
                     <button
                       type="submit"
-                      className="rounded-xl bg-[#176b37] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                      className="rounded-xl bg-[#b42318] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#8f1d14]"
                     >
                       Save all changes
                     </button>
@@ -2475,7 +2492,7 @@ function formatDateTime(
 }
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 focus:border-[#dc6b62] focus:ring-4 focus:ring-red-100";
 
 function Panel({
   children,
@@ -2541,7 +2558,7 @@ function ExternalLinkField({
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center rounded-xl border border-green-300 bg-green-50 px-4 py-2 text-sm font-bold text-green-800 hover:bg-green-100"
+            className="inline-flex items-center justify-center rounded-xl border border-green-300 bg-red-50 px-4 py-2 text-sm font-bold text-green-800 hover:bg-green-100"
           >
             {buttonLabel}
           </a>
@@ -2691,7 +2708,7 @@ function SummaryCard({
         className={`mb-3 h-1.5 w-10 rounded-full ${
           warning
             ? "bg-red-500"
-            : "bg-[#338b45]"
+            : "bg-[#dc6b62]"
         }`}
       />
 

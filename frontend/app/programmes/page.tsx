@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   type ReactNode,
   useEffect,
   useMemo,
@@ -626,9 +627,18 @@ export default function ProgrammesPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading annual programmes...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading annual programmes...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -637,19 +647,26 @@ export default function ProgrammesPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1650px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
                 Customer programmes
               </div>
 
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Annual Programmes
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 Review each customer's T1–T5 programme cycle. Standard dates come from their group calendar, with individual date changes kept as clear exceptions.
               </p>
             </div>
@@ -794,7 +811,7 @@ export default function ProgrammesPage() {
                   <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                     Customer list
                   </div>
-                  <h2 className="mt-1 text-lg font-bold text-slate-950">
+                  <h2 className="gf-h2 mt-1">
                     Find an account
                   </h2>
                   <p className="mt-1 text-sm leading-5 text-slate-500">

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   type ChangeEvent,
   type ReactNode,
   useEffect,
@@ -784,9 +785,18 @@ export default function SettingsPage() {
   ) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading business settings...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading business settings...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -795,17 +805,24 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1500px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
                 GreenFlow setup
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Settings
               </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 Manage the business details and wording used every day. Backup, diagnostics and reset tools are available when you need them, without getting in the way of normal setup.
               </p>
             </div>
@@ -852,7 +869,7 @@ export default function SettingsPage() {
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                 Settings area
               </div>
-              <h2 className="mt-1 text-lg font-bold text-slate-950">
+              <h2 className="gf-h2 mt-1">
                 Choose what you want to change
               </h2>
               <p className="mt-1 text-sm text-slate-500">

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  type CSSProperties,
   type ReactNode,
   Suspense,
   useMemo,
@@ -34,9 +35,18 @@ export default function TreatmentsPage() {
     <Suspense
       fallback={
         <AppShell>
-          <main className="p-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-              Loading treatment records...
+          <main
+            className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+          >
+            <div className="gf-page-inner">
+              <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+                Loading treatment records...
+              </div>
             </div>
           </main>
         </AppShell>
@@ -239,9 +249,18 @@ function TreatmentsPageContent() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading treatment records...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading treatment records...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -312,19 +331,26 @@ function TreatmentsPageContent() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1650px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
                 Treatment history
               </div>
 
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Treatment Records
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 The internal record of completed treatments and visit outcomes, including application details, invoices and rescheduling history.
               </p>
             </div>
@@ -457,7 +483,7 @@ function TreatmentsPageContent() {
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                 Record search
               </div>
-              <h2 className="mt-1 text-lg font-bold text-slate-950">
+              <h2 className="gf-h2 mt-1">
                 Find a treatment record
               </h2>
               <p className="mt-1 text-sm leading-5 text-slate-500">
@@ -520,7 +546,7 @@ function TreatmentsPageContent() {
                 <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                   Treatment history
                 </div>
-                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                <h2 className="gf-h2 mt-1">
                   {filteredTreatments.length} matching record{filteredTreatments.length === 1 ? "" : "s"}
                 </h2>
               </div>
@@ -651,7 +677,7 @@ function TreatmentsPageContent() {
                       <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                         Selected record
                       </div>
-                      <h2 className="mt-1 text-xl font-bold text-slate-950">
+                      <h2 className="gf-h2 mt-1">
                         Treatment detail
                       </h2>
 
@@ -1213,7 +1239,7 @@ function Section({
 }) {
   return (
     <section className="rounded-xl border border-slate-200 p-4">
-      <h3 className="font-bold">
+      <h3 className="gf-h3">
         {title}
       </h3>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useChemicalStore } from "@/components/chemical-store";
@@ -97,9 +97,18 @@ export default function SeasonManagementPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading season management...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading season management...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -159,25 +168,38 @@ export default function SeasonManagementPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1250px]">
-          <header className="mb-5">
-            <Link
-              href="/settings"
-              className="text-sm font-semibold text-[#176b37] hover:underline"
-            >
-              ← Business Settings
-            </Link>
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                GreenFlow setup
+              </div>
 
-            <h1 className="mt-2 text-3xl font-bold">
-              Season Management
-            </h1>
+              <h1 className="gf-h1">
+                Season Management
+              </h1>
 
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Start a fresh treatment season while preserving customers,
-              programme dates, chemical products, live stock quantities, the
-              shared stock movement history, fleet and business settings.
-            </p>
+              <p className="gf-page-description">
+                Start a fresh treatment season while preserving customers,
+                programme dates, chemical products, live stock quantities, the
+                shared stock movement history, fleet and business settings.
+              </p>
+
+              <Link
+                href="/settings"
+                className="mt-2 inline-flex text-sm font-semibold text-slate-600 hover:text-slate-950 hover:underline"
+              >
+                ← Business Settings
+              </Link>
+            </div>
           </header>
 
           {message && (
@@ -232,7 +254,7 @@ export default function SeasonManagementPage() {
                 This operation removes
               </div>
 
-              <h2 className="mt-2 text-xl font-bold">
+              <h2 className="gf-h2 mt-2">
                 Operational history
               </h2>
 
@@ -277,7 +299,7 @@ export default function SeasonManagementPage() {
                 This operation preserves
               </div>
 
-              <h2 className="mt-2 text-xl font-bold">
+              <h2 className="gf-h2 mt-2">
                 Master business data
               </h2>
 
@@ -355,7 +377,7 @@ export default function SeasonManagementPage() {
                 Final confirmation
               </div>
 
-              <h2 className="mt-2 text-xl font-bold text-amber-950">
+              <h2 className="gf-h2 mt-2 text-amber-950">
                 Type the confirmation phrase
               </h2>
 
@@ -395,7 +417,7 @@ export default function SeasonManagementPage() {
 
           {completed && (
             <section className="mt-5 rounded-2xl border border-green-300 bg-green-50 p-5">
-              <h2 className="text-xl font-bold text-green-950">
+              <h2 className="gf-h2 text-green-950">
                 Clean operational state created
               </h2>
 

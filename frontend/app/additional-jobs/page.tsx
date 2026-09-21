@@ -629,9 +629,11 @@ export default function AdditionalJobsPlannerPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+        <main className="gf-page gf-theme-additional">
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
             Loading additional jobs...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -1024,17 +1026,17 @@ export default function AdditionalJobsPlannerPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1560px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4 border-l-4 border-amber-400 pl-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#b45309]">
-                Additional work
+      <main className="gf-page gf-theme-additional">
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                Add some work
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Additional Jobs
               </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 Keep extra lawn work separate from the five-treatment programme, then schedule it into a working day when you are ready.
               </p>
             </div>

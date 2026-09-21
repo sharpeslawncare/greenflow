@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
   useEffect,
@@ -54,7 +55,7 @@ const METADATA_STORAGE_KEY =
   "greenflow-stock-metadata-v2";
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#dc6b62] focus:ring-4 focus:ring-red-100";
 
 export default function StockPage() {
   const {
@@ -852,9 +853,18 @@ export default function StockPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-slate-500">
-            Loading stock...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#b42318",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-slate-500">
+              Loading stock...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -886,17 +896,24 @@ export default function StockPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
-                Chemical stock
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#b42318",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                Chemicals & Stock
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Stock & Purchasing
               </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 See what is on hand, record deliveries and stock counts, and keep purchasing decisions tied to the same live Chemical Store used by Visit Centre.
               </p>
             </div>
@@ -915,7 +932,7 @@ export default function StockPage() {
                   setProductForm(createEmptyProductForm());
                   setShowProductForm(true);
                 }}
-                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                className="inline-flex h-11 items-center rounded-xl bg-[#b42318] px-5 text-sm font-bold text-white hover:bg-[#8f1d14]"
               >
                 + Add product
               </button>
@@ -1064,10 +1081,10 @@ export default function StockPage() {
             <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 p-4">
                 <div className="mb-3">
-                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#b42318]">
                     Product stock
                   </div>
-                  <h2 className="mt-1 text-lg font-bold text-slate-950">
+                  <h2 className="gf-h2 mt-1">
                     Choose a product
                   </h2>
                 </div>
@@ -1110,7 +1127,7 @@ export default function StockPage() {
                           className={`w-full border-b border-slate-100 px-4 py-4 text-left transition last:border-0 ${
                             selectedChemical?.id ===
                             chemical.id
-                              ? "bg-green-50"
+                              ? "bg-red-50"
                               : "hover:bg-slate-50"
                           }`}
                         >
@@ -1164,7 +1181,7 @@ export default function StockPage() {
                 <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                      <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#b42318]">
                         Live Chemical Store
                       </div>
 
@@ -1200,7 +1217,7 @@ export default function StockPage() {
                             "Delivery",
                           )
                         }
-                        className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                        className="rounded-xl bg-[#b42318] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#8f1d14]"
                       >
                         Add delivery
                       </button>
@@ -1364,7 +1381,7 @@ export default function StockPage() {
                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                       Product setup
                     </div>
-                    <h2 className="mt-1 text-lg font-bold">
+                    <h2 className="gf-h2 mt-1">
                       Stock settings
                     </h2>
 
@@ -1557,7 +1574,7 @@ export default function StockPage() {
                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                       Purchasing
                     </div>
-                    <h2 className="mt-1 text-lg font-bold">
+                    <h2 className="gf-h2 mt-1">
                       Suggested purchase
                     </h2>
 
@@ -1598,7 +1615,7 @@ export default function StockPage() {
                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                       Audit trail
                     </div>
-                    <h2 className="mt-1 text-lg font-bold">
+                    <h2 className="gf-h2 mt-1">
                       Stock movement history
                     </h2>
 
@@ -1876,7 +1893,7 @@ export default function StockPage() {
 
                   <button
                     type="submit"
-                    className="rounded-xl bg-[#176b37] px-5 py-3 font-semibold text-white hover:bg-[#125b2f]"
+                    className="rounded-xl bg-[#b42318] px-5 py-3 font-semibold text-white hover:bg-[#8f1d14]"
                   >
                     Save movement
                   </button>
@@ -2142,7 +2159,7 @@ export default function StockPage() {
 
                 <button
                   type="submit"
-                  className="rounded-xl bg-[#176b37] px-5 py-3 font-semibold text-white hover:bg-[#125b2f]"
+                  className="rounded-xl bg-[#b42318] px-5 py-3 font-semibold text-white hover:bg-[#8f1d14]"
                 >
                   Save product
                 </button>

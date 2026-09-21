@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
@@ -277,9 +277,18 @@ export default function CapacityPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading working day capacity...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading working day capacity...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -288,19 +297,26 @@ export default function CapacityPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-[#176b37]">
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
                 Operations
-              </p>
+              </div>
 
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+              <h1 className="gf-h1">
                 Working Day Capacity
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              <p className="gf-page-description">
                 See programme visits and additional jobs
                 together before arranging the day&apos;s
                 routes.
@@ -392,7 +408,7 @@ export default function CapacityPage() {
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold">
+                <h2 className="gf-h2">
                   21-day planning window
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
@@ -572,7 +588,7 @@ export default function CapacityPage() {
                               <div className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-700">
                                 Van balance
                               </div>
-                              <h3 className="mt-1 font-bold text-slate-950">
+                              <h3 className="gf-h3 mt-1">
                                 {formatDateWithDay(
                                   day.date,
                                 )}

@@ -38,9 +38,11 @@ export default function JobsPage() {
     <Suspense
       fallback={
         <AppShell>
-          <main className="p-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-              Loading scheduled jobs...
+          <main className="gf-page">
+            <div className="gf-page-inner">
+              <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+                Loading scheduled jobs...
+              </div>
             </div>
           </main>
         </AppShell>
@@ -485,10 +487,12 @@ function JobsPageContent() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading Today&apos;s
-            Jobs...
+        <main className="gf-page">
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading Today&apos;s
+              Jobs...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -573,17 +577,13 @@ function JobsPageContent() {
         }
       `}</style>
 
-      <main className="jobs-screen p-5 md:p-7">
-        <div className="mx-auto max-w-[1560px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4 border-l-4 border-green-500 pl-4">
+      <main className="jobs-screen gf-page gf-theme-schedule">
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
             <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
-                Schedule
-              </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-                Jobs
-              </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <div className="gf-eyebrow">Plan the day</div>
+              <h1 className="gf-h1">Schedule</h1>
+              <p className="gf-page-description">
                 Review the selected working day in saved route order, then move into route planning or Visit Centre.
               </p>
             </div>
@@ -658,7 +658,7 @@ function JobsPageContent() {
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
                   Working day
                 </div>
-                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                <h2 className="gf-h2 mt-1">
                   Review the day
                 </h2>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
@@ -761,7 +761,7 @@ function JobsPageContent() {
                     scheduledJobs.length === 0 ? "pointer-events-none opacity-50" : ""
                   }`}
                 >
-                  Customer reminders
+                  Customer Reminders
                 </Link>
                 <Link
                   href="/additional-jobs"
@@ -783,7 +783,7 @@ function JobsPageContent() {
                   <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
                     Requires attention
                   </div>
-                  <h2 className="mt-1 text-xl font-bold text-amber-950">
+                  <h2 className="gf-h2 mt-1 text-amber-950">
                     Visits needing rescheduling
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-900">
@@ -1120,7 +1120,7 @@ function JobsPageContent() {
                 <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                   Route-ordered schedule
                 </div>
-                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                <h2 className="gf-h2 mt-1">
                   Daily workload
                 </h2>
 

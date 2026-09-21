@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Suspense,
+  type CSSProperties,
   type ReactNode,
   useMemo,
   useState,
@@ -27,9 +28,18 @@ export default function DocumentsPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-6 text-slate-500">
-          Loading documents...
-        </div>
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner text-slate-500">
+            Loading documents...
+          </div>
+        </main>
       }
     >
       <DocumentsPageContent />
@@ -204,9 +214,18 @@ function DocumentsPageContent() {
   if (!customersReady || !treatmentsReady) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading GreenFlow documents...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading GreenFlow documents...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -223,19 +242,26 @@ function DocumentsPageContent() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1750px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
                 Customer paperwork
               </div>
 
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Documents
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 {selectedCustomer
                   ? `Reports, invoices and visit records for ${selectedCustomer.fullName}.`
                   : "Find completed treatment reports, invoices and visit-outcome records for programme work and Additional Jobs."}
@@ -336,7 +362,7 @@ function DocumentsPageContent() {
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                 Document search
               </div>
-              <h2 className="mt-1 text-lg font-bold text-slate-950">
+              <h2 className="gf-h2 mt-1">
                 Find customer paperwork
               </h2>
               <p className="mt-1 text-sm leading-5 text-slate-500">
@@ -450,7 +476,7 @@ function DocumentsPageContent() {
                 <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
                   Document library
                 </div>
-                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                <h2 className="gf-h2 mt-1">
                   {filteredTreatments.length} document{filteredTreatments.length === 1 ? "" : "s"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">

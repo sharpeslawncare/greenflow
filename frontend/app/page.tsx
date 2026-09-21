@@ -1371,10 +1371,12 @@ export default function DashboardPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading GreenFlow
-            dashboard...
+        <main className="gf-page">
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading GreenFlow
+              dashboard...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -1383,17 +1385,13 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <main className="bg-slate-50/40 p-5 md:p-7">
-        <div className="mx-auto max-w-[1560px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <main className="gf-page">
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
             <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
-                Sharpes Lawn Care
-              </div>
-              <h1 className="mt-1 text-3xl font-black tracking-[-0.02em] text-slate-950">
-                Dashboard
-              </h1>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              <div className="gf-eyebrow">Sharpes Lawn Care</div>
+              <h1 className="gf-h1">Dashboard</h1>
+              <p className="gf-page-description">
                 Your working day, customer follow-up and next preparation steps in one place.
               </p>
             </div>
@@ -1460,7 +1458,7 @@ export default function DashboardPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">Selected working day</div>
-                <h2 className="mt-1 text-xl font-bold text-slate-950">{formatDateWithDay(selectedDate)}</h2>
+                <h2 className="gf-h2 mt-1">{formatDateWithDay(selectedDate)}</h2>
                 <p className="mt-1 text-sm leading-6 text-slate-600">A quick position only. Use Schedule to plan it or Visit Centre to work through it.</p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1487,7 +1485,7 @@ export default function DashboardPage() {
               </div>
               <div className="mt-2 flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-black text-slate-950">Schedule</h2>
+                  <h2 className="gf-h2">Schedule</h2>
                   <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
                     Review the selected day, check the jobs and route, prepare access contacts and print the day&apos;s paperwork.
                   </p>
@@ -1512,7 +1510,7 @@ export default function DashboardPage() {
               </div>
               <div className="mt-2 flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-black text-slate-950">Visit Centre</h2>
+                  <h2 className="gf-h2">Visit Centre</h2>
                   <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
                     Complete the work, deal with exceptions, confirm chemical usage and move through the end-of-day workflow.
                   </p>
@@ -1541,7 +1539,7 @@ export default function DashboardPage() {
               </div>
               <div className="mt-2 flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-black text-slate-950">Additional Job</h2>
+                  <h2 className="gf-h2">Additional Jobs</h2>
                   <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
                     A customer asks for extra work? Add it now and either schedule it or leave it waiting for a working date.
                   </p>
@@ -1567,7 +1565,7 @@ export default function DashboardPage() {
               </div>
               <div className="mt-2 flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-black text-slate-950">Action Centre</h2>
+                  <h2 className="gf-h2">Action Centre</h2>
                   <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
                     Need to call someone back or follow something up? Add an action so it does not get forgotten.
                   </p>
@@ -1603,7 +1601,7 @@ export default function DashboardPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">Dashboard</div>
-                <h2 className="mt-1 text-xl font-bold text-slate-950">Needs attention</h2>
+                <h2 className="gf-h2 mt-1">Needs attention</h2>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
                   Only the items GreenFlow thinks need action or preparation. Routine working-day tasks stay in Schedule and Visit Centre.
                 </p>

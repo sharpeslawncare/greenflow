@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Suspense,
+  type CSSProperties,
   type ReactNode,
   useEffect,
   useMemo,
@@ -1093,9 +1094,18 @@ function RoutesPageContent() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading groups and routes...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading groups and routes...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -1104,22 +1114,26 @@ function RoutesPageContent() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1650px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-[#176b37] hover:underline"
-              >
-                ← Dashboard
-              </Link>
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                Work planning
+              </div>
 
-              <h1 className="mt-2 text-3xl font-bold">
+              <h1 className="gf-h1">
                 Groups & Routes
               </h1>
 
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              <p className="gf-page-description">
                 Route workload is derived from the
                 shared Season Calendar, customer
                 group assignments, vans and
@@ -1237,7 +1251,7 @@ function RoutesPageContent() {
                   <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
                     Prepare the working day
                   </div>
-                  <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  <h2 className="gf-h2 mt-1">
                     Step 2 of 3 · Check route
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
@@ -1284,7 +1298,7 @@ function RoutesPageContent() {
                   Working day workflow
                 </div>
 
-                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                <h2 className="gf-h2 mt-1">
                   {formatDateWithDay(selectedDate)}
                 </h2>
 
@@ -1463,7 +1477,7 @@ function RoutesPageContent() {
           <section className="mt-4">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 className="text-xl font-bold">
+                <h2 className="gf-h2">
                   Daily Route Board
                 </h2>
 
@@ -1768,7 +1782,7 @@ function RoutesPageContent() {
 
           <section className="mt-4 grid gap-4 xl:grid-cols-[350px_1fr]">
             <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="font-bold">
+              <h2 className="gf-h2">
                 Customer groups
               </h2>
 
@@ -1871,7 +1885,7 @@ function RoutesPageContent() {
               <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-bold">
+                    <h2 className="gf-h2">
                       Group {selectedGroup}
                     </h2>
 

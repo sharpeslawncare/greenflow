@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   useEffect,
   useMemo,
   useState,
@@ -887,9 +888,18 @@ export default function CommunicationsPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading communications...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading communications...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -910,25 +920,26 @@ export default function CommunicationsPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1600px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-4">
-              <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-green-200 bg-green-50 text-xl font-black text-[#176b37] sm:flex">
-                ✉
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                Customer communications
               </div>
-
-              <div className="min-w-0">
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
-                  Customer communications
-                </div>
-                <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-                  Contact customers
-                </h1>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                  Get in touch with customers scheduled for this working day, confirm access and keep everyone informed.
-                </p>
-              </div>
+              <h1 className="gf-h1">
+                Contact customers
+              </h1>
+              <p className="gf-page-description">
+                Get in touch with customers scheduled for this working day, confirm access and keep everyone informed.
+              </p>
             </div>
 
             <div className="flex flex-wrap items-end gap-2">
@@ -1049,7 +1060,7 @@ export default function CommunicationsPage() {
                 </div>
 
                 <div>
-                  <h2 className="text-lg font-bold text-slate-950">
+                  <h2 className="gf-h2">
                     Access contact required
                   </h2>
                   <p className="mt-0.5 text-sm text-slate-600">
@@ -1248,7 +1259,7 @@ export default function CommunicationsPage() {
                 </div>
 
                 <div>
-                  <h2 className="text-lg font-bold text-slate-950">
+                  <h2 className="gf-h2">
                     Contact everyone on this working day
                   </h2>
                   <p className="mt-0.5 text-sm leading-6 text-slate-600">
@@ -1397,7 +1408,7 @@ export default function CommunicationsPage() {
                 </div>
 
                 <div>
-                  <h2 className="text-lg font-bold text-slate-950">
+                  <h2 className="gf-h2">
                     Messages for this day
                   </h2>
                   <p className="mt-0.5 text-sm leading-6 text-slate-500">

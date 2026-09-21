@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   type ChangeEvent,
   useEffect,
   useMemo,
@@ -402,9 +403,18 @@ export default function DeveloperSettingsPage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading Developer Tools...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading Developer Tools...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -413,24 +423,37 @@ export default function DeveloperSettingsPage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1150px]">
-          <header className="mb-5">
-            <Link
-              href="/settings"
-              className="text-sm font-semibold text-[#176b37] hover:underline"
-            >
-              ← Back to Settings
-            </Link>
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#475569",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                GreenFlow setup
+              </div>
 
-            <h1 className="mt-2 text-3xl font-bold">
-              Developer Tools
-            </h1>
+              <h1 className="gf-h1">
+                Developer Tools
+              </h1>
 
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Reset operational test data safely or, when absolutely necessary,
-              clear all browser-stored GreenFlow data.
-            </p>
+              <p className="gf-page-description">
+                Reset operational test data safely or, when absolutely necessary,
+                clear all browser-stored GreenFlow data.
+              </p>
+
+              <Link
+                href="/settings"
+                className="mt-2 inline-flex text-sm font-semibold text-slate-600 hover:text-slate-950 hover:underline"
+              >
+                ← Back to Settings
+              </Link>
+            </div>
           </header>
 
           {message && (
@@ -446,7 +469,7 @@ export default function DeveloperSettingsPage() {
                   Recommended testing tool
                 </div>
 
-                <h2 className="mt-2 text-2xl font-bold text-green-950">
+                <h2 className="gf-h2 mt-2 text-green-950">
                   Reset Demo Working Data
                 </h2>
 
@@ -545,7 +568,7 @@ export default function DeveloperSettingsPage() {
           <section className="mt-5 rounded-2xl border border-red-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-red-800">
+                <h2 className="gf-h2 text-red-800">
                   Reset all GreenFlow data
                 </h2>
 
@@ -603,7 +626,7 @@ export default function DeveloperSettingsPage() {
           </section>
 
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold">
+            <h2 className="gf-h2">
               Data currently stored
             </h2>
 

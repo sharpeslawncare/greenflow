@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   type ReactNode,
   useEffect,
   useMemo,
@@ -109,7 +110,7 @@ const TEST_DAY_NOTE =
   "TEST DAY · Stock not deducted";
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#dc6b62] focus:ring-4 focus:ring-red-100";
 
 export default function ChemicalUsagePage() {
   const {
@@ -962,9 +963,18 @@ export default function ChemicalUsagePage() {
   if (!ready) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-            Loading chemical usage...
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#b42318",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+              Loading chemical usage...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -1492,37 +1502,48 @@ export default function ChemicalUsagePage() {
 
   return (
     <AppShell>
-      <main className="p-5 md:p-7">
-        <div className="mx-auto max-w-[1700px]">
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div>
+      <main
+        className="gf-page"
+        style={
+          {
+            "--gf-page-accent": "#b42318",
+          } as CSSProperties
+        }
+      >
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                Chemicals & Stock
+              </div>
+
+              <h1 className="gf-h1">
+                Daily Chemical Usage
+              </h1>
+
+              <p className="gf-page-description">
+                Review every fertiliser, herbicide,
+                wetting agent, seaweed and additional
+                product recorded through completed
+                visits.
+              </p>
+
               <Link
                 href={
                   dateFrom === dateTo
                     ? `/?date=${dateFrom}`
                     : "/"
                 }
-                className="text-sm font-semibold text-[#176b37] hover:underline"
+                className="mt-2 inline-flex text-sm font-semibold text-slate-600 hover:text-slate-950 hover:underline"
               >
                 ← Dashboard
               </Link>
-
-              <h1 className="mt-2 text-3xl font-bold">
-                Chemical Usage
-              </h1>
-
-              <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                Review every fertiliser, herbicide,
-                wetting agent, seaweed and additional
-                product recorded through completed
-                visits.
-              </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/chemicals"
-                className="inline-flex h-11 items-center rounded-xl border border-[#338b45] bg-white px-5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                className="inline-flex h-11 items-center rounded-xl border border-[#dc6b62] bg-white px-5 text-sm font-semibold text-[#b42318] hover:bg-red-50"
               >
                 Chemical Centre
               </Link>
@@ -1530,7 +1551,7 @@ export default function ChemicalUsagePage() {
               <button
                 type="button"
                 onClick={exportCsv}
-                className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                className="h-11 rounded-xl bg-[#b42318] px-5 text-sm font-semibold text-white hover:bg-[#8f1d14]"
               >
                 Export CSV
               </button>
@@ -1555,7 +1576,7 @@ export default function ChemicalUsagePage() {
             <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#b42318]">
                     End-of-day workflow
                   </div>
                   <h2 className="mt-1 text-xl font-bold text-slate-950">
@@ -1601,7 +1622,7 @@ export default function ChemicalUsagePage() {
                   <button
                     type="button"
                     onClick={continueToQuickBooks}
-                    className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+                    className="inline-flex items-center rounded-xl bg-[#b42318] px-5 py-3 text-sm font-bold text-white hover:bg-[#8f1d14]"
                   >
                     Check complete · Next: QuickBooks →
                   </button>
@@ -1767,7 +1788,7 @@ export default function ChemicalUsagePage() {
           <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4">
               <div>
-                <h2 className="text-lg font-bold">
+                <h2 className="gf-h2">
                   Stock reconciliation
                 </h2>
 
@@ -1918,7 +1939,7 @@ export default function ChemicalUsagePage() {
           <section className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <h2 className="text-lg font-bold">
+                <h2 className="gf-h2">
                   Product summary
                 </h2>
 
@@ -2051,7 +2072,7 @@ export default function ChemicalUsagePage() {
                 <>
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h2 className="text-xl font-bold">
+                      <h2 className="gf-h2">
                         Application detail
                       </h2>
 

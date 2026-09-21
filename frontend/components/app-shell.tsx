@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SignOutButton } from "@/components/sign-out-button";
 import {
   type ReactNode,
   useEffect,
@@ -283,6 +284,8 @@ export function AppShell({
               <div className="text-sm text-green-200">
                 Owner
               </div>
+
+              <SignOutButton />
             </div>
           </div>
         </aside>

@@ -192,9 +192,11 @@ export default function ActionsPage() {
   if (!ready || !customersReady) {
     return (
       <AppShell>
-        <main className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+        <main className="gf-page gf-theme-action">
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
             Loading Action Centre...
+            </div>
           </div>
         </main>
       </AppShell>
@@ -203,17 +205,17 @@ export default function ActionsPage() {
 
   return (
     <AppShell>
-      <main className="min-h-screen bg-slate-50 p-5 md:p-7">
-        <div className="mx-auto max-w-[1560px]">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4 border-l-4 border-violet-500 pl-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#6d28d9]">
-                Customer follow-up
+      <main className="gf-page gf-theme-action">
+        <div className="gf-page-inner">
+          <header className="gf-page-header">
+            <div className="gf-page-header-copy">
+              <div className="gf-eyebrow">
+                Remember something
               </div>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+              <h1 className="gf-h1">
                 Action Centre
               </h1>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              <p className="gf-page-description">
                 Keep office follow-ups, access issues, payments and customer requests visible without mixing them into scheduled lawn-care jobs.
               </p>
             </div>
