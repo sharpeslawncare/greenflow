@@ -15,6 +15,8 @@ import {
   type Customer,
 } from "@/lib/demo-customers";
 
+import { recordAuditEvent } from "@/components/audit-store";
+
 /*
  * programmeStartDate is blank for established
  * customers whose full programme should be retained.
@@ -120,11 +122,17 @@ export function CustomerStoreProvider({
   const [ready, setReady] =
     useState(false);
 
+  const skipFirstPersistenceRef =
+    useRef(true);
+
   useEffect(() => {
     const savedCustomers =
       window.localStorage.getItem(
         STORAGE_KEY,
       );
+
+    let loadedCustomers =
+      initialCustomers;
 
     if (savedCustomers) {
       try {
@@ -149,7 +157,7 @@ export function CustomerStoreProvider({
            * their complete group programme remains
            * available.
            */
-          const loadedCustomers =
+          loadedCustomers =
             deduplicateCustomers(
               parsedCustomers.map(
                 normaliseStoredCustomer,
@@ -157,32 +165,30 @@ export function CustomerStoreProvider({
             ).sort(
               sortCustomers,
             );
-
-          customersRef.current =
-            loadedCustomers;
-
-          setCustomers(
-            loadedCustomers,
-          );
         }
       } catch {
         window.localStorage.removeItem(
           STORAGE_KEY,
         );
 
-        const demo =
+        loadedCustomers =
           normaliseEstablishedCustomers(
             demoCustomers,
           );
-
-        customersRef.current =
-          demo;
-
-        setCustomers(
-          demo,
-        );
       }
     }
+
+    /*
+     * Keep the ref and React state in step before
+     * marking the store as ready. Detail pages use
+     * getCustomer(), which reads from this ref.
+     */
+    customersRef.current =
+      loadedCustomers;
+
+    setCustomers(
+      loadedCustomers,
+    );
 
     setReady(true);
   }, []);
@@ -194,6 +200,18 @@ export function CustomerStoreProvider({
 
   useEffect(() => {
     if (!ready) {
+      return;
+    }
+
+    /*
+     * The first ready render follows hydration from
+     * localStorage. Do not immediately write that
+     * render back to storage; subsequent genuine
+     * customer changes are persisted normally.
+     */
+    if (skipFirstPersistenceRef.current) {
+      skipFirstPersistenceRef.current =
+        false;
       return;
     }
 
@@ -255,6 +273,14 @@ export function CustomerStoreProvider({
       nextCustomers,
     );
 
+    recordAuditEvent({
+      area: "Customers",
+      action: "Created",
+      reference: newCustomer.customerNumber,
+      description: `Customer ${newCustomer.customerNumber} created.`,
+      changedFields: [],
+    });
+
     return {
       success: true,
       message:
@@ -294,6 +320,12 @@ export function CustomerStoreProvider({
         existingCustomer,
       );
 
+    const changedFields =
+      getChangedCustomerFields(
+        existingCustomer,
+        normalised,
+      );
+
     const nextCustomers =
       currentCustomers.map(
         (customer, itemIndex) =>
@@ -309,6 +341,16 @@ export function CustomerStoreProvider({
       nextCustomers,
     );
 
+    if (changedFields.length > 0) {
+      recordAuditEvent({
+        area: "Customers",
+        action: "Updated",
+        reference: normalised.customerNumber,
+        description: `Customer ${normalised.customerNumber} updated.`,
+        changedFields,
+      });
+    }
+
     return {
       success: true,
       message:
@@ -319,7 +361,16 @@ export function CustomerStoreProvider({
   function getCustomer(
     customerNumber: string,
   ) {
-    return customersRef.current.find(
+    /*
+     * Customer lookups must use the current React state.
+     *
+     * On a hard refresh the localStorage hydration updates
+     * `customers` before the detail page performs its final
+     * lookup. Using the state here keeps getCustomer() on
+     * the same source of truth as the customer list and
+     * avoids a stale ref returning "Customer not found".
+     */
+    return customers.find(
       (customer) =>
         sameCustomerNumber(
           customer.customerNumber,
@@ -376,6 +427,14 @@ export function CustomerStoreProvider({
     window.localStorage.removeItem(
       STORAGE_KEY,
     );
+
+    recordAuditEvent({
+      area: "Customers",
+      action: "Restored",
+      reference: "demo-customers",
+      description: `Customer data restored to ${demo.length} demonstration records.`,
+      changedFields: [],
+    });
   }
 
   function replaceCustomers(
@@ -396,6 +455,14 @@ export function CustomerStoreProvider({
     setCustomers(
       normalisedCustomers,
     );
+
+    recordAuditEvent({
+      area: "Customers",
+      action: "Replaced",
+      reference: "customer-dataset",
+      description: `Customer dataset replaced with ${normalisedCustomers.length} records.`,
+      changedFields: [],
+    });
   }
 
   const value =
@@ -985,6 +1052,50 @@ function deduplicateCustomers(
       ? [bestBlank]
       : []),
   ];
+}
+
+const AUDITABLE_CUSTOMER_FIELDS: Array<
+  keyof StoredCustomer
+> = [
+  "firstName",
+  "surname",
+  "fullName",
+  "address",
+  "postcode",
+  "email",
+  "homePhone",
+  "mobilePhone",
+  "lawnSize",
+  "groupNumber",
+  "treatmentPrice",
+  "status",
+  "vanNumber",
+  "nextVisit",
+  "lastVisit",
+  "lockedGate",
+  "paymentMethod",
+  "dogOnProperty",
+  "preferredContact",
+  "notes",
+  "additionalJobs",
+  "programmeStartDate",
+];
+
+/*
+ * gateCode is deliberately excluded from the audit
+ * field list. The audit trail records that a customer
+ * changed, but never stores or highlights gate-code
+ * information.
+ */
+function getChangedCustomerFields(
+  previous: StoredCustomer,
+  next: StoredCustomer,
+) {
+  return AUDITABLE_CUSTOMER_FIELDS.filter(
+    (field) =>
+      JSON.stringify(previous[field]) !==
+      JSON.stringify(next[field]),
+  );
 }
 
 function sortCustomers(

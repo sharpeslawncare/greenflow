@@ -59,7 +59,6 @@ export default function ProgrammesPage() {
   const {
     programmes,
     ready: programmesReady,
-    getProgrammeForCustomer,
     getCurrentProgrammeForCustomer,
     getNextProgrammeForCustomer,
     customerNeedsNextProgramme,
@@ -215,9 +214,16 @@ export default function ProgrammesPage() {
 
   const selectedProgramme =
     selectedCustomer
-      ? getProgrammeForCustomer(
-          selectedCustomer.customerNumber,
-          selectedYear,
+      ? programmes.find(
+          (programme) =>
+            String(
+              programme.customerNumber,
+            ).trim() ===
+              String(
+                selectedCustomer.customerNumber,
+              ).trim() &&
+            programme.year ===
+              selectedYear,
         )
       : undefined;
 

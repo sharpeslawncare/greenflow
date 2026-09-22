@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type ReactNode,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -29,11 +30,30 @@ import { useCustomerStore } from "@/components/customer-store";
 import { useProgrammeStore } from "@/components/programme-store";
 import { useTreatmentStore } from "@/components/treatment-store";
 import { useChemicalStore } from "@/components/chemical-store";
+import {
+  type AuditAction,
+  type AuditArea,
+  type AuditEntry,
+  readAuditTrail,
+} from "@/components/audit-store";
+import {
+  createAutomaticRecoveryPointIfDue,
+  createRecoveryPoint,
+  deleteRecoveryPoint,
+  formatRecoveryPointDate,
+  formatRecoveryPointSize,
+  listRecoveryAuditEvents,
+  listRecoveryPoints,
+  restoreRecoveryPoint,
+  type RecoveryAuditEvent,
+  type RecoveryPoint,
+} from "@/components/recovery-point-store";
 
 type SettingsTab =
   | "maintenance"
   | "health"
   | "backups"
+  | "audit"
   | "business"
   | "invoices"
   | "wording"
@@ -73,6 +93,10 @@ const tabs: Array<{
   {
     id: "backups",
     label: "Backup & Restore",
+  },
+  {
+    id: "audit",
+    label: "Audit Trail",
   },
   {
     id: "health",
@@ -151,6 +175,26 @@ export default function SettingsPage() {
   const [lastBackupAt, setLastBackupAt] =
     useState("");
 
+  const [
+    recoveryPoints,
+    setRecoveryPoints,
+  ] = useState<RecoveryPoint[]>([]);
+
+  const [
+    recoveryAuditEvents,
+    setRecoveryAuditEvents,
+  ] = useState<RecoveryAuditEvent[]>([]);
+
+  const [
+    recoveryReady,
+    setRecoveryReady,
+  ] = useState(false);
+
+  const [
+    recoveryBusy,
+    setRecoveryBusy,
+  ] = useState(false);
+
   useEffect(() => {
     const backupDate =
       window.localStorage.getItem(
@@ -164,12 +208,158 @@ export default function SettingsPage() {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRecoverySystem() {
+      try {
+        await createAutomaticRecoveryPointIfDue();
+
+        const points =
+          await listRecoveryPoints();
+
+        if (cancelled) return;
+
+        setRecoveryPoints(points);
+        setRecoveryAuditEvents(
+          listRecoveryAuditEvents(),
+        );
+      } catch (error) {
+        console.error(
+          "GreenFlow recovery points could not be loaded.",
+          error,
+        );
+      } finally {
+        if (!cancelled) {
+          setRecoveryReady(true);
+        }
+      }
+    }
+
+    void loadRecoverySystem();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function showMessage(text: string) {
     setMessage(text);
 
     window.setTimeout(() => {
       setMessage("");
     }, 2800);
+  }
+
+  async function refreshRecoveryPoints() {
+    const points =
+      await listRecoveryPoints();
+
+    setRecoveryPoints(points);
+    setRecoveryAuditEvents(
+      listRecoveryAuditEvents(),
+    );
+  }
+
+  async function handleCreateRecoveryPoint() {
+    if (recoveryBusy) return;
+
+    setRecoveryBusy(true);
+
+    try {
+      await createRecoveryPoint(
+        "Manual recovery point",
+        "manual",
+      );
+
+      await refreshRecoveryPoints();
+
+      showMessage(
+        "Recovery point created.",
+      );
+    } catch (error) {
+      console.error(error);
+
+      showMessage(
+        "The recovery point could not be created.",
+      );
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }
+
+  async function handleRestoreRecoveryPoint(
+    point: RecoveryPoint,
+  ) {
+    if (recoveryBusy) return;
+
+    const confirmed =
+      window.confirm(
+        `Restore the GreenFlow recovery point from ${formatRecoveryPointDate(
+          point.createdAt,
+        )}? A safety recovery point of the current data will be created first.`,
+      );
+
+    if (!confirmed) return;
+
+    setRecoveryBusy(true);
+
+    try {
+      await restoreRecoveryPoint(
+        point.id,
+      );
+
+      window.alert(
+        "Recovery point restored successfully. GreenFlow will now reload.",
+      );
+
+      window.location.reload();
+    } catch (error) {
+      console.error(error);
+
+      showMessage(
+        "The recovery point could not be restored.",
+      );
+
+      setRecoveryBusy(false);
+    }
+  }
+
+  async function handleDeleteRecoveryPoint(
+    point: RecoveryPoint,
+  ) {
+    if (recoveryBusy) return;
+
+    const confirmed =
+      window.confirm(
+        `Delete the recovery point from ${formatRecoveryPointDate(
+          point.createdAt,
+        )}? This cannot be undone.`,
+      );
+
+    if (!confirmed) return;
+
+    setRecoveryBusy(true);
+
+    try {
+      await deleteRecoveryPoint(
+        point.id,
+      );
+
+      await refreshRecoveryPoints();
+
+      showMessage(
+        "Recovery point deleted.",
+      );
+    } catch (error) {
+      console.error(error);
+
+      showMessage(
+        "The recovery point could not be deleted.",
+      );
+    } finally {
+      setRecoveryBusy(false);
+    }
   }
 
   function createBackup() {
@@ -921,6 +1111,10 @@ export default function SettingsPage() {
                 />
               )}
 
+              {activeTab === "audit" && (
+                <AuditTrailTab />
+              )}
+
               {activeTab === "health" && (
                 <SystemHealthTab
                   customers={customers}
@@ -950,6 +1144,27 @@ export default function SettingsPage() {
                   }
                   onRestoreBackup={
                     restoreBackup
+                  }
+                  recoveryPoints={
+                    recoveryPoints
+                  }
+                  recoveryAuditEvents={
+                    recoveryAuditEvents
+                  }
+                  recoveryReady={
+                    recoveryReady
+                  }
+                  recoveryBusy={
+                    recoveryBusy
+                  }
+                  onCreateRecoveryPoint={
+                    handleCreateRecoveryPoint
+                  }
+                  onRestoreRecoveryPoint={
+                    handleRestoreRecoveryPoint
+                  }
+                  onDeleteRecoveryPoint={
+                    handleDeleteRecoveryPoint
                   }
                 />
               )}
@@ -1123,24 +1338,183 @@ function BackupRestoreTab({
   lastBackupAt,
   onCreateBackup,
   onRestoreBackup,
+  recoveryPoints,
+  recoveryAuditEvents,
+  recoveryReady,
+  recoveryBusy,
+  onCreateRecoveryPoint,
+  onRestoreRecoveryPoint,
+  onDeleteRecoveryPoint,
 }: {
   lastBackupAt: string;
   onCreateBackup: () => void;
   onRestoreBackup: (
     event: ChangeEvent<HTMLInputElement>,
   ) => void;
+  recoveryPoints: RecoveryPoint[];
+  recoveryAuditEvents: RecoveryAuditEvent[];
+  recoveryReady: boolean;
+  recoveryBusy: boolean;
+  onCreateRecoveryPoint: () => void;
+  onRestoreRecoveryPoint: (
+    point: RecoveryPoint,
+  ) => void;
+  onDeleteRecoveryPoint: (
+    point: RecoveryPoint,
+  ) => void;
 }) {
   return (
     <div>
       <SectionHeading
-        title="Backup and restore"
-        description="Create a portable copy of all GreenFlow browser data before resets, testing or major changes."
+        title="Backup, recovery and restore"
+        description="Use automatic recovery points for quick rollback and downloadable backup files for an independent copy outside the browser."
       />
+
+      <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+              Recovery points
+            </div>
+
+            <h3 className="mt-2 text-2xl font-bold text-blue-950">
+              Local safety snapshots
+            </h3>
+
+            <p className="mt-2 text-sm leading-6 text-blue-900">
+              GreenFlow keeps up to six recovery points in this browser using IndexedDB. An automatic point is considered every six hours and is only added when GreenFlow data has changed. You can also create one manually before important work.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              onCreateRecoveryPoint
+            }
+            disabled={recoveryBusy}
+            className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {recoveryBusy
+              ? "Working..."
+              : "Create Recovery Point"}
+          </button>
+        </div>
+
+        {!recoveryReady ? (
+          <div className="mt-5 rounded-xl border border-blue-200 bg-white p-5 text-sm text-slate-500">
+            Loading recovery points...
+          </div>
+        ) : recoveryPoints.length === 0 ? (
+          <div className="mt-5 rounded-xl border border-dashed border-blue-300 bg-white p-6 text-center">
+            <div className="font-bold text-slate-900">
+              No recovery points yet
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              Create the first recovery point now. GreenFlow will then continue creating periodic safety points when data changes.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 overflow-hidden rounded-xl border border-blue-200 bg-white">
+            <div className="hidden grid-cols-[1.5fr_1fr_110px_190px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
+              <span>Recovery point</span>
+              <span>Type</span>
+              <span>Size</span>
+              <span className="text-right">
+                Actions
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-200">
+              {recoveryPoints.map(
+                (point) => (
+                  <div
+                    key={point.id}
+                    className="grid gap-3 px-4 py-4 md:grid-cols-[1.5fr_1fr_110px_190px] md:items-center"
+                  >
+                    <div>
+                      <div className="font-bold text-slate-900">
+                        {point.label}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {formatRecoveryPointDate(
+                          point.createdAt,
+                        )}{" "}
+                        · {point.itemCount} stored items
+                      </div>
+                    </div>
+
+                    <div>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
+                          point.kind ===
+                          "automatic"
+                            ? "bg-green-100 text-green-800"
+                            : point.kind ===
+                                "pre-restore"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-blue-100 text-blue-800"
+                        }`}
+                      >
+                        {point.kind ===
+                        "automatic"
+                          ? "Automatic"
+                          : point.kind ===
+                              "pre-restore"
+                            ? "Pre-restore safety"
+                            : "Manual"}
+                      </span>
+                    </div>
+
+                    <div className="text-sm font-semibold text-slate-700">
+                      {formatRecoveryPointSize(
+                        point.byteSize,
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 md:justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onRestoreRecoveryPoint(
+                            point,
+                          )
+                        }
+                        disabled={recoveryBusy}
+                        className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        Restore
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDeleteRecoveryPoint(
+                            point,
+                          )
+                        }
+                        disabled={recoveryBusy}
+                        className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm leading-6 text-blue-900">
+          <strong>Important:</strong>{" "}
+          recovery points stay on this browser/device. They are designed for quick rollback, not as your only backup. Keep using downloadable backup files for an independent copy.
+        </div>
+      </section>
 
       <div className="mt-6 grid gap-5 xl:grid-cols-2">
         <article className="rounded-2xl border border-green-200 bg-green-50 p-5">
           <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-            Create backup
+            Portable backup
           </div>
 
           <h3 className="mt-2 text-2xl font-bold text-green-950">
@@ -1171,7 +1545,7 @@ function BackupRestoreTab({
 
         <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
-            Restore backup
+            Restore backup file
           </div>
 
           <h3 className="mt-2 text-2xl font-bold text-amber-950">
@@ -1196,16 +1570,87 @@ function BackupRestoreTab({
           </label>
 
           <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm leading-6 text-amber-900">
-            Create a fresh backup before restoring another file. Restore does not merge data; it replaces GreenFlow's current browser records.
+            Create a fresh downloadable backup before restoring another file. File restore does not merge data; it replaces GreenFlow&apos;s current browser records.
           </div>
         </article>
       </div>
 
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">
+          Recovery audit trail
+        </div>
+
+        <h3 className="mt-2 text-xl font-bold text-slate-950">
+          Recent recovery activity
+        </h3>
+
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          This records recovery-point creation, restores and deletions. It does not alter your operational records.
+        </p>
+
+        {recoveryAuditEvents.length ===
+        0 ? (
+          <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
+            No recovery activity has been recorded yet.
+          </div>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="divide-y divide-slate-200">
+              {recoveryAuditEvents
+                .slice(0, 12)
+                .map((event) => (
+                  <div
+                    key={event.id}
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
+                  >
+                    <div>
+                      <div className="font-semibold text-slate-900">
+                        {formatRecoveryAuditAction(
+                          event.action,
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {event.label}
+                      </div>
+                    </div>
+
+                    <div className="text-xs font-semibold text-slate-500">
+                      {formatRecoveryPointDate(
+                        event.createdAt,
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+      </section>
+
       <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-        Backups are local JSON files. Keep them somewhere secure, such as your GreenFlow project backup folder or OneDrive.
+        Downloaded backups are ordinary JSON files. Keep important copies somewhere separate from the browser, such as your GreenFlow backup folder or OneDrive.
       </div>
     </div>
   );
+}
+
+function formatRecoveryAuditAction(
+  action: RecoveryAuditEvent["action"],
+) {
+  if (
+    action ===
+    "recovery-point-created"
+  ) {
+    return "Recovery point created";
+  }
+
+  if (
+    action ===
+    "recovery-point-restored"
+  ) {
+    return "Recovery point restored";
+  }
+
+  return "Recovery point deleted";
 }
 
 function isGreenFlowBackup(
@@ -1474,6 +1919,308 @@ function formatBackupDate(
       timeStyle: "short",
     },
   ).format(date);
+}
+
+function AuditTrailTab() {
+  const [entries, setEntries] =
+    useState<AuditEntry[]>([]);
+  const [areaFilter, setAreaFilter] =
+    useState<AuditArea | "All">("All");
+  const [actionFilter, setActionFilter] =
+    useState<AuditAction | "All">("All");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    function refreshAuditTrail() {
+      setEntries(readAuditTrail());
+    }
+
+    refreshAuditTrail();
+
+    window.addEventListener(
+      "greenflow-audit-updated",
+      refreshAuditTrail,
+    );
+    window.addEventListener(
+      "storage",
+      refreshAuditTrail,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "greenflow-audit-updated",
+        refreshAuditTrail,
+      );
+      window.removeEventListener(
+        "storage",
+        refreshAuditTrail,
+      );
+    };
+  }, []);
+
+  const areas = useMemo(
+    () =>
+      Array.from(
+        new Set(entries.map((entry) => entry.area)),
+      ).sort((first, second) =>
+        first.localeCompare(second),
+      ),
+    [entries],
+  );
+
+  const actions = useMemo(
+    () =>
+      Array.from(
+        new Set(entries.map((entry) => entry.action)),
+      ).sort((first, second) =>
+        first.localeCompare(second),
+      ),
+    [entries],
+  );
+
+  const filteredEntries = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return entries.filter((entry) => {
+      if (
+        areaFilter !== "All" &&
+        entry.area !== areaFilter
+      ) {
+        return false;
+      }
+
+      if (
+        actionFilter !== "All" &&
+        entry.action !== actionFilter
+      ) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const searchable = [
+        entry.user,
+        entry.area,
+        entry.action,
+        entry.reference,
+        entry.description,
+        ...entry.changedFields,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [
+    entries,
+    areaFilter,
+    actionFilter,
+    search,
+  ]);
+
+  return (
+    <div>
+      <SectionHeading
+        title="Audit trail"
+        description="Review important GreenFlow changes recorded in this browser. The audit trail is read-only here and records who made a change, what area was affected and which fields changed."
+      />
+
+      <section className="mt-6 grid gap-3 md:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+            Recorded events
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-950">
+            {entries.length}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Stored audit entries in this browser
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+            Showing
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-950">
+            {filteredEntries.length}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Events matching the current filters
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
+          <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+            Protection
+          </div>
+          <div className="mt-2 text-lg font-bold text-green-950">
+            Read-only history
+          </div>
+          <div className="mt-1 text-xs leading-5 text-green-800">
+            There is no clear or delete control on this screen.
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="grid gap-4 lg:grid-cols-[1fr_220px_220px]">
+          <Field label="Search audit trail">
+            <input
+              type="search"
+              value={search}
+              onChange={(event) =>
+                setSearch(event.target.value)
+              }
+              placeholder="Customer, reference, description, field..."
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Area">
+            <select
+              value={areaFilter}
+              onChange={(event) =>
+                setAreaFilter(
+                  event.target.value as AuditArea | "All",
+                )
+              }
+              className={inputClass}
+            >
+              <option value="All">All areas</option>
+              {areas.map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Action">
+            <select
+              value={actionFilter}
+              onChange={(event) =>
+                setActionFilter(
+                  event.target.value as AuditAction | "All",
+                )
+              }
+              className={inputClass}
+            >
+              <option value="All">All actions</option>
+              {actions.map((action) => (
+                <option key={action} value={action}>
+                  {action}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </section>
+
+      {entries.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <div className="text-lg font-bold text-slate-900">
+            No audit events recorded yet
+          </div>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            GreenFlow will show recorded application changes here as audit-enabled areas are used.
+          </p>
+        </div>
+      ) : filteredEntries.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <div className="text-lg font-bold text-slate-900">
+            No matching audit events
+          </div>
+          <p className="mt-2 text-sm text-slate-500">
+            Change the search text or filters to see more activity.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="hidden grid-cols-[170px_130px_130px_150px_1fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+            <span>Date & time</span>
+            <span>User</span>
+            <span>Area</span>
+            <span>Action / reference</span>
+            <span>Details</span>
+          </div>
+
+          <div className="divide-y divide-slate-200">
+            {filteredEntries.map((entry) => (
+              <article
+                key={entry.id}
+                className="grid gap-3 px-4 py-4 xl:grid-cols-[170px_130px_130px_150px_1fr] xl:items-start"
+              >
+                <div>
+                  <div className="text-xs font-semibold text-slate-700">
+                    {formatAuditDate(entry.createdAt)}
+                  </div>
+                </div>
+
+                <div className="text-sm font-semibold text-slate-900">
+                  {entry.user}
+                </div>
+
+                <div>
+                  <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
+                    {entry.area}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="inline-flex rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-800">
+                    {entry.action}
+                  </span>
+                  <div className="mt-2 break-words text-xs font-semibold text-slate-600">
+                    {entry.reference || "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm leading-6 text-slate-900">
+                    {entry.description || "No description recorded."}
+                  </div>
+
+                  {entry.changedFields.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {entry.changedFields.map((field) => (
+                        <span
+                          key={field}
+                          className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600"
+                        >
+                          {field}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+        <strong>Audit trail:</strong>{" "}
+        this view records metadata about changes rather than displaying old and new sensitive field values. Downloadable GreenFlow backups include the audit storage because it uses a GreenFlow storage key.
+      </div>
+    </div>
+  );
+}
+
+function formatAuditDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  }).format(date);
 }
 
 function SystemHealthTab({

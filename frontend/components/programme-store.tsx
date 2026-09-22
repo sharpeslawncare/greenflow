@@ -16,6 +16,10 @@ import {
 } from "@/components/customer-store";
 
 import {
+  recordAuditEvent,
+} from "@/components/audit-store";
+
+import {
   getSeasonCycleLabel,
   type GroupSeasonDates,
   type SeasonCalendar,
@@ -270,10 +274,13 @@ export function ProgrammeStoreProvider({
     seasons,
   ]);
 
-  useEffect(() => {
-    programmesRef.current =
-      programmes;
-  }, [programmes]);
+  /*
+   * programmesRef is updated at the same time as every programme state
+   * change. Do not mirror `programmes` back into the ref in a separate
+   * effect: on the initial mount that effect sees the pre-hydration empty
+   * array and can overwrite the programmes just loaded from localStorage
+   * before startup synchronisation runs.
+   */
 
   useEffect(() => {
     if (!ready) {
@@ -406,6 +413,33 @@ export function ProgrammeStoreProvider({
 
     setProgrammes(next);
 
+    const previousProgramme =
+      existingIndex === -1
+        ? undefined
+        : current[existingIndex];
+
+    recordAuditEvent({
+      area: "Programmes",
+      action:
+        existingIndex === -1
+          ? "Created"
+          : "Updated",
+      reference: `${normalised.customerNumber} / ${normalised.year}`,
+      description:
+        existingIndex === -1
+          ? `Programme ${normalised.year} created for customer ${normalised.customerNumber}.`
+          : `Programme ${normalised.year} updated for customer ${normalised.customerNumber}.`,
+      changedFields:
+        previousProgramme
+          ? getProgrammeChangedFields(
+              previousProgramme,
+              normalised,
+            )
+          : getProgrammeCreationFields(
+              normalised,
+            ),
+    });
+
     return {
       success: true,
       message:
@@ -418,6 +452,13 @@ export function ProgrammeStoreProvider({
   function deleteProgramme(
     programmeId: string,
   ) {
+    const deletedProgramme =
+      programmesRef.current.find(
+        (programme) =>
+          programme.id ===
+          programmeId,
+      );
+
     const next =
       programmesRef.current.filter(
         (programme) =>
@@ -429,6 +470,18 @@ export function ProgrammeStoreProvider({
       next;
 
     setProgrammes(next);
+
+    if (deletedProgramme) {
+      recordAuditEvent({
+        area: "Programmes",
+        action: "Deleted",
+        reference: `${deletedProgramme.customerNumber} / ${deletedProgramme.year}`,
+        description: `Programme ${deletedProgramme.year} deleted for customer ${deletedProgramme.customerNumber}.`,
+        changedFields: [
+          "programme",
+        ],
+      });
+    }
   }
 
   function getProgrammeForCustomer(
@@ -646,6 +699,19 @@ export function ProgrammeStoreProvider({
 
     setProgrammes(next);
 
+    recordAuditEvent({
+      area: "Programmes",
+      action: "Created",
+      reference: `${customerNumber} / ${nextYear}`,
+      description: `${getSeasonCycleLabel(
+        nextYear,
+      )} T1–T5 programme created for customer ${customerNumber}.`,
+      changedFields:
+        getProgrammeCreationFields(
+          created,
+        ),
+    });
+
     return {
       success: true,
       message:
@@ -743,6 +809,28 @@ export function ProgrammeStoreProvider({
 
     setProgrammes(next);
 
+    recordAuditEvent({
+      area: "Programmes",
+      action:
+        exists
+          ? "Updated"
+          : "Created",
+      reference: `${customerNumber} / ${year}`,
+      description:
+        exists
+          ? `Season dates applied to programme ${year} for customer ${customerNumber}.`
+          : `Programme ${year} created from season dates for customer ${customerNumber}.`,
+      changedFields:
+        existing
+          ? getProgrammeChangedFields(
+              existing,
+              updated,
+            )
+          : getProgrammeCreationFields(
+              updated,
+            ),
+    });
+
     return updated;
   }
 
@@ -833,6 +921,24 @@ export function ProgrammeStoreProvider({
       next;
 
     setProgrammes(next);
+
+    if (createdCount > 0) {
+      recordAuditEvent({
+        area: "Programmes",
+        action: "Created",
+        reference: String(year),
+        description: `${createdCount} customer programme${
+          createdCount === 1
+            ? ""
+            : "s"
+        } created for ${getSeasonCycleLabel(
+          year,
+        )}.`,
+        changedFields: [
+          "programmes",
+        ],
+      });
+    }
 
     return createdCount;
   }
@@ -1096,13 +1202,22 @@ function mergeProgrammeWithSeason({
           existingVisit.status ===
             "Skipped");
 
+      /*
+       * Any active customer date that differs from the current group date
+       * is customer-specific and must survive normal season synchronisation.
+       *
+       * This deliberately does not depend on the notes field. The date itself
+       * is the source of truth; notes are descriptive metadata only.
+       *
+       * forceGroupDates is used by the explicit "Restore group dates" action,
+       * so that remains the one intentional way to discard an override.
+       */
       const preserveOverride =
         !forceGroupDates &&
-        existingVisit &&
-        isCustomerDateOverride(
-          existingVisit,
-          groupScheduledDate,
-        );
+        existingVisit !== undefined &&
+        existingVisit.scheduledDate !== "" &&
+        existingVisit.scheduledDate !==
+          groupScheduledDate;
 
       const scheduledDate =
         historicalVisit ||
@@ -1813,6 +1928,81 @@ function isLikelyOverrideVisit(
       "[date override]",
     )
   );
+}
+
+function getProgrammeCreationFields(
+  programme: CustomerProgramme,
+) {
+  const fields = [
+    "programmeName",
+    "startDate",
+    "avoidWednesdays",
+    "avoidWeekends",
+  ];
+
+  if (programme.visits.length > 0) {
+    fields.push("visits");
+  }
+
+  return fields;
+}
+
+function getProgrammeChangedFields(
+  previous: CustomerProgramme,
+  next: CustomerProgramme,
+) {
+  const changedFields: string[] = [];
+
+  if (
+    previous.programmeName !==
+    next.programmeName
+  ) {
+    changedFields.push(
+      "programmeName",
+    );
+  }
+
+  if (
+    previous.startDate !==
+    next.startDate
+  ) {
+    changedFields.push(
+      "startDate",
+    );
+  }
+
+  if (
+    previous.avoidWednesdays !==
+    next.avoidWednesdays
+  ) {
+    changedFields.push(
+      "avoidWednesdays",
+    );
+  }
+
+  if (
+    previous.avoidWeekends !==
+    next.avoidWeekends
+  ) {
+    changedFields.push(
+      "avoidWeekends",
+    );
+  }
+
+  if (
+    JSON.stringify(
+      previous.visits,
+    ) !==
+    JSON.stringify(
+      next.visits,
+    )
+  ) {
+    changedFields.push(
+      "visits",
+    );
+  }
+
+  return changedFields;
 }
 
 function programmesAreEqual(

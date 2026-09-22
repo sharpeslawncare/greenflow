@@ -122,6 +122,8 @@ export function CustomerProfileClient({
     ready: programmesReady,
     getCurrentProgrammeForCustomer,
     getNextProgrammeForCustomer,
+    saveProgramme,
+    canScheduleDate,
   } = useProgrammeStore();
 
   const {
@@ -1181,6 +1183,12 @@ function cancelEditing() {
               }
               treatments={
                 customerTreatments
+              }
+              onSaveProgramme={
+                saveProgramme
+              }
+              canScheduleDate={
+                canScheduleDate
               }
             />
           )}
@@ -2919,6 +2927,8 @@ function ProgrammeTab({
   nextProgramme,
   season,
   treatments,
+  onSaveProgramme,
+  canScheduleDate,
 }: {
   customer: StoredCustomer;
 
@@ -2948,7 +2958,32 @@ function ProgrammeTab({
 
   treatments:
     TreatmentRecord[];
+
+  onSaveProgramme:
+    ReturnType<
+      typeof useProgrammeStore
+    >["saveProgramme"];
+
+  canScheduleDate:
+    ReturnType<
+      typeof useProgrammeStore
+    >["canScheduleDate"];
 }) {
+  const [
+    editingVisitNumber,
+    setEditingVisitNumber,
+  ] = useState<number | null>(null);
+
+  const [
+    overrideDate,
+    setOverrideDate,
+  ] = useState("");
+
+  const [
+    programmeMessage,
+    setProgrammeMessage,
+  ] = useState("");
+
   const currentNextVisit =
     currentProgramme?.visits
       .filter(
@@ -2974,6 +3009,193 @@ function ProgrammeTab({
           second.scheduledDate,
         ),
       )[0] ?? null;
+
+  function beginOverride(
+    visitNumber: number,
+    scheduledDate: string,
+  ) {
+    setEditingVisitNumber(
+      visitNumber,
+    );
+    setOverrideDate(
+      scheduledDate,
+    );
+    setProgrammeMessage("");
+  }
+
+  function cancelOverride() {
+    setEditingVisitNumber(null);
+    setOverrideDate("");
+    setProgrammeMessage("");
+  }
+
+  function saveOverride(
+    visitNumber: number,
+    groupDate: string,
+  ) {
+    if (!programme) {
+      setProgrammeMessage(
+        "This programme is not available to update.",
+      );
+      return;
+    }
+
+    const visit =
+      programme.visits.find(
+        (item) =>
+          item.visitNumber ===
+          visitNumber,
+      );
+
+    if (!visit) {
+      setProgrammeMessage(
+        "This treatment round is not available to update.",
+      );
+      return;
+    }
+
+    if (!overrideDate) {
+      setProgrammeMessage(
+        "Choose a customer date before saving.",
+      );
+      return;
+    }
+
+    if (
+      !canScheduleDate(
+        customer.customerNumber,
+        overrideDate,
+      )
+    ) {
+      setProgrammeMessage(
+        "That date cannot be scheduled for this customer.",
+      );
+      return;
+    }
+
+    const originalNotes =
+      removeCustomerDateOverrideNote(
+        visit.notes,
+      );
+
+    const nextNotes =
+      overrideDate === groupDate
+        ? originalNotes
+        : [
+            originalNotes,
+            `[date override] Standard group date ${formatDate(
+              groupDate,
+            )}; customer date ${formatDate(
+              overrideDate,
+            )}.`,
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+    const updatedProgramme = {
+      ...programme,
+      visits:
+        programme.visits.map(
+          (item) =>
+            item.visitNumber ===
+            visitNumber
+              ? {
+                  ...item,
+                  scheduledDate:
+                    overrideDate,
+                  notes:
+                    nextNotes,
+                }
+              : item,
+        ),
+    };
+
+    const result =
+      onSaveProgramme(
+        updatedProgramme,
+      );
+
+    setProgrammeMessage(
+      result.message,
+    );
+
+    if (result.success) {
+      setEditingVisitNumber(null);
+      setOverrideDate("");
+    }
+  }
+
+  function restoreGroupDate(
+    visitNumber: number,
+    groupDate: string,
+  ) {
+    if (!programme) {
+      setProgrammeMessage(
+        "This programme is not available to update.",
+      );
+      return;
+    }
+
+    const visit =
+      programme.visits.find(
+        (item) =>
+          item.visitNumber ===
+          visitNumber,
+      );
+
+    if (!visit) {
+      setProgrammeMessage(
+        "This treatment round is not available to update.",
+      );
+      return;
+    }
+
+    if (
+      !canScheduleDate(
+        customer.customerNumber,
+        groupDate,
+      )
+    ) {
+      setProgrammeMessage(
+        "The group date cannot currently be scheduled for this customer.",
+      );
+      return;
+    }
+
+    const updatedProgramme = {
+      ...programme,
+      visits:
+        programme.visits.map(
+          (item) =>
+            item.visitNumber ===
+            visitNumber
+              ? {
+                  ...item,
+                  scheduledDate:
+                    groupDate,
+                  notes:
+                    removeCustomerDateOverrideNote(
+                      item.notes,
+                    ),
+                }
+              : item,
+        ),
+    };
+
+    const result =
+      onSaveProgramme(
+        updatedProgramme,
+      );
+
+    setProgrammeMessage(
+      result.message,
+    );
+
+    if (result.success) {
+      setEditingVisitNumber(null);
+      setOverrideDate("");
+    }
+  }
 
   if (!season) {
     return (
@@ -3036,10 +3258,11 @@ function ProgrammeTab({
           </div>
 
           <p className="mt-1">
-            These treatment names and standard dates
-            come directly from the{" "}
+            Standard dates come from the{" "}
             {getSeasonCycleLabel(season.year)} T1–T5
-            programme calendar.
+            programme calendar. Change a customer date
+            here only when this customer needs an
+            individual exception.
           </p>
         </div>
 
@@ -3047,18 +3270,25 @@ function ProgrammeTab({
           href="/programmes"
           className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-blue-900 hover:bg-blue-100"
         >
-          Review overrides
+          View annual programmes
         </Link>
       </div>
 
+      {programmeMessage && (
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+          {programmeMessage}
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <div className="min-w-[900px]">
-          <div className="grid grid-cols-[70px_1.4fr_180px_180px_130px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+        <div className="min-w-[1120px]">
+          <div className="grid grid-cols-[70px_1.4fr_160px_180px_130px_260px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
             <span>Round</span>
             <span>Treatment</span>
             <span>Group date</span>
             <span>Customer date</span>
             <span>Status</span>
+            <span>Customer scheduling</span>
           </div>
 
           {season.treatmentRounds.map(
@@ -3091,12 +3321,22 @@ function ProgrammeTab({
                     )
                   : null;
 
+              const historical =
+                effectiveStatus ===
+                  "Completed" ||
+                effectiveStatus ===
+                  "Skipped";
+
+              const editing =
+                editingVisitNumber ===
+                round.visitNumber;
+
               return (
                 <div
                   key={
                     round.visitNumber
                   }
-                  className="grid grid-cols-[70px_1.4fr_180px_180px_130px] items-center gap-3 border-t border-slate-100 px-4 py-4 text-sm"
+                  className="grid grid-cols-[70px_1.4fr_160px_180px_130px_260px] items-center gap-3 border-t border-slate-100 px-4 py-4 text-sm"
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#176b37] font-bold text-white">
                     T{round.visitNumber}
@@ -3131,9 +3371,13 @@ function ProgrammeTab({
                           )}
                         </div>
 
-                        {overridden && (
+                        {overridden ? (
                           <div className="mt-1 text-xs font-bold text-amber-700">
                             Customer override
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-xs font-semibold text-slate-500">
+                            Group date
                           </div>
                         )}
                       </>
@@ -3163,6 +3407,90 @@ function ProgrammeTab({
                       Unavailable
                     </span>
                   )}
+
+                  <div>
+                    {!visit ? (
+                      <span className="text-xs text-slate-400">
+                        No customer visit to change
+                      </span>
+                    ) : historical ? (
+                      <span className="text-xs font-semibold text-slate-500">
+                        Historical date retained
+                      </span>
+                    ) : editing ? (
+                      <div className="space-y-2">
+                        <input
+                          type="date"
+                          value={
+                            overrideDate
+                          }
+                          onChange={(event) =>
+                            setOverrideDate(
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                        />
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              saveOverride(
+                                round.visitNumber,
+                                groupDate,
+                              )
+                            }
+                            className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f]"
+                          >
+                            Save date
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={
+                              cancelOverride
+                            }
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            beginOverride(
+                              round.visitNumber,
+                              visit.scheduledDate,
+                            )
+                          }
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          {overridden
+                            ? "Change override"
+                            : "Override date"}
+                        </button>
+
+                        {overridden && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              restoreGroupDate(
+                                round.visitNumber,
+                                groupDate,
+                              )
+                            }
+                            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100"
+                          >
+                            Restore group date
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             },
@@ -3171,6 +3499,18 @@ function ProgrammeTab({
       </div>
     </div>
   );
+}
+
+function removeCustomerDateOverrideNote(
+  notes: string,
+) {
+  return notes
+    .replace(
+      /\s*\[date override\]\s*Standard group date .*?; customer date .*?\.\s*/gi,
+      " ",
+    )
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function ProgrammeCycleSummary({
