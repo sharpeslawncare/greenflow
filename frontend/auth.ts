@@ -11,6 +11,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   ...authConfig,
   session: {
     strategy: "jwt",
+    maxAge: 8 * 60 * 60,
   },
   providers: [
     Credentials({
@@ -29,6 +30,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         const configuredEmail = process.env.GREENFLOW_OWNER_EMAIL
           ?.trim()
           .toLowerCase();
+
         const configuredPasswordHash =
           process.env.GREENFLOW_OWNER_PASSWORD_HASH?.trim();
 
@@ -73,6 +75,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
+
     jwt({ token, user }) {
       if (user) {
         token.role = "Owner";
@@ -80,9 +83,12 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
       return token;
     },
+
     session({ session, token }) {
       if (session.user) {
-        session.user.id = token.sub ?? "greenflow-owner";
+        session.user.id =
+          token.sub ?? "greenflow-owner";
+
         session.user.role =
           typeof token.role === "string"
             ? token.role
