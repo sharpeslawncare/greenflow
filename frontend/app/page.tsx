@@ -24,7 +24,10 @@ import {
   useCustomerStore,
 } from "@/components/customer-store";
 
-import { useEnquiryStore } from "@/components/enquiry-store";
+import {
+  type EnquirySource,
+  useEnquiryStore,
+} from "@/components/enquiry-store";
 
 import {
   type CustomerProgramme,
@@ -86,6 +89,7 @@ export default function DashboardPage() {
   const {
     enquiries,
     ready: enquiriesReady,
+    addEnquiry,
   } = useEnquiryStore();
 
   const {
@@ -124,6 +128,18 @@ export default function DashboardPage() {
 
   const [closeDayData, setCloseDayData] =
     useState<CloseDayData>({});
+
+  const [quickEnquiry, setQuickEnquiry] =
+    useState({
+      name: "",
+      address: "",
+      mobilePhone: "",
+      initialMessage: "",
+      source: "Telephone" as EnquirySource,
+    });
+
+  const [quickEnquiryMessage, setQuickEnquiryMessage] =
+    useState("");
 
   const [
   selectedDate,
@@ -1359,6 +1375,53 @@ export default function DashboardPage() {
       treatments,
     ]);
 
+  function saveQuickEnquiry() {
+    const name = quickEnquiry.name.trim();
+    const address = quickEnquiry.address.trim();
+    const mobilePhone = quickEnquiry.mobilePhone.trim();
+    const initialMessage = quickEnquiry.initialMessage.trim();
+
+    if (!name && !address && !mobilePhone && !initialMessage) {
+      setQuickEnquiryMessage(
+        "Enter at least one detail before saving the enquiry.",
+      );
+      return;
+    }
+
+    const nameParts = name
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const firstName = nameParts[0] ?? "";
+    const surname = nameParts.slice(1).join(" ");
+
+    const saved = addEnquiry({
+      source: quickEnquiry.source,
+      firstName,
+      surname,
+      address,
+      mobilePhone,
+      initialMessage,
+    });
+
+    const savedContact =
+      saved.fullName ||
+      saved.mobilePhone ||
+      "New enquiry";
+
+    setQuickEnquiryMessage(
+      `${saved.enquiryNumber} saved — ${savedContact}`,
+    );
+
+    setQuickEnquiry({
+      name: "",
+      address: "",
+      mobilePhone: "",
+      initialMessage: "",
+      source: "Telephone",
+    });
+  }
+
   const ready =
     customersReady &&
     enquiriesReady &&
@@ -1597,37 +1660,156 @@ export default function DashboardPage() {
             </section>
           )}
 
-          <section className="mt-5 rounded-[24px] border border-slate-300 bg-white p-5 shadow-sm md:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">Dashboard</div>
-                <h2 className="gf-h2 mt-1">Needs attention</h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                  Only the items GreenFlow thinks need action or preparation. Routine working-day tasks stay in Schedule and Visit Centre.
-                </p>
+          <section className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)] xl:items-start">
+            <div className="rounded-[24px] border border-slate-300 bg-white p-5 shadow-sm md:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">Dashboard</div>
+                  <h2 className="gf-h2 mt-1">Needs Attention</h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                    Only the items GreenFlow thinks need action or preparation. Routine working-day tasks stay in Schedule and Visit Centre.
+                  </p>
+                </div>
+                <div className={`rounded-full px-4 py-2 text-sm font-black ${workflowAttentionCount > 0 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-800"}`}>
+                  {workflowAttentionCount > 0 ? `${workflowAttentionCount} to deal with` : "All clear"}
+                </div>
               </div>
-              <div className={`rounded-full px-4 py-2 text-sm font-black ${workflowAttentionCount > 0 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-800"}`}>
-                {workflowAttentionCount > 0 ? `${workflowAttentionCount} to deal with` : "All clear"}
-              </div>
+
+              {workflowAttentionItems.length > 0 ? (
+                <div className="mt-4 space-y-4">
+                  {workflowDoNowItems.length > 0 && (
+                    <WorkflowPriorityGroup label="Do now" detail="Overdue, due today or operational items that need intervention." tone="danger" items={workflowDoNowItems} />
+                  )}
+                  {workflowPrepareNextItems.length > 0 && (
+                    <WorkflowPriorityGroup label="Prepare next" detail="Preparation needed for the next working day." tone="warning" items={workflowPrepareNextItems} />
+                  )}
+                  {workflowPlanAheadItems.length > 0 && (
+                    <WorkflowPriorityGroup label="Plan ahead" detail="Important work to progress when today&apos;s priorities are under control." tone="information" items={workflowPlanAheadItems} />
+                  )}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
+                  Nothing currently needs operational attention.
+                </div>
+              )}
             </div>
 
-            {workflowAttentionItems.length > 0 ? (
-              <div className="mt-4 space-y-4">
-                {workflowDoNowItems.length > 0 && (
-                  <WorkflowPriorityGroup label="Do now" detail="Overdue, due today or operational items that need intervention." tone="danger" items={workflowDoNowItems} />
-                )}
-                {workflowPrepareNextItems.length > 0 && (
-                  <WorkflowPriorityGroup label="Prepare next" detail="Preparation needed for the next working day." tone="warning" items={workflowPrepareNextItems} />
-                )}
-                {workflowPlanAheadItems.length > 0 && (
-                  <WorkflowPriorityGroup label="Plan ahead" detail="Important work to progress when today&apos;s priorities are under control." tone="information" items={workflowPlanAheadItems} />
-                )}
+            <aside className="rounded-[24px] border border-green-300 bg-white p-5 shadow-sm md:p-6">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#176b37]">
+                Quick capture
               </div>
-            ) : (
-              <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
-                Nothing currently needs operational attention.
+              <h2 className="gf-h2 mt-1">Quick Enquiry</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Got a call while you&apos;re busy? Save whatever details you have and finish the enquiry later.
+              </p>
+
+              <div className="mt-5 space-y-4">
+                <Field label="Name (if known)">
+                  <input
+                    value={quickEnquiry.name}
+                    onChange={(event) => {
+                      setQuickEnquiry((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }));
+                      setQuickEnquiryMessage("");
+                    }}
+                    placeholder="Name"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#338b45] focus:ring-2 focus:ring-green-100"
+                  />
+                </Field>
+
+                <Field label="Address (if known)">
+                  <input
+                    value={quickEnquiry.address}
+                    onChange={(event) => {
+                      setQuickEnquiry((current) => ({
+                        ...current,
+                        address: event.target.value,
+                      }));
+                      setQuickEnquiryMessage("");
+                    }}
+                    placeholder="Address"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#338b45] focus:ring-2 focus:ring-green-100"
+                  />
+                </Field>
+
+                <Field label="Mobile / Home Phone">
+                  <input
+                    type="tel"
+                    value={quickEnquiry.mobilePhone}
+                    onChange={(event) => {
+                      setQuickEnquiry((current) => ({
+                        ...current,
+                        mobilePhone: event.target.value,
+                      }));
+                      setQuickEnquiryMessage("");
+                    }}
+                    placeholder="07..."
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#338b45] focus:ring-2 focus:ring-green-100"
+                  />
+                </Field>
+
+                <Field label="Message / Notes">
+                  <textarea
+                    rows={4}
+                    value={quickEnquiry.initialMessage}
+                    onChange={(event) => {
+                      setQuickEnquiry((current) => ({
+                        ...current,
+                        initialMessage: event.target.value,
+                      }));
+                      setQuickEnquiryMessage("");
+                    }}
+                    placeholder="What did they ask about?"
+                    className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#338b45] focus:ring-2 focus:ring-green-100"
+                  />
+                </Field>
+
+                <Field label="Source">
+                  <select
+                    value={quickEnquiry.source}
+                    onChange={(event) =>
+                      setQuickEnquiry((current) => ({
+                        ...current,
+                        source: event.target.value as EnquirySource,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[#338b45] focus:ring-2 focus:ring-green-100"
+                  >
+                    <option value="Telephone">Telephone</option>
+                    <option value="Recommendation">Recommendation</option>
+                    <option value="Website">Website</option>
+                    <option value="Email">Email</option>
+                    <option value="Social Media">Social Media</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </Field>
+
+                {quickEnquiryMessage && (
+                  <div
+                    className={`rounded-xl border px-3.5 py-3 text-sm font-semibold ${quickEnquiryMessage.includes("saved") ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}
+                  >
+                    {quickEnquiryMessage}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={saveQuickEnquiry}
+                  className="inline-flex w-full justify-center rounded-xl bg-[#176b37] px-4 py-3 text-sm font-black text-white transition hover:bg-[#125b2f]"
+                >
+                  Save new enquiry
+                </button>
+
+                <Link
+                  href="/enquiries"
+                  className="block text-center text-sm font-bold text-[#176b37] hover:underline"
+                >
+                  Open Enquiries →
+                </Link>
               </div>
-            )}
+            </aside>
           </section>
 
 

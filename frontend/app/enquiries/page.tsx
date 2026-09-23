@@ -350,25 +350,6 @@ export default function EnquiriesPage() {
       draft.mobilePhone.trim();
 
     if (
-      !firstName &&
-      !surname
-    ) {
-      showMessage(
-        "Enter at least a first name or surname.",
-        "error",
-      );
-      return;
-    }
-
-    if (!address) {
-      showMessage(
-        "Enter the enquiry address.",
-        "error",
-      );
-      return;
-    }
-
-    if (
       emailAddress &&
       !isValidEmailAddress(
         emailAddress,
@@ -376,18 +357,6 @@ export default function EnquiriesPage() {
     ) {
       showMessage(
         "Enter a valid email address or leave the email field blank.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      !emailAddress &&
-      !mobilePhone &&
-      !homePhone
-    ) {
-      showMessage(
-        "Enter at least one contact method: email, mobile phone or home phone.",
         "error",
       );
       return;
