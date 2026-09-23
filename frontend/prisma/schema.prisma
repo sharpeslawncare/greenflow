@@ -16,6 +16,7 @@ model Organisation {
 
   memberships Membership[]
   customers   Customer[]
+  enquiries   Enquiry[]
 }
 
 model User {
@@ -110,4 +111,68 @@ model AdditionalCustomerJob {
 
   @@index([customerId])
   @@index([customerId, status])
+}
+
+model Enquiry {
+  id             String @id
+  organisationId String
+
+  enquiryNumber String
+
+  status     String @default("New Enquiry")
+  source     String @default("Recommendation")
+  referredBy String @default("")
+
+  firstName String @default("")
+  surname   String @default("")
+  fullName  String @default("")
+
+  address  String @default("")
+  postcode String @default("")
+
+  emailAddress String @default("")
+  homePhone    String @default("")
+  mobilePhone  String @default("")
+
+  initialMessage String @default("")
+  internalNotes  String @default("")
+
+  siteVisitDate String @default("")
+  siteVisitTime String @default("")
+
+  lawnMeasured         Boolean @default(false)
+  lawnSizeSquareMetres Int     @default(0)
+
+  minimumPriceApplied      Boolean @default(false)
+  pricePerSquareMetre      Decimal @default(0.20) @db.Decimal(10, 2)
+  calculatedTreatmentPrice Decimal @default(0) @db.Decimal(10, 2)
+  quotedTreatmentPrice     Decimal @default(0) @db.Decimal(10, 2)
+
+  quoteStatus     String @default("Not Prepared")
+  quoteDate       String @default("")
+  quoteExpiryDate String @default("")
+  quoteNotes      String @default("")
+
+  treatmentStartedImmediately Boolean @default(false)
+
+  suggestedGroupNumber Int @default(1)
+  suggestedVanNumber   Int @default(1)
+
+  extraWorkRequired        Boolean @default(false)
+  extraWorkDescription     String  @default("")
+  preferredExtraWorkSeason String  @default("")
+
+  convertedCustomerNumber String @default("")
+  convertedAt             String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, enquiryNumber])
+  @@index([organisationId])
+  @@index([organisationId, status])
+  @@index([organisationId, quoteStatus])
+  @@index([organisationId, postcode])
 }
