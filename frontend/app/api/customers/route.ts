@@ -3,6 +3,28 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
+type AdditionalJobInput = {
+  id: string;
+  treatmentLibraryId: string;
+  treatmentName: string;
+  wordingSnapshot: string;
+  scheduledDate: string;
+  price: number;
+  notes: string;
+  status: string;
+  createdAt: Date;
+};
+
+type AdditionalJobsParseResult =
+  | {
+      success: true;
+      jobs: AdditionalJobInput[];
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
 async function getCurrentMembership() {
   const session = await auth();
 
@@ -46,6 +68,190 @@ async function getCurrentMembership() {
   };
 }
 
+function parseAdditionalJobs(
+  value: unknown,
+): AdditionalJobsParseResult {
+  if (value === undefined) {
+    return {
+      success: true,
+      jobs: [],
+    };
+  }
+
+  if (!Array.isArray(value)) {
+    return {
+      success: false,
+      error: "Additional jobs must be an array.",
+    };
+  }
+
+  const jobs: AdditionalJobInput[] = [];
+
+  for (const rawJob of value) {
+    if (
+      !rawJob ||
+      typeof rawJob !== "object" ||
+      Array.isArray(rawJob)
+    ) {
+      return {
+        success: false,
+        error: "Invalid additional job data.",
+      };
+    }
+
+    const job = rawJob as Record<string, unknown>;
+
+    const id =
+      typeof job.id === "string"
+        ? job.id.trim()
+        : "";
+
+    const treatmentLibraryId =
+      typeof job.treatmentLibraryId === "string"
+        ? job.treatmentLibraryId.trim()
+        : "";
+
+    const treatmentName =
+      typeof job.treatmentName === "string"
+        ? job.treatmentName.trim()
+        : "";
+
+    const wordingSnapshot =
+      typeof job.wordingSnapshot === "string"
+        ? job.wordingSnapshot
+        : "";
+
+    const scheduledDate =
+      typeof job.scheduledDate === "string"
+        ? job.scheduledDate.trim()
+        : "";
+
+    const price = Number(job.price ?? 0);
+
+    const notes =
+      typeof job.notes === "string"
+        ? job.notes.trim()
+        : "";
+
+    const status =
+      typeof job.status === "string"
+        ? job.status.trim()
+        : "";
+
+    const createdAtValue =
+      typeof job.createdAt === "string"
+        ? job.createdAt
+        : "";
+
+    const createdAt = createdAtValue
+      ? new Date(createdAtValue)
+      : new Date();
+
+    if (!id) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have an ID.",
+      };
+    }
+
+    if (!treatmentLibraryId) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have a treatment library ID.",
+      };
+    }
+
+    if (!treatmentName) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have a treatment name.",
+      };
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      return {
+        success: false,
+        error:
+          "Additional job price must be a valid non-negative number.",
+      };
+    }
+
+    if (!status) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have a status.",
+      };
+    }
+
+    if (Number.isNaN(createdAt.getTime())) {
+      return {
+        success: false,
+        error:
+          "Additional job createdAt must be a valid date.",
+      };
+    }
+
+    jobs.push({
+      id,
+      treatmentLibraryId,
+      treatmentName,
+      wordingSnapshot,
+      scheduledDate,
+      price,
+      notes,
+      status,
+      createdAt,
+    });
+  }
+
+  return {
+    success: true,
+    jobs,
+  };
+}
+
+function serializeCustomer<
+  T extends {
+    treatmentPrice: unknown;
+    additionalJobs: Array<{
+      id: string;
+      treatmentLibraryId: string;
+      treatmentName: string;
+      wordingSnapshot: string;
+      scheduledDate: string;
+      price: unknown;
+      notes: string;
+      status: string;
+      createdAt: Date;
+    }>;
+  },
+>(customer: T) {
+  return {
+    ...customer,
+    treatmentPrice: Number(
+      customer.treatmentPrice,
+    ),
+    additionalJobs: customer.additionalJobs.map(
+      (job) => ({
+        id: job.id,
+        treatmentLibraryId:
+          job.treatmentLibraryId,
+        treatmentName: job.treatmentName,
+        wordingSnapshot: job.wordingSnapshot,
+        scheduledDate: job.scheduledDate,
+        price: Number(job.price),
+        notes: job.notes,
+        status: job.status,
+        createdAt: job.createdAt.toISOString(),
+      }),
+    ),
+  };
+}
+
 export async function GET() {
   const { error, membership } =
     await getCurrentMembership();
@@ -71,26 +277,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    customers: customers.map((customer) => ({
-      ...customer,
-      treatmentPrice: Number(
-        customer.treatmentPrice,
-      ),
-      additionalJobs: customer.additionalJobs.map(
-        (job) => ({
-          id: job.id,
-          treatmentLibraryId:
-            job.treatmentLibraryId,
-          treatmentName: job.treatmentName,
-          wordingSnapshot: job.wordingSnapshot,
-          scheduledDate: job.scheduledDate,
-          price: Number(job.price),
-          notes: job.notes,
-          status: job.status,
-          createdAt: job.createdAt.toISOString(),
-        }),
-      ),
-    })),
+    customers: customers.map(serializeCustomer),
   });
 }
 
@@ -325,6 +512,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const additionalJobsResult =
+    parseAdditionalJobs(data.additionalJobs);
+
+  if (!additionalJobsResult.success) {
+    return NextResponse.json(
+      {
+        error: additionalJobsResult.error,
+      },
+      { status: 400 },
+    );
+  }
+
+  const additionalJobs =
+    additionalJobsResult.jobs;
+
   const existingCustomer =
     await prisma.customer.findFirst({
       where: {
@@ -348,45 +550,76 @@ export async function POST(request: Request) {
   }
 
   try {
-    const customer = await prisma.customer.create({
-      data: {
-        organisationId:
-          membership.organisationId,
-        customerNumber,
-        firstName,
-        surname,
-        fullName,
-        address,
-        postcode,
-        email,
-        homePhone,
-        mobilePhone,
-        lawnSize,
-        groupNumber,
-        treatmentPrice,
-        status,
-        vanNumber,
-        nextVisit,
-        lastVisit,
-        lockedGate,
-        gateCode,
-        dogOnProperty,
-        preferredContact,
-        paymentMethod,
-        notes,
-        programmeStartDate,
+    const customer = await prisma.$transaction(
+      async (tx) => {
+        const createdCustomer =
+          await tx.customer.create({
+            data: {
+              organisationId:
+                membership.organisationId,
+              customerNumber,
+              firstName,
+              surname,
+              fullName,
+              address,
+              postcode,
+              email,
+              homePhone,
+              mobilePhone,
+              lawnSize,
+              groupNumber,
+              treatmentPrice,
+              status,
+              vanNumber,
+              nextVisit,
+              lastVisit,
+              lockedGate,
+              gateCode,
+              dogOnProperty,
+              preferredContact,
+              paymentMethod,
+              notes,
+              programmeStartDate,
+            },
+          });
+
+        if (additionalJobs.length > 0) {
+          await tx.additionalCustomerJob.createMany({
+            data: additionalJobs.map((job) => ({
+              id: job.id,
+              customerId: createdCustomer.id,
+              treatmentLibraryId:
+                job.treatmentLibraryId,
+              treatmentName: job.treatmentName,
+              wordingSnapshot:
+                job.wordingSnapshot,
+              scheduledDate: job.scheduledDate,
+              price: job.price,
+              notes: job.notes,
+              status: job.status,
+              createdAt: job.createdAt,
+            })),
+          });
+        }
+
+        return tx.customer.findUniqueOrThrow({
+          where: {
+            id: createdCustomer.id,
+          },
+          include: {
+            additionalJobs: {
+              orderBy: {
+                createdAt: "asc",
+              },
+            },
+          },
+        });
       },
-    });
+    );
 
     return NextResponse.json(
       {
-        customer: {
-          ...customer,
-          treatmentPrice: Number(
-            customer.treatmentPrice,
-          ),
-          additionalJobs: [],
-        },
+        customer: serializeCustomer(customer),
       },
       { status: 201 },
     );

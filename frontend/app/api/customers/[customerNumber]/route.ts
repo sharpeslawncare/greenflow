@@ -9,6 +9,28 @@ type RouteContext = {
   }>;
 };
 
+type AdditionalJobInput = {
+  id: string;
+  treatmentLibraryId: string;
+  treatmentName: string;
+  wordingSnapshot: string;
+  scheduledDate: string;
+  price: number;
+  notes: string;
+  status: string;
+  createdAt: Date;
+};
+
+type AdditionalJobsParseResult =
+  | {
+      success: true;
+      jobs: AdditionalJobInput[];
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
 async function getCurrentMembership() {
   const session = await auth();
 
@@ -36,7 +58,10 @@ async function getCurrentMembership() {
   if (!membership) {
     return {
       error: NextResponse.json(
-        { error: "No GreenFlow organisation membership found." },
+        {
+          error:
+            "No GreenFlow organisation membership found.",
+        },
         { status: 403 },
       ),
       membership: null,
@@ -49,11 +74,189 @@ async function getCurrentMembership() {
   };
 }
 
+function parseAdditionalJobs(
+  value: unknown,
+): AdditionalJobsParseResult {
+  if (!Array.isArray(value)) {
+    return {
+      success: false,
+      error: "Additional jobs must be an array.",
+    };
+  }
+
+  const jobs: AdditionalJobInput[] = [];
+
+  for (const rawJob of value) {
+    if (
+      !rawJob ||
+      typeof rawJob !== "object" ||
+      Array.isArray(rawJob)
+    ) {
+      return {
+        success: false,
+        error: "Invalid additional job data.",
+      };
+    }
+
+    const job = rawJob as Record<string, unknown>;
+
+    const id =
+      typeof job.id === "string"
+        ? job.id.trim()
+        : "";
+
+    const treatmentLibraryId =
+      typeof job.treatmentLibraryId === "string"
+        ? job.treatmentLibraryId.trim()
+        : "";
+
+    const treatmentName =
+      typeof job.treatmentName === "string"
+        ? job.treatmentName.trim()
+        : "";
+
+    const wordingSnapshot =
+      typeof job.wordingSnapshot === "string"
+        ? job.wordingSnapshot
+        : "";
+
+    const scheduledDate =
+      typeof job.scheduledDate === "string"
+        ? job.scheduledDate.trim()
+        : "";
+
+    const price = Number(job.price ?? 0);
+
+    const notes =
+      typeof job.notes === "string"
+        ? job.notes.trim()
+        : "";
+
+    const status =
+      typeof job.status === "string"
+        ? job.status.trim()
+        : "";
+
+    const createdAtValue =
+      typeof job.createdAt === "string"
+        ? job.createdAt
+        : "";
+
+    const createdAt = createdAtValue
+      ? new Date(createdAtValue)
+      : new Date();
+
+    if (!id) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have an ID.",
+      };
+    }
+
+    if (!treatmentLibraryId) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have a treatment library ID.",
+      };
+    }
+
+    if (!treatmentName) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have a treatment name.",
+      };
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      return {
+        success: false,
+        error:
+          "Additional job price must be a valid non-negative number.",
+      };
+    }
+
+    if (!status) {
+      return {
+        success: false,
+        error:
+          "Every additional job must have a status.",
+      };
+    }
+
+    if (Number.isNaN(createdAt.getTime())) {
+      return {
+        success: false,
+        error:
+          "Additional job createdAt must be a valid date.",
+      };
+    }
+
+    jobs.push({
+      id,
+      treatmentLibraryId,
+      treatmentName,
+      wordingSnapshot,
+      scheduledDate,
+      price,
+      notes,
+      status,
+      createdAt,
+    });
+  }
+
+  return {
+    success: true,
+    jobs,
+  };
+}
+
+function serializeCustomer<
+  T extends {
+    treatmentPrice: unknown;
+    additionalJobs: Array<{
+      id: string;
+      treatmentLibraryId: string;
+      treatmentName: string;
+      wordingSnapshot: string;
+      scheduledDate: string;
+      price: unknown;
+      notes: string;
+      status: string;
+      createdAt: Date;
+    }>;
+  },
+>(customer: T) {
+  return {
+    ...customer,
+    treatmentPrice: Number(
+      customer.treatmentPrice,
+    ),
+    additionalJobs: customer.additionalJobs.map(
+      (job) => ({
+        id: job.id,
+        treatmentLibraryId:
+          job.treatmentLibraryId,
+        treatmentName: job.treatmentName,
+        wordingSnapshot: job.wordingSnapshot,
+        scheduledDate: job.scheduledDate,
+        price: Number(job.price),
+        notes: job.notes,
+        status: job.status,
+        createdAt: job.createdAt.toISOString(),
+      }),
+    ),
+  };
+}
+
 export async function PATCH(
   request: Request,
   context: RouteContext,
 ) {
-  const { error, membership } = await getCurrentMembership();
+  const { error, membership } =
+    await getCurrentMembership();
 
   if (error || !membership) {
     return error;
@@ -73,12 +276,14 @@ export async function PATCH(
     );
   }
 
-  const existingCustomer = await prisma.customer.findFirst({
-    where: {
-      organisationId: membership.organisationId,
-      customerNumber,
-    },
-  });
+  const existingCustomer =
+    await prisma.customer.findFirst({
+      where: {
+        organisationId:
+          membership.organisationId,
+        customerNumber,
+      },
+    });
 
   if (!existingCustomer) {
     return NextResponse.json(
@@ -98,7 +303,11 @@ export async function PATCH(
     );
   }
 
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body)
+  ) {
     return NextResponse.json(
       { error: "Invalid customer data." },
       { status: 400 },
@@ -161,17 +370,22 @@ export async function PATCH(
   }
 
   if (typeof data.homePhone === "string") {
-    updateData.homePhone = data.homePhone.trim();
+    updateData.homePhone =
+      data.homePhone.trim();
   }
 
   if (typeof data.mobilePhone === "string") {
-    updateData.mobilePhone = data.mobilePhone.trim();
+    updateData.mobilePhone =
+      data.mobilePhone.trim();
   }
 
   if (data.lawnSize !== undefined) {
     const lawnSize = Number(data.lawnSize);
 
-    if (!Number.isFinite(lawnSize) || lawnSize < 0) {
+    if (
+      !Number.isFinite(lawnSize) ||
+      lawnSize < 0
+    ) {
       return NextResponse.json(
         {
           error:
@@ -185,7 +399,9 @@ export async function PATCH(
   }
 
   if (data.groupNumber !== undefined) {
-    const groupNumber = Number(data.groupNumber);
+    const groupNumber = Number(
+      data.groupNumber,
+    );
 
     if (
       !Number.isFinite(groupNumber) ||
@@ -221,7 +437,8 @@ export async function PATCH(
       );
     }
 
-    updateData.treatmentPrice = treatmentPrice;
+    updateData.treatmentPrice =
+      treatmentPrice;
   }
 
   if (data.status !== undefined) {
@@ -273,29 +490,36 @@ export async function PATCH(
   }
 
   if (typeof data.nextVisit === "string") {
-    updateData.nextVisit = data.nextVisit.trim();
+    updateData.nextVisit =
+      data.nextVisit.trim();
   }
 
   if (typeof data.lastVisit === "string") {
-    updateData.lastVisit = data.lastVisit.trim();
+    updateData.lastVisit =
+      data.lastVisit.trim();
   }
 
   if (typeof data.lockedGate === "boolean") {
-    updateData.lockedGate = data.lockedGate;
+    updateData.lockedGate =
+      data.lockedGate;
   }
 
   if (typeof data.gateCode === "string") {
-    updateData.gateCode = data.gateCode.trim();
+    updateData.gateCode =
+      data.gateCode.trim();
   }
 
-  if (typeof data.dogOnProperty === "boolean") {
+  if (
+    typeof data.dogOnProperty === "boolean"
+  ) {
     updateData.dogOnProperty =
       data.dogOnProperty;
   }
 
   if (data.preferredContact !== undefined) {
     if (
-      typeof data.preferredContact !== "string"
+      typeof data.preferredContact !==
+      "string"
     ) {
       return NextResponse.json(
         {
@@ -333,7 +557,9 @@ export async function PATCH(
       preferredContact;
   }
 
-  if (typeof data.paymentMethod === "string") {
+  if (
+    typeof data.paymentMethod === "string"
+  ) {
     updateData.paymentMethod =
       data.paymentMethod.trim();
   }
@@ -343,7 +569,8 @@ export async function PATCH(
   }
 
   if (
-    typeof data.programmeStartDate === "string"
+    typeof data.programmeStartDate ===
+    "string"
   ) {
     updateData.programmeStartDate =
       data.programmeStartDate.trim();
@@ -367,21 +594,89 @@ export async function PATCH(
     }
   }
 
+  let additionalJobs:
+    | AdditionalJobInput[]
+    | undefined;
+
+  if (data.additionalJobs !== undefined) {
+    const additionalJobsResult =
+      parseAdditionalJobs(
+        data.additionalJobs,
+      );
+
+    if (!additionalJobsResult.success) {
+      return NextResponse.json(
+        {
+          error:
+            additionalJobsResult.error,
+        },
+        { status: 400 },
+      );
+    }
+
+    additionalJobs =
+      additionalJobsResult.jobs;
+  }
+
   try {
-    const customer = await prisma.customer.update({
-      where: {
-        id: existingCustomer.id,
+    const customer = await prisma.$transaction(
+      async (tx) => {
+        await tx.customer.update({
+          where: {
+            id: existingCustomer.id,
+          },
+          data: updateData,
+        });
+
+        if (additionalJobs !== undefined) {
+          await tx.additionalCustomerJob.deleteMany({
+            where: {
+              customerId: existingCustomer.id,
+            },
+          });
+
+          if (additionalJobs.length > 0) {
+            await tx.additionalCustomerJob.createMany({
+              data: additionalJobs.map(
+                (job) => ({
+                  id: job.id,
+                  customerId:
+                    existingCustomer.id,
+                  treatmentLibraryId:
+                    job.treatmentLibraryId,
+                  treatmentName:
+                    job.treatmentName,
+                  wordingSnapshot:
+                    job.wordingSnapshot,
+                  scheduledDate:
+                    job.scheduledDate,
+                  price: job.price,
+                  notes: job.notes,
+                  status: job.status,
+                  createdAt: job.createdAt,
+                }),
+              ),
+            });
+          }
+        }
+
+        return tx.customer.findUniqueOrThrow({
+          where: {
+            id: existingCustomer.id,
+          },
+          include: {
+            additionalJobs: {
+              orderBy: {
+                createdAt: "asc",
+              },
+            },
+          },
+        });
       },
-      data: updateData,
-    });
+    );
 
     return NextResponse.json({
-      customer: {
-        ...customer,
-        treatmentPrice: Number(
-          customer.treatmentPrice,
-        ),
-      },
+      customer: serializeCustomer(customer),
     });
   } catch (updateError) {
     console.error(
