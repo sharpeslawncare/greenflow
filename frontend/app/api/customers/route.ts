@@ -25,6 +25,43 @@ type AdditionalJobsParseResult =
       error: string;
     };
 
+type CustomerInput = {
+  customerNumber: string;
+  firstName: string;
+  surname: string;
+  fullName: string;
+  address: string;
+  postcode: string;
+  email: string;
+  homePhone: string;
+  mobilePhone: string;
+  lawnSize: number;
+  groupNumber: number;
+  treatmentPrice: number;
+  status: string;
+  vanNumber: number;
+  nextVisit: string;
+  lastVisit: string;
+  lockedGate: boolean;
+  gateCode: string;
+  dogOnProperty: boolean;
+  preferredContact: string;
+  paymentMethod: string;
+  notes: string;
+  programmeStartDate: string;
+  additionalJobs: AdditionalJobInput[];
+};
+
+type CustomerParseResult =
+  | {
+      success: true;
+      customer: CustomerInput;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
 async function getCurrentMembership() {
   const session = await auth();
 
@@ -86,6 +123,7 @@ function parseAdditionalJobs(
   }
 
   const jobs: AdditionalJobInput[] = [];
+  const seenIds = new Set<string>();
 
   for (const rawJob of value) {
     if (
@@ -155,6 +193,15 @@ function parseAdditionalJobs(
       };
     }
 
+    if (seenIds.has(id)) {
+      return {
+        success: false,
+        error: `Duplicate additional job ID "${id}".`,
+      };
+    }
+
+    seenIds.add(id);
+
     if (!treatmentLibraryId) {
       return {
         success: false,
@@ -211,6 +258,286 @@ function parseAdditionalJobs(
   return {
     success: true,
     jobs,
+  };
+}
+
+function parseCustomer(
+  value: unknown,
+): CustomerParseResult {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return {
+      success: false,
+      error: "Invalid customer data.",
+    };
+  }
+
+  const data = value as Record<string, unknown>;
+
+  const customerNumber =
+    typeof data.customerNumber === "string"
+      ? data.customerNumber.trim()
+      : "";
+
+  const firstName =
+    typeof data.firstName === "string"
+      ? data.firstName.trim()
+      : "";
+
+  const surname =
+    typeof data.surname === "string"
+      ? data.surname.trim()
+      : "";
+
+  const fullName =
+    typeof data.fullName === "string" &&
+    data.fullName.trim()
+      ? data.fullName.trim()
+      : `${firstName} ${surname}`.trim();
+
+  const address =
+    typeof data.address === "string"
+      ? data.address.trim()
+      : "";
+
+  const postcode =
+    typeof data.postcode === "string"
+      ? data.postcode.trim().toUpperCase()
+      : "";
+
+  const email =
+    typeof data.email === "string"
+      ? data.email.trim().toLowerCase()
+      : "";
+
+  const homePhone =
+    typeof data.homePhone === "string"
+      ? data.homePhone.trim()
+      : "";
+
+  const mobilePhone =
+    typeof data.mobilePhone === "string"
+      ? data.mobilePhone.trim()
+      : "";
+
+  const lawnSize = Number(data.lawnSize ?? 0);
+
+  const groupNumber = Number(
+    data.groupNumber ?? 0,
+  );
+
+  const treatmentPrice = Number(
+    data.treatmentPrice ?? 0,
+  );
+
+  const status =
+    typeof data.status === "string"
+      ? data.status.trim()
+      : "Active";
+
+  const vanNumber = Number(data.vanNumber ?? 1);
+
+  const nextVisit =
+    typeof data.nextVisit === "string"
+      ? data.nextVisit.trim()
+      : "Not yet scheduled";
+
+  const lastVisit =
+    typeof data.lastVisit === "string"
+      ? data.lastVisit.trim()
+      : "No previous visit";
+
+  const lockedGate =
+    typeof data.lockedGate === "boolean"
+      ? data.lockedGate
+      : false;
+
+  const gateCode =
+    typeof data.gateCode === "string"
+      ? data.gateCode.trim()
+      : "";
+
+  const dogOnProperty =
+    typeof data.dogOnProperty === "boolean"
+      ? data.dogOnProperty
+      : false;
+
+  const preferredContact =
+    typeof data.preferredContact === "string"
+      ? data.preferredContact.trim()
+      : "SMS";
+
+  const paymentMethod =
+    typeof data.paymentMethod === "string"
+      ? data.paymentMethod.trim()
+      : "Not set";
+
+  const notes =
+    typeof data.notes === "string"
+      ? data.notes.trim()
+      : "";
+
+  const programmeStartDate =
+    typeof data.programmeStartDate === "string"
+      ? data.programmeStartDate.trim()
+      : "";
+
+  if (!customerNumber) {
+    return {
+      success: false,
+      error: "Customer number is required.",
+    };
+  }
+
+  if (
+    !Number.isFinite(lawnSize) ||
+    lawnSize < 0
+  ) {
+    return {
+      success: false,
+      error:
+        "Lawn size must be a valid non-negative number.",
+    };
+  }
+
+  if (
+    !Number.isFinite(groupNumber) ||
+    groupNumber < 0
+  ) {
+    return {
+      success: false,
+      error:
+        "Group number must be a valid non-negative number.",
+    };
+  }
+
+  if (
+    !Number.isFinite(treatmentPrice) ||
+    treatmentPrice < 0
+  ) {
+    return {
+      success: false,
+      error:
+        "Treatment price must be a valid non-negative number.",
+    };
+  }
+
+  if (
+    !Number.isFinite(vanNumber) ||
+    vanNumber < 1
+  ) {
+    return {
+      success: false,
+      error:
+        "Van number must be a valid positive number.",
+    };
+  }
+
+  const allowedStatuses = [
+    "Active",
+    "Paused",
+    "Inactive",
+  ];
+
+  if (!allowedStatuses.includes(status)) {
+    return {
+      success: false,
+      error:
+        "Status must be Active, Paused or Inactive.",
+    };
+  }
+
+  const allowedContactMethods = [
+    "SMS",
+    "Email",
+    "Telephone",
+  ];
+
+  if (
+    !allowedContactMethods.includes(
+      preferredContact,
+    )
+  ) {
+    return {
+      success: false,
+      error:
+        "Preferred contact must be SMS, Email or Telephone.",
+    };
+  }
+
+  const additionalJobsResult =
+    parseAdditionalJobs(data.additionalJobs);
+
+  if (!additionalJobsResult.success) {
+    return {
+      success: false,
+      error: additionalJobsResult.error,
+    };
+  }
+
+  return {
+    success: true,
+    customer: {
+      customerNumber,
+      firstName,
+      surname,
+      fullName,
+      address,
+      postcode,
+      email,
+      homePhone,
+      mobilePhone,
+      lawnSize,
+      groupNumber,
+      treatmentPrice,
+      status,
+      vanNumber,
+      nextVisit,
+      lastVisit,
+      lockedGate,
+      gateCode,
+      dogOnProperty,
+      preferredContact,
+      paymentMethod,
+      notes,
+      programmeStartDate,
+      additionalJobs:
+        additionalJobsResult.jobs,
+    },
+  };
+}
+
+function customerDatabaseData(
+  customer: CustomerInput,
+) {
+  return {
+    customerNumber: customer.customerNumber,
+    firstName: customer.firstName,
+    surname: customer.surname,
+    fullName: customer.fullName,
+    address: customer.address,
+    postcode: customer.postcode,
+    email: customer.email,
+    homePhone: customer.homePhone,
+    mobilePhone: customer.mobilePhone,
+    lawnSize: customer.lawnSize,
+    groupNumber: customer.groupNumber,
+    treatmentPrice: customer.treatmentPrice,
+    status: customer.status,
+    vanNumber: customer.vanNumber,
+    nextVisit: customer.nextVisit,
+    lastVisit: customer.lastVisit,
+    lockedGate: customer.lockedGate,
+    gateCode: customer.gateCode,
+    dogOnProperty: customer.dogOnProperty,
+    preferredContact: customer.preferredContact,
+    paymentMethod: customer.paymentMethod,
+    notes: customer.notes,
+    programmeStartDate:
+      customer.programmeStartDate,
   };
 }
 
@@ -311,228 +638,235 @@ export async function POST(request: Request) {
     );
   }
 
-  const data = body as Record<string, unknown>;
+  const requestData =
+    body as Record<string, unknown>;
 
-  const customerNumber =
-    typeof data.customerNumber === "string"
-      ? data.customerNumber.trim()
-      : "";
+  /*
+   * Safe bulk import/upsert mode.
+   *
+   * This deliberately DOES NOT delete customers that are
+   * absent from the supplied array.
+   *
+   * That distinction is important because GreenFlow's
+   * existing customer records may include genuine customers
+   * as well as temporary/demo records used during development.
+   */
+  if (requestData.customers !== undefined) {
+    if (!Array.isArray(requestData.customers)) {
+      return NextResponse.json(
+        {
+          error:
+            "Customers must be supplied as an array.",
+        },
+        { status: 400 },
+      );
+    }
 
-  const firstName =
-    typeof data.firstName === "string"
-      ? data.firstName.trim()
-      : "";
+    const parsedCustomers: CustomerInput[] = [];
+    const seenCustomerNumbers =
+      new Set<string>();
 
-  const surname =
-    typeof data.surname === "string"
-      ? data.surname.trim()
-      : "";
+    for (
+      let index = 0;
+      index < requestData.customers.length;
+      index += 1
+    ) {
+      const result = parseCustomer(
+        requestData.customers[index],
+      );
 
-  const fullName =
-    typeof data.fullName === "string"
-      ? data.fullName.trim()
-      : `${firstName} ${surname}`.trim();
+      if (!result.success) {
+        return NextResponse.json(
+          {
+            error: `Customer ${
+              index + 1
+            }: ${result.error}`,
+          },
+          { status: 400 },
+        );
+      }
 
-  const address =
-    typeof data.address === "string"
-      ? data.address.trim()
-      : "";
+      if (
+        seenCustomerNumbers.has(
+          result.customer.customerNumber,
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              `Duplicate customer number ` +
+              `"${result.customer.customerNumber}" ` +
+              "in bulk request.",
+          },
+          { status: 400 },
+        );
+      }
 
-  const postcode =
-    typeof data.postcode === "string"
-      ? data.postcode.trim().toUpperCase()
-      : "";
+      seenCustomerNumbers.add(
+        result.customer.customerNumber,
+      );
 
-  const email =
-    typeof data.email === "string"
-      ? data.email.trim().toLowerCase()
-      : "";
+      parsedCustomers.push(result.customer);
+    }
 
-  const homePhone =
-    typeof data.homePhone === "string"
-      ? data.homePhone.trim()
-      : "";
+    try {
+      const customers =
+        await prisma.$transaction(
+          async (tx) => {
+            for (const customer of parsedCustomers) {
+              const existingCustomer =
+                await tx.customer.findFirst({
+                  where: {
+                    organisationId:
+                      membership.organisationId,
+                    customerNumber:
+                      customer.customerNumber,
+                  },
+                  select: {
+                    id: true,
+                  },
+                });
 
-  const mobilePhone =
-    typeof data.mobilePhone === "string"
-      ? data.mobilePhone.trim()
-      : "";
+              let customerId: string;
 
-  const lawnSize = Number(data.lawnSize ?? 0);
-  const groupNumber = Number(
-    data.groupNumber ?? 0,
-  );
-  const treatmentPrice = Number(
-    data.treatmentPrice ?? 0,
-  );
-  const vanNumber = Number(data.vanNumber ?? 1);
+              if (existingCustomer) {
+                const updatedCustomer =
+                  await tx.customer.update({
+                    where: {
+                      id: existingCustomer.id,
+                    },
+                    data: customerDatabaseData(
+                      customer,
+                    ),
+                    select: {
+                      id: true,
+                    },
+                  });
 
-  const status =
-    typeof data.status === "string"
-      ? data.status.trim()
-      : "Active";
+                customerId = updatedCustomer.id;
 
-  const nextVisit =
-    typeof data.nextVisit === "string"
-      ? data.nextVisit.trim()
-      : "Not yet scheduled";
+                await tx.additionalCustomerJob.deleteMany(
+                  {
+                    where: {
+                      customerId,
+                    },
+                  },
+                );
+              } else {
+                const createdCustomer =
+                  await tx.customer.create({
+                    data: {
+                      organisationId:
+                        membership.organisationId,
+                      ...customerDatabaseData(
+                        customer,
+                      ),
+                    },
+                    select: {
+                      id: true,
+                    },
+                  });
 
-  const lastVisit =
-    typeof data.lastVisit === "string"
-      ? data.lastVisit.trim()
-      : "No previous visit";
+                customerId = createdCustomer.id;
+              }
 
-  const lockedGate =
-    typeof data.lockedGate === "boolean"
-      ? data.lockedGate
-      : false;
+              if (
+                customer.additionalJobs.length > 0
+              ) {
+                await tx.additionalCustomerJob.createMany(
+                  {
+                    data:
+                      customer.additionalJobs.map(
+                        (job) => ({
+                          id: job.id,
+                          customerId,
+                          treatmentLibraryId:
+                            job.treatmentLibraryId,
+                          treatmentName:
+                            job.treatmentName,
+                          wordingSnapshot:
+                            job.wordingSnapshot,
+                          scheduledDate:
+                            job.scheduledDate,
+                          price: job.price,
+                          notes: job.notes,
+                          status: job.status,
+                          createdAt: job.createdAt,
+                        }),
+                      ),
+                  },
+                );
+              }
+            }
 
-  const gateCode =
-    typeof data.gateCode === "string"
-      ? data.gateCode.trim()
-      : "";
+            return tx.customer.findMany({
+              where: {
+                organisationId:
+                  membership.organisationId,
+                customerNumber: {
+                  in: parsedCustomers.map(
+                    (customer) =>
+                      customer.customerNumber,
+                  ),
+                },
+              },
+              include: {
+                additionalJobs: {
+                  orderBy: {
+                    createdAt: "asc",
+                  },
+                },
+              },
+              orderBy: {
+                customerNumber: "asc",
+              },
+            });
+          },
+        );
 
-  const dogOnProperty =
-    typeof data.dogOnProperty === "boolean"
-      ? data.dogOnProperty
-      : false;
+      return NextResponse.json({
+        success: true,
+        imported: customers.length,
+        customers:
+          customers.map(serializeCustomer),
+      });
+    } catch (bulkError) {
+      console.error(
+        "Failed to bulk upsert GreenFlow customers:",
+        bulkError,
+      );
 
-  const preferredContact =
-    typeof data.preferredContact === "string"
-      ? data.preferredContact.trim()
-      : "SMS";
-
-  const paymentMethod =
-    typeof data.paymentMethod === "string"
-      ? data.paymentMethod.trim()
-      : "Not set";
-
-  const notes =
-    typeof data.notes === "string"
-      ? data.notes.trim()
-      : "";
-
-  const programmeStartDate =
-    typeof data.programmeStartDate === "string"
-      ? data.programmeStartDate.trim()
-      : "";
-
-  if (!customerNumber) {
-    return NextResponse.json(
-      { error: "Customer number is required." },
-      { status: 400 },
-    );
+      return NextResponse.json(
+        {
+          error:
+            "Unable to import customers.",
+        },
+        { status: 500 },
+      );
+    }
   }
 
-  if (
-    !Number.isFinite(lawnSize) ||
-    lawnSize < 0
-  ) {
+  const customerResult = parseCustomer(body);
+
+  if (!customerResult.success) {
     return NextResponse.json(
       {
-        error:
-          "Lawn size must be a valid non-negative number.",
+        error: customerResult.error,
       },
       { status: 400 },
     );
   }
 
-  if (
-    !Number.isFinite(groupNumber) ||
-    groupNumber < 0
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Group number must be a valid non-negative number.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (
-    !Number.isFinite(treatmentPrice) ||
-    treatmentPrice < 0
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Treatment price must be a valid non-negative number.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (
-    !Number.isFinite(vanNumber) ||
-    vanNumber < 1
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Van number must be a valid positive number.",
-      },
-      { status: 400 },
-    );
-  }
-
-  const allowedStatuses = [
-    "Active",
-    "Paused",
-    "Inactive",
-  ];
-
-  if (!allowedStatuses.includes(status)) {
-    return NextResponse.json(
-      {
-        error:
-          "Status must be Active, Paused or Inactive.",
-      },
-      { status: 400 },
-    );
-  }
-
-  const allowedContactMethods = [
-    "SMS",
-    "Email",
-    "Telephone",
-  ];
-
-  if (
-    !allowedContactMethods.includes(
-      preferredContact,
-    )
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Preferred contact must be SMS, Email or Telephone.",
-      },
-      { status: 400 },
-    );
-  }
-
-  const additionalJobsResult =
-    parseAdditionalJobs(data.additionalJobs);
-
-  if (!additionalJobsResult.success) {
-    return NextResponse.json(
-      {
-        error: additionalJobsResult.error,
-      },
-      { status: 400 },
-    );
-  }
-
-  const additionalJobs =
-    additionalJobsResult.jobs;
+  const customerInput =
+    customerResult.customer;
 
   const existingCustomer =
     await prisma.customer.findFirst({
       where: {
         organisationId:
           membership.organisationId,
-        customerNumber,
+        customerNumber:
+          customerInput.customerNumber,
       },
       select: {
         id: true,
@@ -557,48 +891,35 @@ export async function POST(request: Request) {
             data: {
               organisationId:
                 membership.organisationId,
-              customerNumber,
-              firstName,
-              surname,
-              fullName,
-              address,
-              postcode,
-              email,
-              homePhone,
-              mobilePhone,
-              lawnSize,
-              groupNumber,
-              treatmentPrice,
-              status,
-              vanNumber,
-              nextVisit,
-              lastVisit,
-              lockedGate,
-              gateCode,
-              dogOnProperty,
-              preferredContact,
-              paymentMethod,
-              notes,
-              programmeStartDate,
+              ...customerDatabaseData(
+                customerInput,
+              ),
             },
           });
 
-        if (additionalJobs.length > 0) {
+        if (
+          customerInput.additionalJobs.length > 0
+        ) {
           await tx.additionalCustomerJob.createMany({
-            data: additionalJobs.map((job) => ({
-              id: job.id,
-              customerId: createdCustomer.id,
-              treatmentLibraryId:
-                job.treatmentLibraryId,
-              treatmentName: job.treatmentName,
-              wordingSnapshot:
-                job.wordingSnapshot,
-              scheduledDate: job.scheduledDate,
-              price: job.price,
-              notes: job.notes,
-              status: job.status,
-              createdAt: job.createdAt,
-            })),
+            data:
+              customerInput.additionalJobs.map(
+                (job) => ({
+                  id: job.id,
+                  customerId: createdCustomer.id,
+                  treatmentLibraryId:
+                    job.treatmentLibraryId,
+                  treatmentName:
+                    job.treatmentName,
+                  wordingSnapshot:
+                    job.wordingSnapshot,
+                  scheduledDate:
+                    job.scheduledDate,
+                  price: job.price,
+                  notes: job.notes,
+                  status: job.status,
+                  createdAt: job.createdAt,
+                }),
+              ),
           });
         }
 
