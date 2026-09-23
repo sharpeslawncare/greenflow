@@ -12,6 +12,7 @@ import {
 type NavigationItem = {
   label: string;
   href: string;
+  developmentOnly?: boolean;
 };
 
 type NavigationSection = {
@@ -136,6 +137,7 @@ const navigationSections: NavigationSection[] = [
       {
         label: "Developer Tools",
         href: "/settings/developer",
+        developmentOnly: true,
       },
     ],
   },
@@ -163,6 +165,19 @@ function readPublicEnvironment():
 const publicEnvironment =
   readPublicEnvironment();
 
+function isNavigationItemVisible(
+  item: NavigationItem,
+) {
+  if (
+    item.developmentOnly &&
+    publicEnvironment === "production"
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export function AppShell({
   children,
 }: {
@@ -170,14 +185,25 @@ export function AppShell({
 }) {
   const pathname = usePathname();
 
-  const activeSectionId =
-    navigationSections.find((section) =>
-      section.items.some((item) =>
-        isActivePath(
-          pathname,
-          item.href,
+  const visibleNavigationSections =
+    navigationSections.map(
+      (section) => ({
+        ...section,
+        items: section.items.filter(
+          isNavigationItemVisible,
         ),
-      ),
+      }),
+    );
+
+  const activeSectionId =
+    visibleNavigationSections.find(
+      (section) =>
+        section.items.some((item) =>
+          isActivePath(
+            pathname,
+            item.href,
+          ),
+        ),
     )?.id ?? "";
 
   const [
@@ -231,7 +257,7 @@ export function AppShell({
             <div className="my-4 border-t border-white/10" />
 
             <div className="space-y-1">
-              {navigationSections.map(
+              {visibleNavigationSections.map(
                 (section) => {
                   const open =
                     openSectionId ===
