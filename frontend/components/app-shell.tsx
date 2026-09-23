@@ -20,6 +20,11 @@ type NavigationSection = {
   items: NavigationItem[];
 };
 
+type PublicGreenFlowEnvironment =
+  | "development"
+  | "test"
+  | "production";
+
 const primaryNavigation: NavigationItem[] = [
   {
     label: "Dashboard",
@@ -136,6 +141,28 @@ const navigationSections: NavigationSection[] = [
   },
 ];
 
+function readPublicEnvironment():
+  PublicGreenFlowEnvironment {
+  const value =
+    process.env
+      .NEXT_PUBLIC_GREENFLOW_ENVIRONMENT
+      ?.trim()
+      .toLowerCase();
+
+  if (
+    value === "development" ||
+    value === "test" ||
+    value === "production"
+  ) {
+    return value;
+  }
+
+  return "development";
+}
+
+const publicEnvironment =
+  readPublicEnvironment();
+
 export function AppShell({
   children,
 }: {
@@ -172,7 +199,7 @@ export function AppShell({
         <aside className="hidden h-screen w-72 shrink-0 flex-col overflow-y-auto bg-[#0d5333] px-5 py-6 text-white lg:flex">
           <Link
             href="/"
-            className="mb-7 block shrink-0"
+            className="mb-4 block shrink-0"
           >
             <div className="text-3xl font-bold tracking-tight">
               GreenFlow
@@ -183,7 +210,9 @@ export function AppShell({
             </div>
           </Link>
 
-          <nav className="space-y-2">
+          <EnvironmentBadge />
+
+          <nav className="mt-5 space-y-2">
             <div className="space-y-1">
               {primaryNavigation.map(
                 (item) => (
@@ -297,9 +326,14 @@ export function AppShell({
                 href="/"
                 className="min-w-0"
               >
-                <div className="font-bold text-[#0d5333]">
-                  GreenFlow
+                <div className="flex items-center gap-2">
+                  <div className="font-bold text-[#0d5333]">
+                    GreenFlow
+                  </div>
+
+                  <EnvironmentBadge compact />
                 </div>
+
                 <div className="truncate text-xs text-slate-500">
                   Sharpes Lawn Care
                 </div>
@@ -324,6 +358,44 @@ export function AppShell({
 
           {children}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EnvironmentBadge({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
+  if (
+    publicEnvironment ===
+    "production"
+  ) {
+    return null;
+  }
+
+  const label =
+    publicEnvironment === "test"
+      ? "TEST"
+      : "DEVELOPMENT";
+
+  if (compact) {
+    return (
+      <span className="rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em] text-amber-800">
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    <div className="shrink-0 rounded-xl border border-amber-300/70 bg-amber-300/10 px-3 py-2">
+      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">
+        {label} ENVIRONMENT
+      </div>
+
+      <div className="mt-0.5 text-xs text-amber-50/90">
+        Not live production data
       </div>
     </div>
   );
