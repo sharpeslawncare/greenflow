@@ -96,182 +96,227 @@ const CustomerStoreContext =
     null,
   );
 
-const STORAGE_KEY =
-  "greenflow-customers-v1";
+type CustomerApiResponse = {
+  customers?: unknown;
+  customer?: unknown;
+  error?: unknown;
+};
+
+function customerErrorMessage(value: unknown, fallback: string) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const error = (value as Record<string, unknown>).error;
+    if (typeof error === "string" && error.trim()) return error.trim();
+  }
+  return fallback;
+}
+
+function normaliseApiCustomers(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return deduplicateCustomers(
+    value
+      .filter(
+        (item): item is Partial<StoredCustomer> =>
+          Boolean(item && typeof item === "object" && !Array.isArray(item)),
+      )
+      .map(normaliseStoredCustomer),
+  ).sort(sortCustomers);
+}
+
+function mergeCustomerUpserts(
+  currentCustomers: StoredCustomer[],
+  incomingCustomers: StoredCustomer[],
+) {
+  const merged = [...currentCustomers];
+
+  for (const incoming of incomingCustomers) {
+    const index = merged.findIndex((customer) =>
+      sameCustomerNumber(customer.customerNumber, incoming.customerNumber),
+    );
+
+    if (index >= 0) {
+      merged[index] = incoming;
+    } else {
+      merged.push(incoming);
+    }
+  }
+
+  return deduplicateCustomers(merged).sort(sortCustomers);
+}
 
 export function CustomerStoreProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const initialCustomers =
-    normaliseEstablishedCustomers(
-      demoCustomers,
+  const [customers, setCustomers] = useState<StoredCustomer[]>([]);
+  const customersRef = useRef<StoredCustomer[]>([]);
+  const [ready, setReady] = useState(false);
+
+  function applyCustomers(nextCustomers: StoredCustomer[]) {
+    customersRef.current = nextCustomers;
+    setCustomers(nextCustomers);
+  }
+
+  async function readResponse(response: Response): Promise<CustomerApiResponse> {
+    try {
+      return (await response.json()) as CustomerApiResponse;
+    } catch {
+      return {};
+    }
+  }
+
+  async function loadCustomersFromDatabase() {
+    const response = await fetch("/api/customers", {
+      method: "GET",
+      cache: "no-store",
+    });
+    const payload = await readResponse(response);
+
+    if (!response.ok) {
+      throw new Error(
+        customerErrorMessage(payload, "Unable to load customers from PostgreSQL."),
+      );
+    }
+
+    if (!Array.isArray(payload.customers)) {
+      throw new Error("The customer API returned an invalid customer list.");
+    }
+
+    const loadedCustomers = normaliseApiCustomers(payload.customers);
+    applyCustomers(loadedCustomers);
+    return loadedCustomers;
+  }
+
+  async function postCustomer(customer: StoredCustomer) {
+    const response = await fetch("/api/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(customer),
+    });
+    const payload = await readResponse(response);
+
+    if (!response.ok) {
+      throw new Error(
+        customerErrorMessage(payload, "Unable to create customer in PostgreSQL."),
+      );
+    }
+  }
+
+  async function patchCustomer(customer: StoredCustomer) {
+    const response = await fetch(
+      `/api/customers/${encodeURIComponent(customer.customerNumber)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(customer),
+      },
     );
+    const payload = await readResponse(response);
 
-  const [customers, setCustomers] =
-    useState<StoredCustomer[]>(
-      initialCustomers,
-    );
+    if (!response.ok) {
+      throw new Error(
+        customerErrorMessage(payload, "Unable to update customer in PostgreSQL."),
+      );
+    }
+  }
 
-  const customersRef =
-    useRef<StoredCustomer[]>(
-      initialCustomers,
-    );
+  async function bulkUpsertCustomers(upsertCustomers: StoredCustomer[]) {
+    const response = await fetch("/api/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customers: upsertCustomers }),
+    });
+    const payload = await readResponse(response);
 
-  const [ready, setReady] =
-    useState(false);
-
-  const skipFirstPersistenceRef =
-    useRef(true);
+    if (!response.ok) {
+      throw new Error(
+        customerErrorMessage(payload, "Unable to import customers into PostgreSQL."),
+      );
+    }
+  }
 
   useEffect(() => {
-    const savedCustomers =
-      window.localStorage.getItem(
-        STORAGE_KEY,
-      );
+    let cancelled = false;
 
-    let loadedCustomers =
-      initialCustomers;
-
-    if (savedCustomers) {
+    async function hydrate() {
       try {
-        const parsedCustomers =
-          JSON.parse(
-            savedCustomers,
-          ) as Array<
-            Partial<StoredCustomer>
-          >;
+        const response = await fetch("/api/customers", {
+          method: "GET",
+          cache: "no-store",
+        });
+        const payload = await readResponse(response);
 
-        if (
-          Array.isArray(
-            parsedCustomers,
-          )
-        ) {
-          /*
-           * Records already carrying a programme
-           * start date retain it.
-           *
-           * Older records with no such field are
-           * treated as established customers, so
-           * their complete group programme remains
-           * available.
-           */
-          loadedCustomers =
-            deduplicateCustomers(
-              parsedCustomers.map(
-                normaliseStoredCustomer,
-              ),
-            ).sort(
-              sortCustomers,
-            );
-        }
-      } catch {
-        window.localStorage.removeItem(
-          STORAGE_KEY,
-        );
-
-        loadedCustomers =
-          normaliseEstablishedCustomers(
-            demoCustomers,
+        if (!response.ok) {
+          throw new Error(
+            customerErrorMessage(
+              payload,
+              "Unable to load customers from PostgreSQL.",
+            ),
           );
+        }
+
+        if (!Array.isArray(payload.customers)) {
+          throw new Error("The customer API returned an invalid customer list.");
+        }
+
+        if (cancelled) return;
+
+        const loadedCustomers = normaliseApiCustomers(payload.customers);
+        customersRef.current = loadedCustomers;
+        setCustomers(loadedCustomers);
+      } catch (error) {
+        if (!cancelled) {
+          customersRef.current = [];
+          setCustomers([]);
+          console.error(
+            "Failed to load GreenFlow customers from PostgreSQL:",
+            error,
+          );
+        }
+      } finally {
+        if (!cancelled) setReady(true);
       }
     }
 
-    /*
-     * Keep the ref and React state in step before
-     * marking the store as ready. Detail pages use
-     * getCustomer(), which reads from this ref.
-     */
-    customersRef.current =
-      loadedCustomers;
+    void hydrate();
 
-    setCustomers(
-      loadedCustomers,
-    );
-
-    setReady(true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    customersRef.current =
-      customers;
+    customersRef.current = customers;
   }, [customers]);
 
-  useEffect(() => {
-    if (!ready) {
-      return;
-    }
+  function addCustomer(customer: CustomerInput) {
+    const newCustomer = normaliseNewCustomer(customer);
 
-    /*
-     * The first ready render follows hydration from
-     * localStorage. Do not immediately write that
-     * render back to storage; subsequent genuine
-     * customer changes are persisted normally.
-     */
-    if (skipFirstPersistenceRef.current) {
-      skipFirstPersistenceRef.current =
-        false;
-      return;
-    }
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(customers),
-    );
-  }, [customers, ready]);
-
-  function addCustomer(
-    customer: CustomerInput,
-  ) {
-    const newCustomer =
-      normaliseNewCustomer(
-        customer,
-      );
-
-    if (
-      !newCustomer.customerNumber
-    ) {
+    if (!newCustomer.customerNumber) {
       return {
         success: false,
-        message:
-          "Enter a customer number before adding the customer.",
+        message: "Enter a customer number before adding the customer.",
       };
     }
 
-    const currentCustomers =
-      customersRef.current;
-
-    const duplicate =
-      currentCustomers.some(
-        (existingCustomer) =>
-          sameCustomerNumber(
-            existingCustomer.customerNumber,
-            newCustomer.customerNumber,
-          ),
-      );
+    const currentCustomers = customersRef.current;
+    const duplicate = currentCustomers.some((existingCustomer) =>
+      sameCustomerNumber(
+        existingCustomer.customerNumber,
+        newCustomer.customerNumber,
+      ),
+    );
 
     if (duplicate) {
       return {
         success: false,
-        message:
-          `Customer number ${newCustomer.customerNumber} already exists.`,
+        message: `Customer number ${newCustomer.customerNumber} already exists.`,
       };
     }
 
-    const nextCustomers = [
-      ...currentCustomers,
-      newCustomer,
-    ].sort(
-      sortCustomers,
-    );
-
-    customersRef.current =
-      nextCustomers;
-
-    setCustomers(
-      nextCustomers,
-    );
+    const nextCustomers = [...currentCustomers, newCustomer].sort(sortCustomers);
+    applyCustomers(nextCustomers);
 
     recordAuditEvent({
       area: "Customers",
@@ -279,6 +324,21 @@ export function CustomerStoreProvider({
       reference: newCustomer.customerNumber,
       description: `Customer ${newCustomer.customerNumber} created.`,
       changedFields: [],
+    });
+
+    void postCustomer(newCustomer).catch(async (error) => {
+      console.error(
+        `Failed to persist customer ${newCustomer.customerNumber}:`,
+        error,
+      );
+      try {
+        await loadCustomersFromDatabase();
+      } catch (reloadError) {
+        console.error(
+          "Failed to reload GreenFlow customers after a create error:",
+          reloadError,
+        );
+      }
     });
 
     return {
@@ -291,55 +351,35 @@ export function CustomerStoreProvider({
   function updateCustomer(
     updatedCustomer: CustomerInput,
   ): CustomerUpdateResult {
-    const currentCustomers =
-      customersRef.current;
-
-    const index =
-      currentCustomers.findIndex(
-        (customer) =>
-          sameCustomerNumber(
-            customer.customerNumber,
-            updatedCustomer.customerNumber,
-          ),
-      );
+    const currentCustomers = customersRef.current;
+    const index = currentCustomers.findIndex((customer) =>
+      sameCustomerNumber(
+        customer.customerNumber,
+        updatedCustomer.customerNumber,
+      ),
+    );
 
     if (index < 0) {
       return {
         success: false,
-        message:
-          "The customer could not be found, so no changes were saved.",
+        message: "The customer could not be found, so no changes were saved.",
       };
     }
 
-    const existingCustomer =
-      currentCustomers[index];
-
-    const normalised =
-      normaliseUpdatedCustomer(
-        updatedCustomer,
-        existingCustomer,
-      );
-
-    const changedFields =
-      getChangedCustomerFields(
-        existingCustomer,
-        normalised,
-      );
-
-    const nextCustomers =
-      currentCustomers.map(
-        (customer, itemIndex) =>
-          itemIndex === index
-            ? normalised
-            : customer,
-      );
-
-    customersRef.current =
-      nextCustomers;
-
-    setCustomers(
-      nextCustomers,
+    const existingCustomer = currentCustomers[index];
+    const normalised = normaliseUpdatedCustomer(
+      updatedCustomer,
+      existingCustomer,
     );
+    const changedFields = getChangedCustomerFields(
+      existingCustomer,
+      normalised,
+    );
+
+    const nextCustomers = currentCustomers.map((customer, itemIndex) =>
+      itemIndex === index ? normalised : customer,
+    );
+    applyCustomers(nextCustomers);
 
     if (changedFields.length > 0) {
       recordAuditEvent({
@@ -351,142 +391,131 @@ export function CustomerStoreProvider({
       });
     }
 
+    void patchCustomer(normalised).catch(async (error) => {
+      console.error(
+        `Failed to persist changes for customer ${normalised.customerNumber}:`,
+        error,
+      );
+      try {
+        await loadCustomersFromDatabase();
+      } catch (reloadError) {
+        console.error(
+          "Failed to reload GreenFlow customers after an update error:",
+          reloadError,
+        );
+      }
+    });
+
     return {
       success: true,
-      message:
-        "Customer updated successfully.",
+      message: "Customer updated successfully.",
     };
   }
 
-  function getCustomer(
-    customerNumber: string,
-  ) {
-    /*
-     * Customer lookups must use the current React state.
-     *
-     * On a hard refresh the localStorage hydration updates
-     * `customers` before the detail page performs its final
-     * lookup. Using the state here keeps getCustomer() on
-     * the same source of truth as the customer list and
-     * avoids a stale ref returning "Customer not found".
-     */
-    return customers.find(
-      (customer) =>
-        sameCustomerNumber(
-          customer.customerNumber,
-          customerNumber,
-        ),
+  function getCustomer(customerNumber: string) {
+    return customers.find((customer) =>
+      sameCustomerNumber(customer.customerNumber, customerNumber),
     );
   }
 
   function getNextCustomerNumber() {
-    const highestNumber =
-      customersRef.current.reduce(
-        (highest, customer) => {
-          const customerNumber =
-            Number(
-              customer.customerNumber,
-            );
+    const highestNumber = customersRef.current.reduce((highest, customer) => {
+      const customerNumber = Number(customer.customerNumber);
+      return Number.isFinite(customerNumber)
+        ? Math.max(highest, customerNumber)
+        : highest;
+    }, 1000);
 
-          return Number.isFinite(
-            customerNumber,
-          )
-            ? Math.max(
-                highest,
-                customerNumber,
-              )
-            : highest;
-        },
-        1000,
-      );
-
-    return String(
-      highestNumber + 1,
-    );
+    return String(highestNumber + 1);
   }
 
   function restoreDemoCustomers() {
-    /*
-     * Demonstration customers are established
-     * customers, so their programme start date is
-     * deliberately blank. They receive all five
-     * dates assigned to their group.
-     */
-    const demo =
-      normaliseEstablishedCustomers(
-        demoCustomers,
-      );
-
-    customersRef.current =
-      demo;
-
-    setCustomers(
+    const demo = normaliseEstablishedCustomers(demoCustomers);
+    const optimisticCustomers = mergeCustomerUpserts(
+      customersRef.current,
       demo,
     );
-
-    window.localStorage.removeItem(
-      STORAGE_KEY,
-    );
+    applyCustomers(optimisticCustomers);
 
     recordAuditEvent({
       area: "Customers",
       action: "Restored",
       reference: "demo-customers",
-      description: `Customer data restored to ${demo.length} demonstration records.`,
+      description: `${demo.length} demonstration customer records added or updated.`,
       changedFields: [],
     });
+
+    void bulkUpsertCustomers(demo)
+      .then(() => loadCustomersFromDatabase())
+      .catch(async (error) => {
+        console.error(
+          "Failed to restore demonstration customers to PostgreSQL:",
+          error,
+        );
+        try {
+          await loadCustomersFromDatabase();
+        } catch (reloadError) {
+          console.error(
+            "Failed to reload GreenFlow customers after a demo-data error:",
+            reloadError,
+          );
+        }
+      });
   }
 
-  function replaceCustomers(
-    replacementCustomers: Customer[],
-  ) {
-    const normalisedCustomers =
-      deduplicateCustomers(
-        normaliseEstablishedCustomers(
-          replacementCustomers,
-        ),
-      ).sort(
-        sortCustomers,
-      );
+  function replaceCustomers(replacementCustomers: Customer[]) {
+    const normalisedCustomers = deduplicateCustomers(
+      normaliseEstablishedCustomers(replacementCustomers),
+    ).sort(sortCustomers);
 
-    customersRef.current =
-      normalisedCustomers;
-
-    setCustomers(
+    const optimisticCustomers = mergeCustomerUpserts(
+      customersRef.current,
       normalisedCustomers,
     );
+    applyCustomers(optimisticCustomers);
 
     recordAuditEvent({
       area: "Customers",
       action: "Replaced",
       reference: "customer-dataset",
-      description: `Customer dataset replaced with ${normalisedCustomers.length} records.`,
+      description: `${normalisedCustomers.length} customer records imported or updated.`,
       changedFields: [],
     });
+
+    void bulkUpsertCustomers(normalisedCustomers)
+      .then(() => loadCustomersFromDatabase())
+      .catch(async (error) => {
+        console.error(
+          "Failed to import customer records into PostgreSQL:",
+          error,
+        );
+        try {
+          await loadCustomersFromDatabase();
+        } catch (reloadError) {
+          console.error(
+            "Failed to reload GreenFlow customers after an import error:",
+            reloadError,
+          );
+        }
+      });
   }
 
-  const value =
-    useMemo<CustomerStoreValue>(
-      () => ({
-        customers,
-        ready,
-
-        addCustomer,
-        updateCustomer,
-
-        getCustomer,
-        getNextCustomerNumber,
-
-        restoreDemoCustomers,
-        replaceCustomers,
-      }),
-      [customers, ready],
-    );
+  const value = useMemo<CustomerStoreValue>(
+    () => ({
+      customers,
+      ready,
+      addCustomer,
+      updateCustomer,
+      getCustomer,
+      getNextCustomerNumber,
+      restoreDemoCustomers,
+      replaceCustomers,
+    }),
+    [customers, ready],
+  );
 
   return (
-    <CustomerStoreContext.Provider
-      value={value}
-    >
+    <CustomerStoreContext.Provider value={value}>
       {children}
     </CustomerStoreContext.Provider>
   );
