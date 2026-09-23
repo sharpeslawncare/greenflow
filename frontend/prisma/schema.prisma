@@ -8,20 +8,23 @@ datasource db {
 }
 
 model Organisation {
-  id          String       @id @default(cuid())
-  name        String
-  slug        String       @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   memberships Membership[]
+  customers   Customer[]
 }
 
 model User {
-  id          String       @id @default(cuid())
-  name        String
-  email       String       @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   memberships Membership[]
 }
 
@@ -39,4 +42,71 @@ model Membership {
   @@unique([organisationId, userId])
   @@index([organisationId])
   @@index([userId])
+}
+
+model Customer {
+  id             String @id @default(cuid())
+  organisationId String
+
+  customerNumber String
+  firstName      String @default("")
+  surname        String @default("")
+  fullName       String @default("")
+
+  address     String @default("")
+  postcode    String @default("")
+  email       String @default("")
+  homePhone   String @default("")
+  mobilePhone String @default("")
+
+  lawnSize       Int     @default(0)
+  groupNumber    Int     @default(0)
+  treatmentPrice Decimal @db.Decimal(10, 2)
+
+  status    String @default("Active")
+  vanNumber Int    @default(1)
+
+  nextVisit String @default("Not yet scheduled")
+  lastVisit String @default("No previous visit")
+
+  lockedGate    Boolean @default(false)
+  gateCode      String  @default("")
+  dogOnProperty Boolean @default(false)
+
+  preferredContact String @default("SMS")
+  paymentMethod    String @default("Not set")
+
+  notes              String @default("")
+  programmeStartDate String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation   Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  additionalJobs AdditionalCustomerJob[]
+
+  @@unique([organisationId, customerNumber])
+  @@index([organisationId])
+  @@index([organisationId, status])
+  @@index([organisationId, postcode])
+}
+
+model AdditionalCustomerJob {
+  id         String @id @default(cuid())
+  customerId String
+
+  treatmentId   String
+  treatmentName String
+  scheduledDate String
+  price         Decimal @db.Decimal(10, 2)
+  status        String
+  notes         String  @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([customerId, status])
 }
