@@ -30,7 +30,10 @@ async function getCurrentMembership() {
   if (!membership) {
     return {
       error: NextResponse.json(
-        { error: "No GreenFlow organisation membership found." },
+        {
+          error:
+            "No GreenFlow organisation membership found.",
+        },
         { status: 403 },
       ),
       membership: null,
@@ -44,7 +47,8 @@ async function getCurrentMembership() {
 }
 
 export async function GET() {
-  const { error, membership } = await getCurrentMembership();
+  const { error, membership } =
+    await getCurrentMembership();
 
   if (error || !membership) {
     return error;
@@ -54,6 +58,13 @@ export async function GET() {
     where: {
       organisationId: membership.organisationId,
     },
+    include: {
+      additionalJobs: {
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
+    },
     orderBy: {
       customerNumber: "asc",
     },
@@ -62,13 +73,30 @@ export async function GET() {
   return NextResponse.json({
     customers: customers.map((customer) => ({
       ...customer,
-      treatmentPrice: Number(customer.treatmentPrice),
+      treatmentPrice: Number(
+        customer.treatmentPrice,
+      ),
+      additionalJobs: customer.additionalJobs.map(
+        (job) => ({
+          id: job.id,
+          treatmentLibraryId:
+            job.treatmentLibraryId,
+          treatmentName: job.treatmentName,
+          wordingSnapshot: job.wordingSnapshot,
+          scheduledDate: job.scheduledDate,
+          price: Number(job.price),
+          notes: job.notes,
+          status: job.status,
+          createdAt: job.createdAt.toISOString(),
+        }),
+      ),
     })),
   });
 }
 
 export async function POST(request: Request) {
-  const { error, membership } = await getCurrentMembership();
+  const { error, membership } =
+    await getCurrentMembership();
 
   if (error || !membership) {
     return error;
@@ -85,7 +113,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body)
+  ) {
     return NextResponse.json(
       { error: "Invalid customer data." },
       { status: 400 },
@@ -140,8 +172,12 @@ export async function POST(request: Request) {
       : "";
 
   const lawnSize = Number(data.lawnSize ?? 0);
-  const groupNumber = Number(data.groupNumber ?? 0);
-  const treatmentPrice = Number(data.treatmentPrice ?? 0);
+  const groupNumber = Number(
+    data.groupNumber ?? 0,
+  );
+  const treatmentPrice = Number(
+    data.treatmentPrice ?? 0,
+  );
   const vanNumber = Number(data.vanNumber ?? 1);
 
   const status =
@@ -201,30 +237,54 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!Number.isFinite(lawnSize) || lawnSize < 0) {
+  if (
+    !Number.isFinite(lawnSize) ||
+    lawnSize < 0
+  ) {
     return NextResponse.json(
-      { error: "Lawn size must be a valid non-negative number." },
+      {
+        error:
+          "Lawn size must be a valid non-negative number.",
+      },
       { status: 400 },
     );
   }
 
-  if (!Number.isFinite(groupNumber) || groupNumber < 0) {
+  if (
+    !Number.isFinite(groupNumber) ||
+    groupNumber < 0
+  ) {
     return NextResponse.json(
-      { error: "Group number must be a valid non-negative number." },
+      {
+        error:
+          "Group number must be a valid non-negative number.",
+      },
       { status: 400 },
     );
   }
 
-  if (!Number.isFinite(treatmentPrice) || treatmentPrice < 0) {
+  if (
+    !Number.isFinite(treatmentPrice) ||
+    treatmentPrice < 0
+  ) {
     return NextResponse.json(
-      { error: "Treatment price must be a valid non-negative number." },
+      {
+        error:
+          "Treatment price must be a valid non-negative number.",
+      },
       { status: 400 },
     );
   }
 
-  if (!Number.isFinite(vanNumber) || vanNumber < 1) {
+  if (
+    !Number.isFinite(vanNumber) ||
+    vanNumber < 1
+  ) {
     return NextResponse.json(
-      { error: "Van number must be a valid positive number." },
+      {
+        error:
+          "Van number must be a valid positive number.",
+      },
       { status: 400 },
     );
   }
@@ -251,7 +311,11 @@ export async function POST(request: Request) {
     "Telephone",
   ];
 
-  if (!allowedContactMethods.includes(preferredContact)) {
+  if (
+    !allowedContactMethods.includes(
+      preferredContact,
+    )
+  ) {
     return NextResponse.json(
       {
         error:
@@ -261,15 +325,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const existingCustomer = await prisma.customer.findFirst({
-    where: {
-      organisationId: membership.organisationId,
-      customerNumber,
-    },
-    select: {
-      id: true,
-    },
-  });
+  const existingCustomer =
+    await prisma.customer.findFirst({
+      where: {
+        organisationId:
+          membership.organisationId,
+        customerNumber,
+      },
+      select: {
+        id: true,
+      },
+    });
 
   if (existingCustomer) {
     return NextResponse.json(
@@ -284,7 +350,8 @@ export async function POST(request: Request) {
   try {
     const customer = await prisma.customer.create({
       data: {
-        organisationId: membership.organisationId,
+        organisationId:
+          membership.organisationId,
         customerNumber,
         firstName,
         surname,
@@ -315,7 +382,10 @@ export async function POST(request: Request) {
       {
         customer: {
           ...customer,
-          treatmentPrice: Number(customer.treatmentPrice),
+          treatmentPrice: Number(
+            customer.treatmentPrice,
+          ),
+          additionalJobs: [],
         },
       },
       { status: 201 },
