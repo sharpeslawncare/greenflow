@@ -11,14 +11,63 @@ import {
 
 const { auth } = NextAuth(authConfig);
 
+type AuthenticatedRequest = NextRequest & {
+  auth: {
+    user?: {
+      id?: string;
+      name?: string | null;
+      email?: string | null;
+      role?: string;
+    };
+  } | null;
+};
+
 export default auth(
   function proxy(
-    request: NextRequest,
+    request: AuthenticatedRequest,
   ) {
+    const pathname =
+      request.nextUrl.pathname;
+
+    const isSignInPage =
+      pathname === "/sign-in";
+
+    const isSignedIn =
+      Boolean(request.auth?.user);
+
+    /*
+     * Authentication is enforced explicitly here because
+     * GreenFlow uses a custom Auth.js proxy callback for
+     * additional production route protection.
+     */
+    if (!isSignedIn && !isSignInPage) {
+      const signInUrl =
+        new URL(
+          "/sign-in",
+          request.url,
+        );
+
+      return NextResponse.redirect(
+        signInUrl,
+      );
+    }
+
+    if (isSignedIn && isSignInPage) {
+      const homeUrl =
+        new URL(
+          "/",
+          request.url,
+        );
+
+      return NextResponse.redirect(
+        homeUrl,
+      );
+    }
+
     const isDeveloperToolsRoute =
-      request.nextUrl.pathname ===
+      pathname ===
         "/settings/developer" ||
-      request.nextUrl.pathname.startsWith(
+      pathname.startsWith(
         "/settings/developer/",
       );
 
