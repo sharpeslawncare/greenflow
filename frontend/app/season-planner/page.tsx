@@ -11,6 +11,7 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import {
+  generateSeasonDates,
   getSeasonCycleLabel,
   isDateInSeasonCycle,
   type SeasonCalendar,
@@ -54,6 +55,9 @@ export default function SeasonPlannerPage() {
     useState<SeasonCalendar | null>(
       null,
     );
+
+  const [previewStale, setPreviewStale] =
+    useState(false);
 
   const [excludedDate, setExcludedDate] =
     useState("");
@@ -118,6 +122,7 @@ export default function SeasonPlannerPage() {
       setDraft(
         cloneSeason(selectedSeason),
       );
+      setPreviewStale(false);
       return;
     }
 
@@ -128,6 +133,7 @@ export default function SeasonPlannerPage() {
     setDraft(
       cloneSeason(created),
     );
+    setPreviewStale(false);
   }, [
     ready,
     requestedYearResolved,
@@ -152,11 +158,24 @@ export default function SeasonPlannerPage() {
       current: SeasonCalendar,
     ) => SeasonCalendar,
   ) {
+    setPreviewStale(true);
     setDraft((current) =>
       current
         ? updater(current)
         : current,
     );
+  }
+
+  function regeneratePreview() {
+    if (!draft) {
+      return;
+    }
+
+    const regenerated =
+      generateSeasonDates(draft);
+
+    setDraft(regenerated);
+    setPreviewStale(false);
   }
 
   function updateRoundName(
@@ -275,6 +294,14 @@ export default function SeasonPlannerPage() {
 
   function savePlanner() {
     if (!draft) {
+      return;
+    }
+
+    if (previewStale) {
+      showMessage(
+        "Regenerate the preview before saving the season.",
+        "error",
+      );
       return;
     }
 
@@ -452,7 +479,7 @@ export default function SeasonPlannerPage() {
     showMessage(
       `${getSeasonCycleLabel(
         cleanedDraft.year,
-      )} programme calendar saved and regenerated.`,
+      )} programme calendar saved.`,
     );
 
     if (openedForNextCycle) {
@@ -574,10 +601,19 @@ export default function SeasonPlannerPage() {
 
               <button
                 type="button"
-                onClick={savePlanner}
-                className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+                onClick={regeneratePreview}
+                disabled={!previewStale}
+                className="h-11 rounded-xl border border-[#176b37] bg-white px-5 text-sm font-bold text-[#176b37] hover:bg-green-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:hover:bg-white"
               >
-                Save and regenerate
+                Regenerate Preview
+              </button>
+              <button
+                type="button"
+                onClick={savePlanner}
+                disabled={previewStale}
+                className="h-11 rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:hover:bg-slate-300"
+              >
+                Save Season
               </button>
             </div>
           </header>
@@ -595,7 +631,7 @@ export default function SeasonPlannerPage() {
                   </h2>
 
                   <p className="mt-2 text-sm leading-6 text-amber-900">
-                    T4 has been completed in the current programme. Review the new T1–T5 dates here, then use <strong>Save and regenerate</strong>. The current T5 stays in place while the following T1 becomes known.
+                    T4 has been completed in the current programme. Review the new T1–T5 dates here, then use <strong>Save Season</strong>. The current T5 stays in place while the following T1 becomes known.
                   </p>
                 </div>
 
@@ -954,7 +990,8 @@ export default function SeasonPlannerPage() {
                     <p className="mt-1 text-sm text-slate-500">
                       Group 1 starts on{" "}
                       {formatDate(
-                        draft.firstGroupStartDate,
+                        sortedGroupDates[0]?.treatmentDates[0] ??
+                          draft.firstGroupStartDate,
                       )}
                       . Each following group uses the
                       next permitted working date.
