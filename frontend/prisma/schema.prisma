@@ -17,6 +17,23 @@ model Organisation {
   memberships Membership[]
   customers   Customer[]
   enquiries   Enquiry[]
+  seasons     Season[]
+}
+
+model Season {
+  id             String @id
+  organisationId String
+
+  year Int
+  data Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, year])
+  @@index([organisationId])
 }
 
 model User {

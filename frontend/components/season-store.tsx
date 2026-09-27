@@ -11,52 +11,16 @@ import {
 
 import { STANDARD_TREATMENTS } from "@/lib/standard-treatments";
 
-export type SeasonTreatmentRound = {
-  visitNumber: number;
-  treatmentName: string;
-  gapAfterPreviousDays: number;
-};
+import type {
+  GroupSeasonDates,
+  SeasonCalendar,
+} from "@/lib/season-types";
 
-export type GroupSeasonDates = {
-  groupNumber: number;
-
-  treatmentDates: [
-    string,
-    string,
-    string,
-    string,
-    string,
-  ];
-};
-
-export type SeasonCalendar = {
-  id: string;
-  year: number;
-  name: string;
-
-  firstGroupStartDate: string;
-
-  groupCount: number;
-  groupsPerWorkingDay: number;
-
-  avoidWeekends: boolean;
-  avoidWednesdays: boolean;
-
-  excludedDates: string[];
-
-  treatmentRounds: [
-    SeasonTreatmentRound,
-    SeasonTreatmentRound,
-    SeasonTreatmentRound,
-    SeasonTreatmentRound,
-    SeasonTreatmentRound,
-  ];
-
-  groupDates: GroupSeasonDates[];
-
-  createdAt: string;
-  updatedAt: string;
-};
+export type {
+  GroupSeasonDates,
+  SeasonCalendar,
+  SeasonTreatmentRound,
+} from "@/lib/season-types";
 
 type CreateSeasonInput = {
   year: number;
@@ -70,7 +34,7 @@ type SeasonStoreValue = {
 
   saveSeason: (
     season: SeasonCalendar,
-  ) => void;
+  ) => Promise<SeasonCalendar>;
 
   createSeason: (
     input: CreateSeasonInput,
@@ -154,42 +118,103 @@ export function SeasonStoreProvider({
     useState(false);
 
   useEffect(() => {
-    const saved =
-      window.localStorage.getItem(
-        STORAGE_KEY,
-      );
+    let cancelled = false;
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(
-          saved,
-        ) as Array<
-          Partial<SeasonCalendar>
-        >;
+    async function hydrateSeasons() {
+      let localSeasons: SeasonCalendar[] = [];
 
-        if (Array.isArray(parsed)) {
-          setSeasons(
-            deduplicateSeasons(
-              parsed.map(
-                normaliseSeason,
-              ),
-            ).sort(
-              sortSeasons,
-            ),
-          );
-        }
-      } catch {
-        window.localStorage.removeItem(
+      const saved =
+        window.localStorage.getItem(
           STORAGE_KEY,
         );
 
-        setSeasons([]);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(
+            saved,
+          ) as Array<
+            Partial<SeasonCalendar>
+          >;
+
+          if (Array.isArray(parsed)) {
+            localSeasons =
+              deduplicateSeasons(
+                parsed.map(
+                  normaliseSeason,
+                ),
+              ).sort(
+                sortSeasons,
+              );
+          }
+        } catch {
+          window.localStorage.removeItem(
+            STORAGE_KEY,
+          );
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      setSeasons(localSeasons);
+
+      try {
+        const response =
+          await fetch("/api/seasons");
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload =
+          await response.json() as {
+            seasons?: Array<
+              Partial<SeasonCalendar>
+            >;
+          };
+
+        if (
+          !Array.isArray(
+            payload.seasons,
+          ) ||
+          payload.seasons.length === 0
+        ) {
+          return;
+        }
+
+        const databaseSeasons =
+          deduplicateSeasons(
+            payload.seasons.map(
+              normaliseSeason,
+            ),
+          ).sort(
+            sortSeasons,
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        setSeasons(databaseSeasons);
+      } catch (error) {
+        console.error(
+          "Failed to hydrate GreenFlow seasons from PostgreSQL:",
+          error,
+        );
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
       }
     }
 
-    setReady(true);
-  }, []);
+    void hydrateSeasons();
 
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     if (!ready) {
       return;
@@ -230,13 +255,45 @@ export function SeasonStoreProvider({
     );
   }, [seasons, ready]);
 
-  function saveSeason(
+  async function saveSeason(
     season: SeasonCalendar,
-  ) {
+  ): Promise<SeasonCalendar> {
     const regenerated =
       generateSeasonDates(
         normaliseSeason(season),
       );
+
+    const response =
+      await fetch("/api/seasons", {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          season: regenerated,
+        }),
+      });
+
+    if (!response.ok) {
+      let message =
+        "Unable to save season to PostgreSQL.";
+
+      try {
+        const payload =
+          await response.json() as {
+            error?: string;
+          };
+
+        if (payload.error) {
+          message = payload.error;
+        }
+      } catch {
+        // Keep the fallback message.
+      }
+
+      throw new Error(message);
+    }
 
     setSeasons((current) =>
       [
@@ -252,8 +309,9 @@ export function SeasonStoreProvider({
         sortSeasons,
       ),
     );
-  }
 
+    return regenerated;
+  }
   function createSeason({
     year,
     firstGroupStartDate,

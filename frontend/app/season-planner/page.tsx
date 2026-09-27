@@ -292,7 +292,7 @@ export default function SeasonPlannerPage() {
     }));
   }
 
-  function savePlanner() {
+  async function savePlanner() {
     if (!draft) {
       return;
     }
@@ -473,23 +473,40 @@ export default function SeasonPlannerPage() {
         ) as SeasonCalendar["treatmentRounds"],
     };
 
-    saveSeason(cleanedDraft);
-    setDraft(cleanedDraft);
+    try {
+      const savedSeason =
+        await saveSeason(
+          cleanedDraft,
+        );
 
-    showMessage(
-      `${getSeasonCycleLabel(
-        cleanedDraft.year,
-      )} programme calendar saved.`,
-    );
+      setDraft(savedSeason);
 
-    if (openedForNextCycle) {
-      window.setTimeout(() => {
-        window.location.href =
-          `/programmes?year=${cleanedDraft.year}`;
-      }, 700);
+      showMessage(
+        `${getSeasonCycleLabel(
+          savedSeason.year,
+        )} programme calendar saved.`,
+      );
+
+      if (openedForNextCycle) {
+        window.setTimeout(() => {
+          window.location.href =
+            `/programmes?year=${savedSeason.year}`;
+        }, 700);
+      }
+    } catch (error) {
+      console.error(
+        "Failed to save GreenFlow season:",
+        error,
+      );
+
+      showMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to save the programme calendar.",
+        "error",
+      );
     }
   }
-
   function restoreDefaults() {
     const confirmed =
       window.confirm(
