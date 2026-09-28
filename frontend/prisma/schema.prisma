@@ -18,6 +18,7 @@ model Organisation {
   customers   Customer[]
   enquiries   Enquiry[]
   seasons     Season[]
+  programmes  Programme[]
 }
 
 model Season {
@@ -102,6 +103,7 @@ model Customer {
 
   organisation   Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   additionalJobs AdditionalCustomerJob[]
+  programmes     Programme[]
 
   @@unique([organisationId, customerNumber])
   @@index([organisationId])
@@ -192,4 +194,24 @@ model Enquiry {
   @@index([organisationId, status])
   @@index([organisationId, quoteStatus])
   @@index([organisationId, postcode])
+}
+
+model Programme {
+  id             String @id
+  organisationId String
+  customerId     String
+
+  year Int
+  data Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, year])
+  @@index([organisationId])
+  @@index([organisationId, year])
+  @@index([customerId])
 }

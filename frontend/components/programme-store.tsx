@@ -181,49 +181,126 @@ export function ProgrammeStoreProvider({
     useState(false);
 
   useEffect(() => {
-    const saved =
-      window.localStorage.getItem(
-        STORAGE_KEY,
-      );
+    let cancelled = false;
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(
-          saved,
-        ) as Array<
-          Partial<CustomerProgramme>
-        >;
+    async function hydrate() {
+      let loadedProgrammes:
+        CustomerProgramme[] = [];
 
-        if (Array.isArray(parsed)) {
-          const loadedProgrammes =
-            deduplicateProgrammes(
-              parsed.map(
-                normaliseStoredProgramme,
-              ),
-            ).sort(
-              sortProgrammes,
-            );
-
-          programmesRef.current =
-            loadedProgrammes;
-
-          setProgrammes(
-            loadedProgrammes,
-          );
-        }
-      } catch {
-        window.localStorage.removeItem(
+      const saved =
+        window.localStorage.getItem(
           STORAGE_KEY,
         );
 
-        programmesRef.current =
-          [];
+      if (saved) {
+        try {
+          const parsed = JSON.parse(
+            saved,
+          ) as Array<
+            Partial<CustomerProgramme>
+          >;
 
-        setProgrammes([]);
+          if (Array.isArray(parsed)) {
+            loadedProgrammes =
+              deduplicateProgrammes(
+                parsed.map(
+                  normaliseStoredProgramme,
+                ),
+              ).sort(
+                sortProgrammes,
+              );
+          }
+        } catch {
+          window.localStorage.removeItem(
+            STORAGE_KEY,
+          );
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      programmesRef.current =
+        loadedProgrammes;
+
+      setProgrammes(
+        loadedProgrammes,
+      );
+
+      try {
+        const response =
+          await fetch("/api/programmes");
+
+        if (response.ok) {
+          const payload =
+            (await response.json()) as {
+              programmes?: Array<
+                Partial<CustomerProgramme>
+              >;
+            };
+
+          if (
+            Array.isArray(
+              payload.programmes,
+            ) &&
+            payload.programmes.length > 0
+          ) {
+            const databaseProgrammes =
+              deduplicateProgrammes(
+                payload.programmes.map(
+                  normaliseStoredProgramme,
+                ),
+              );
+
+            const databaseKeys =
+              new Set(
+                databaseProgrammes.map(
+                  programmeKey,
+                ),
+              );
+
+            loadedProgrammes = [
+              ...loadedProgrammes.filter(
+                (programme) =>
+                  !databaseKeys.has(
+                    programmeKey(
+                      programme,
+                    ),
+                  ),
+              ),
+              ...databaseProgrammes,
+            ].sort(sortProgrammes);
+
+            if (cancelled) {
+              return;
+            }
+
+            programmesRef.current =
+              loadedProgrammes;
+
+            setProgrammes(
+              loadedProgrammes,
+            );
+          }
+        }
+      } catch (error) {
+        console.error(
+          "Failed to hydrate GreenFlow programmes from PostgreSQL:",
+          error,
+        );
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
       }
     }
 
-    setReady(true);
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /*
