@@ -115,7 +115,7 @@ export default function SeasonManagementPage() {
     );
   }
 
-  function startNewSeason() {
+  async function startNewSeason() {
     if (!canReset) return;
 
     const confirmed = window.confirm(
@@ -130,7 +130,7 @@ export default function SeasonManagementPage() {
 
     try {
       for (const programme of programmes) {
-        saveProgramme({
+        const result = await saveProgramme({
           ...programme,
           visits: programme.visits.map((visit) => ({
             ...visit,
@@ -138,6 +138,9 @@ export default function SeasonManagementPage() {
             notes: "",
           })),
         });
+        if (!result.success) {
+          throw new Error(result.message);
+        }
       }
 
       for (const treatment of treatments) {

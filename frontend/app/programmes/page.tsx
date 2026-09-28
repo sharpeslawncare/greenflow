@@ -385,6 +385,7 @@ export default function ProgrammesPage() {
       customerNumber,
     );
 
+
     setEditingVisitNumber(
       null,
     );
@@ -433,7 +434,7 @@ export default function ProgrammesPage() {
     setReplacementDate("");
   }
 
-  function saveOverride(
+  async function saveOverride(
     row: VisitDisplayRow,
   ) {
     if (
@@ -552,9 +553,16 @@ export default function ProgrammesPage() {
         ),
     };
 
-    saveProgramme(
+    const result = await saveProgramme(
       updatedProgramme,
     );
+    if (!result.success) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
 
     setEditingVisitNumber(
       null,

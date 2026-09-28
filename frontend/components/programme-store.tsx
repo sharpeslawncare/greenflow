@@ -86,6 +86,52 @@ export type ProgrammeSaveResult = {
   success: boolean;
   message: string;
 };
+async function persistProgrammeToPostgreSQL(
+  programme: CustomerProgramme,
+): Promise<ProgrammeSaveResult> {
+  try {
+    const response = await fetch("/api/programmes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        programme,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response
+        .json()
+        .catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      return {
+        success: false,
+        message:
+          payload?.error ||
+          "Programme could not be saved to PostgreSQL.",
+      };
+    }
+
+    return {
+      success: true,
+      message: "Programme saved to PostgreSQL.",
+    };
+  } catch (error) {
+    console.error(
+      "Failed to save GreenFlow programme to PostgreSQL:",
+      error,
+    );
+
+    return {
+      success: false,
+      message:
+        "Programme could not be saved to PostgreSQL.",
+    };
+  }
+}
 
 type ProgrammeStoreValue = {
   programmes: CustomerProgramme[];
@@ -93,7 +139,7 @@ type ProgrammeStoreValue = {
 
   saveProgramme: (
     programme: CustomerProgramme,
-  ) => ProgrammeSaveResult;
+  ) => Promise<ProgrammeSaveResult>;
 
   deleteProgramme: (
     programmeId: string,
@@ -370,9 +416,9 @@ export function ProgrammeStoreProvider({
     );
   }, [programmes, ready]);
 
-  function saveProgramme(
+  async function saveProgramme(
     programme: CustomerProgramme,
-  ): ProgrammeSaveResult {
+  ): Promise<ProgrammeSaveResult> {
     const customer =
       customers.find(
         (item) =>
@@ -453,6 +499,14 @@ export function ProgrammeStoreProvider({
       };
     }
 
+    const persistenceResult =
+      await persistProgrammeToPostgreSQL(
+        normalised,
+      );
+
+    if (!persistenceResult.success) {
+      return persistenceResult;
+    }
     const current =
       programmesRef.current;
 

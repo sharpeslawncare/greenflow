@@ -299,7 +299,7 @@ function JobsPageContent() {
     }));
   }
 
-  function resolveReschedulingTreatment(
+  async function resolveReschedulingTreatment(
     treatment: TreatmentRecord,
   ) {
     const replacementDate =
@@ -389,7 +389,7 @@ function JobsPageContent() {
     };
 
     const programmeResult =
-      saveProgramme(updatedProgramme);
+      await saveProgramme(updatedProgramme);
 
     if (!programmeResult.success) {
       setRescheduleMessage(

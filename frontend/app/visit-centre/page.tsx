@@ -1611,7 +1611,7 @@ function VisitCentrePageContent() {
     );
   }
 
-  function saveVisits(event?: FormEvent<HTMLFormElement>) {
+  async function saveVisits(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     setReviewError("");
 
@@ -2207,7 +2207,7 @@ function VisitCentrePageContent() {
       return failures;
     }
 
-    function rollbackProgrammeWrites() {
+    async function rollbackProgrammeWrites() {
       const failures: string[] = [];
 
       for (
@@ -2215,7 +2215,7 @@ function VisitCentrePageContent() {
         [...savedProgrammeWrites].reverse()
       ) {
         const result =
-          saveProgramme(
+          await saveProgramme(
             write.previousProgramme,
           );
 
@@ -2272,13 +2272,13 @@ function VisitCentrePageContent() {
      */
     for (const write of programmeWrites) {
       const result =
-        saveProgramme(
+        await saveProgramme(
           write.nextProgramme,
         );
 
       if (!result.success) {
         const rollbackFailures =
-          rollbackProgrammeWrites();
+          await rollbackProgrammeWrites();
 
         const error =
           `${result.message} No stock has been deducted and no treatment record has been saved.${rollbackFailureMessage(
@@ -2307,7 +2307,7 @@ function VisitCentrePageContent() {
       if (!result.success) {
         const rollbackFailures = [
           ...rollbackCustomerWrites(),
-          ...rollbackProgrammeWrites(),
+          ...(await rollbackProgrammeWrites()),
         ];
 
         const error =
@@ -2342,7 +2342,7 @@ function VisitCentrePageContent() {
         const rollbackFailures = [
           ...rollbackTreatmentWrites(),
           ...rollbackCustomerWrites(),
-          ...rollbackProgrammeWrites(),
+          ...(await rollbackProgrammeWrites()),
         ];
 
         const error =
@@ -2396,7 +2396,7 @@ function VisitCentrePageContent() {
         const rollbackFailures = [
           ...rollbackTreatmentWrites(),
           ...rollbackCustomerWrites(),
-          ...rollbackProgrammeWrites(),
+          ...(await rollbackProgrammeWrites()),
         ];
 
         const error =

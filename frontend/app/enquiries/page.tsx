@@ -774,7 +774,7 @@ export default function EnquiriesPage() {
     );
   }
 
-  function convertAcceptedEnquiry() {
+  async function convertAcceptedEnquiry() {
     if (!draft) {
       showMessage(
         "Select an enquiry first.",
@@ -1148,7 +1148,7 @@ export default function EnquiriesPage() {
         };
 
       const programmeResult =
-        saveProgramme(
+        await saveProgramme(
           programme,
         );
 

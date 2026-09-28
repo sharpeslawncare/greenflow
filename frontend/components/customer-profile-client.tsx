@@ -3029,7 +3029,7 @@ function ProgrammeTab({
     setProgrammeMessage("");
   }
 
-  function saveOverride(
+  async function saveOverride(
     visitNumber: number,
     groupDate: string,
   ) {
@@ -3111,7 +3111,7 @@ function ProgrammeTab({
     };
 
     const result =
-      onSaveProgramme(
+      await onSaveProgramme(
         updatedProgramme,
       );
 
@@ -3125,7 +3125,7 @@ function ProgrammeTab({
     }
   }
 
-  function restoreGroupDate(
+  async function restoreGroupDate(
     visitNumber: number,
     groupDate: string,
   ) {
@@ -3183,7 +3183,7 @@ function ProgrammeTab({
     };
 
     const result =
-      onSaveProgramme(
+      await onSaveProgramme(
         updatedProgramme,
       );
 

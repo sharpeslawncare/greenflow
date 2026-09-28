@@ -177,7 +177,7 @@ export default function DeveloperSettingsPage() {
     setMessage("");
   }
 
-  function resetDemoWorkingData() {
+  async function resetDemoWorkingData() {
     if (!canResetDemo) {
       setMessage(
         `Type ${DEMO_RESET_CONFIRMATION_TEXT} before resetting demo working data.`,
@@ -212,6 +212,9 @@ export default function DeveloperSettingsPage() {
               programme.customerNumber,
           );
 
+        if (!customer) {
+          continue;
+        }
         const season =
           seasons.find(
             (item) =>
@@ -228,7 +231,7 @@ export default function DeveloperSettingsPage() {
               )
             : undefined;
 
-        saveProgramme({
+        const result = await saveProgramme({
           ...programme,
 
           visits:
@@ -276,6 +279,9 @@ export default function DeveloperSettingsPage() {
               },
             ),
         });
+        if (!result.success) {
+          throw new Error(result.message);
+        }
       }
 
       for (
