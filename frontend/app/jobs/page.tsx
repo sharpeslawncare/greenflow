@@ -402,7 +402,7 @@ function JobsPageContent() {
     }
 
     const treatmentResult =
-      updateTreatment({
+      await updateTreatment({
         ...treatment,
         status: "Rescheduled",
         nextVisitDate: replacementDate,

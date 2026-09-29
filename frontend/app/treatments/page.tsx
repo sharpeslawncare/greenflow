@@ -267,7 +267,7 @@ function TreatmentsPageContent() {
     );
   }
 
-  function removeSelectedRecord() {
+  async function removeSelectedRecord() {
     if (!selectedTreatment) {
       return;
     }
@@ -295,7 +295,7 @@ function TreatmentsPageContent() {
     }
 
     const result =
-      deleteTreatment(
+      await deleteTreatment(
         selectedTreatment.id,
       );
 

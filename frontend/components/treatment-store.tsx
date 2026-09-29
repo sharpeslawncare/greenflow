@@ -149,7 +149,8 @@ export type TreatmentSaveResult = {
     | "duplicate-treatment"
     | "duplicate-invoice"
     | "missing-invoice"
-    | "not-found";
+    | "not-found"
+    | "database-error";
   message: string;
 };
 
@@ -158,17 +159,17 @@ type TreatmentStoreValue = {
   ready: boolean;
   addTreatment: (
     treatment: TreatmentRecord,
-  ) => TreatmentSaveResult;
+  ) => Promise<TreatmentSaveResult>;
   addTreatments: (treatments: TreatmentRecord[]) => {
     added: number;
     skipped: number;
   };
   updateTreatment: (
     treatment: TreatmentRecord,
-  ) => TreatmentSaveResult;
+  ) => Promise<TreatmentSaveResult>;
   deleteTreatment: (
     treatmentId: string,
-  ) => TreatmentSaveResult;
+  ) => Promise<TreatmentSaveResult>;
   getTreatmentById: (
     treatmentId: string,
   ) => TreatmentRecord | undefined;
@@ -204,6 +205,96 @@ const BUILT_IN_DEMO_TREATMENT_IDS =
 const TreatmentStoreContext =
   createContext<TreatmentStoreValue | null>(null);
 
+async function loadTreatmentsFromPostgres() {
+  const response = await fetch(
+    "/api/treatments",
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      "Unable to load treatments from PostgreSQL.",
+    );
+  }
+
+  const payload = (await response.json()) as {
+    treatments?: TreatmentRecord[];
+  };
+
+  return Array.isArray(payload.treatments)
+    ? payload.treatments
+    : [];
+}
+
+async function saveTreatmentToPostgres(
+  treatment: TreatmentRecord,
+) {
+  const response = await fetch(
+    "/api/treatments",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        treatment,
+      }),
+    },
+  );
+
+  const payload = (await response.json()) as {
+    treatment?: TreatmentRecord;
+    reason?: TreatmentSaveResult["reason"];
+    error?: string;
+  };
+
+  if (!response.ok || !payload.treatment) {
+    return {
+      success: false as const,
+      reason:
+        payload.reason ?? "database-error",
+      message:
+        payload.error ??
+        "Unable to save treatment to PostgreSQL.",
+    };
+  }
+
+  return {
+    success: true as const,
+    treatment: payload.treatment,
+  };
+}
+
+async function deleteTreatmentFromPostgres(
+  treatmentId: string,
+) {
+  const response = await fetch(
+    "/api/treatments",
+    {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        treatmentId,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json()) as {
+      error?: string;
+    };
+
+    throw new Error(
+      payload.error ??
+        "Unable to delete treatment from PostgreSQL.",
+    );
+  }
+}
 const demoTreatments: TreatmentRecord[] = [
   createTreatmentRecord({
     id: "treatment-demo-1",
@@ -300,76 +391,117 @@ export function TreatmentStoreProvider({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const saved = getSavedData();
+    let cancelled = false;
 
-    /*
-     * A fresh/empty GreenFlow installation must stay empty.
-     *
-     * Older versions automatically inserted demo treatment
-     * records whenever no saved treatment data existed. That
-     * could leave orphaned records such as Customer 1002 in the
-     * rescheduling queue after customer data had been reset.
-     *
-     * Demo treatments are now only created when the user
-     * explicitly chooses Restore demo data.
-     */
-    if (!saved) {
-      treatmentsRef.current = [];
-      setTreatments([]);
-      markDemoAutoseedCleanupComplete();
-      setReady(true);
-      return;
-    }
+    const hydrateTreatments = async () => {
+      const saved = getSavedData();
 
-    try {
-      const parsed = JSON.parse(saved) as Array<
-        Partial<TreatmentRecord>
-      >;
-
-      const normalisedTreatments =
-        Array.isArray(parsed)
-          ? deduplicateTreatmentRecords(
-              parsed.map(
-                normaliseTreatmentRecord,
-              ),
-            )
-          : [];
+      let localTreatments:
+        TreatmentRecord[] = [];
 
       /*
-       * One-time cleanup for installations that previously
-       * received GreenFlow's built-in treatment demo records
-       * automatically. Exact known demo IDs are removed only
-       * once, so a later explicit Restore demo data action still
-       * behaves normally and persists.
+       * A fresh/empty GreenFlow installation must stay empty.
+       *
+       * Older versions automatically inserted demo treatment
+       * records whenever no saved treatment data existed. Demo
+       * treatments are now only created when explicitly restored.
        */
-      const loadedTreatments =
-        hasCompletedDemoAutoseedCleanup()
-          ? normalisedTreatments
-          : normalisedTreatments.filter(
-              (treatment) =>
-                !BUILT_IN_DEMO_TREATMENT_IDS.has(
-                  treatment.id,
-                ),
-            );
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as Array<
+            Partial<TreatmentRecord>
+          >;
+
+          const normalisedTreatments =
+            Array.isArray(parsed)
+              ? deduplicateTreatmentRecords(
+                  parsed.map(
+                    normaliseTreatmentRecord,
+                  ),
+                )
+              : [];
+
+          localTreatments =
+            hasCompletedDemoAutoseedCleanup()
+              ? normalisedTreatments
+              : normalisedTreatments.filter(
+                  (treatment) =>
+                    !BUILT_IN_DEMO_TREATMENT_IDS.has(
+                      treatment.id,
+                    ),
+                );
+        } catch {
+          clearStoredData();
+          localTreatments = [];
+        }
+      }
 
       markDemoAutoseedCleanupComplete();
+
+      if (cancelled) return;
 
       treatmentsRef.current =
-        loadedTreatments;
-      setTreatments(
-        loadedTreatments,
-      );
-    } catch {
-      clearStoredData();
+        localTreatments;
+      setTreatments(localTreatments);
 
-      treatmentsRef.current = [];
-      setTreatments([]);
-      markDemoAutoseedCleanupComplete();
-    }
+      try {
+        const databaseTreatments =
+          deduplicateTreatmentRecords(
+            (
+              await loadTreatmentsFromPostgres()
+            ).map(
+              normaliseTreatmentRecord,
+            ),
+          );
 
-    setReady(true);
+        if (
+          cancelled ||
+          databaseTreatments.length === 0
+        ) {
+          return;
+        }
+
+        const localOnly =
+          localTreatments.filter(
+            (localTreatment) =>
+              !databaseTreatments.some(
+                (databaseTreatment) =>
+                  isSameTreatmentIdentity(
+                    localTreatment,
+                    databaseTreatment,
+                  ) ||
+                  hasSameInvoiceNumber(
+                    localTreatment,
+                    databaseTreatment,
+                  ),
+              ),
+          );
+
+        const merged = [
+          ...databaseTreatments,
+          ...localOnly,
+        ];
+
+        treatmentsRef.current = merged;
+        setTreatments(merged);
+      } catch {
+        /*
+         * A failed PostgreSQL read must not destroy
+         * existing local-only treatment history.
+         */
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
+      }
+    };
+
+    void hydrateTreatments();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
   useEffect(() => {
     treatmentsRef.current =
       treatments;
@@ -388,9 +520,9 @@ export function TreatmentStoreProvider({
     );
   }, [treatments, ready]);
 
-  function addTreatment(
+  async function addTreatment(
     treatment: TreatmentRecord,
-  ): TreatmentSaveResult {
+  ): Promise<TreatmentSaveResult> {
     const normalised =
       normaliseTreatmentRecord(treatment);
 
@@ -444,23 +576,45 @@ export function TreatmentStoreProvider({
       };
     }
 
-    const next = [
-      normalised,
-      ...current,
-    ];
+    try {
+      const databaseResult =
+        await saveTreatmentToPostgres(
+          normalised,
+        );
 
-    treatmentsRef.current =
-      next;
-    setTreatments(next);
+      if (!databaseResult.success) {
+        return databaseResult;
+      }
 
-    return {
-      success: true,
-      reason: "saved",
-      message:
-        "Treatment record saved.",
-    };
+      const saved =
+        normaliseTreatmentRecord(
+          databaseResult.treatment,
+        );
+
+      const next = [
+        saved,
+        ...current,
+      ];
+
+      treatmentsRef.current =
+        next;
+      setTreatments(next);
+
+      return {
+        success: true,
+        reason: "saved",
+        message:
+          "Treatment record saved.",
+      };
+    } catch {
+      return {
+        success: false,
+        reason: "database-error",
+        message:
+          "Unable to save treatment to PostgreSQL.",
+      };
+    }
   }
-
   function addTreatments(
     incoming: TreatmentRecord[],
   ) {
@@ -541,9 +695,9 @@ export function TreatmentStoreProvider({
     };
   }
 
-  function updateTreatment(
+  async function updateTreatment(
     treatment: TreatmentRecord,
-  ): TreatmentSaveResult {
+  ): Promise<TreatmentSaveResult> {
     const normalised =
       normaliseTreatmentRecord(treatment);
 
@@ -618,30 +772,51 @@ export function TreatmentStoreProvider({
       };
     }
 
-    const next =
-      current.map(
-        (item) =>
-          item.id ===
-          normalised.id
-            ? normalised
-            : item,
-      );
+    try {
+      const databaseResult =
+        await saveTreatmentToPostgres(
+          normalised,
+        );
 
-    treatmentsRef.current =
-      next;
-    setTreatments(next);
+      if (!databaseResult.success) {
+        return databaseResult;
+      }
 
-    return {
-      success: true,
-      reason: "saved",
-      message:
-        "Treatment record updated.",
-    };
+      const saved =
+        normaliseTreatmentRecord(
+          databaseResult.treatment,
+        );
+
+      const next =
+        current.map(
+          (item) =>
+            item.id === saved.id
+              ? saved
+              : item,
+        );
+
+      treatmentsRef.current =
+        next;
+      setTreatments(next);
+
+      return {
+        success: true,
+        reason: "saved",
+        message:
+          "Treatment record updated.",
+      };
+    } catch {
+      return {
+        success: false,
+        reason: "database-error",
+        message:
+          "Unable to save treatment to PostgreSQL.",
+      };
+    }
   }
-
-  function deleteTreatment(
+  async function deleteTreatment(
     treatmentId: string,
-  ): TreatmentSaveResult {
+  ): Promise<TreatmentSaveResult> {
     const cleanId =
       treatmentId.trim();
 
@@ -669,9 +844,23 @@ export function TreatmentStoreProvider({
           item.id !== cleanId,
       );
 
+    try {
+      await deleteTreatmentFromPostgres(
+        cleanId,
+      );
+
     treatmentsRef.current =
       next;
     setTreatments(next);
+
+    } catch {
+      return {
+        success: false,
+        reason: "database-error",
+        message:
+          "Unable to delete treatment from PostgreSQL.",
+      };
+    }
 
     return {
       success: true,

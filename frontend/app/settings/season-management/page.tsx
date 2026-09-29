@@ -144,7 +144,10 @@ export default function SeasonManagementPage() {
       }
 
       for (const treatment of treatments) {
-        deleteTreatment(treatment.id);
+        const deleteResult = await deleteTreatment(treatment.id);
+        if (!deleteResult.success) {
+          throw new Error(deleteResult.message);
+        }
       }
 
       window.localStorage.removeItem(ROUTE_ORDER_STORAGE_KEY);

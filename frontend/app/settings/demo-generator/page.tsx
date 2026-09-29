@@ -101,7 +101,7 @@ export default function DemoGeneratorPage() {
       0,
     );
 
-  function generateCustomers() {
+  async function generateCustomers() {
     const confirmed =
       window.confirm(
         `Create a clean ${customerCount}-customer demo database? This replaces ${customers.length} current customers and removes ${treatments.length} treatment records plus ${enquiries.length} enquiries, arranged site visits and quotes. Annual programmes will rebuild from the Season Planner after reload.`,
@@ -111,9 +111,12 @@ export default function DemoGeneratorPage() {
 
     try {
       for (const treatment of treatments) {
-        deleteTreatment(
+        const result = await deleteTreatment(
           treatment.id,
         );
+        if (!result.success) {
+          throw new Error(result.message);
+        }
       }
 
       clearEnquiries();

@@ -981,7 +981,7 @@ export default function ChemicalUsagePage() {
     );
   }
 
-  function saveApplicationCorrection() {
+  async function saveApplicationCorrection() {
     if (
       !selectedRow ||
       !selectedTreatment ||
@@ -1221,7 +1221,7 @@ export default function ChemicalUsagePage() {
     };
 
     const treatmentResult =
-      updateTreatment(
+      await updateTreatment(
         updatedTreatment,
       );
 

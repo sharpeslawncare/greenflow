@@ -288,9 +288,12 @@ export default function DeveloperSettingsPage() {
         const treatment of
         treatments
       ) {
-        deleteTreatment(
+        const deleteResult = await deleteTreatment(
           treatment.id,
         );
+        if (!deleteResult.success) {
+          throw new Error(deleteResult.message);
+        }
       }
 
       /*

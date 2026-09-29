@@ -689,12 +689,26 @@ function VisitCentrePageContent() {
           ),
       );
 
-    alreadyScheduled.forEach((treatment) => {
-      updateTreatment({
-        ...treatment,
-        status: "Rescheduled",
-      });
-    });
+    let cancelled = false;
+
+    async function markAlreadyScheduled() {
+      for (const treatment of alreadyScheduled) {
+        if (cancelled) return;
+
+        const result = await updateTreatment({
+          ...treatment,
+          status: "Rescheduled",
+        });
+
+        if (!result.success) return;
+      }
+    }
+
+    void markAlreadyScheduled();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     treatments,
     programmes,
@@ -2181,7 +2195,7 @@ function VisitCentrePageContent() {
       nextCustomer: StoredCustomer;
     }> = [];
 
-    function rollbackTreatmentWrites() {
+    async function rollbackTreatmentWrites() {
       const failures: string[] = [];
 
       for (
@@ -2189,13 +2203,15 @@ function VisitCentrePageContent() {
         [...savedTreatmentWrites].reverse()
       ) {
         const result =
+          await (
           write.previousTreatment
             ? updateTreatment(
                 write.previousTreatment,
               )
             : deleteTreatment(
                 write.treatment.id,
-              );
+              )
+          );
 
         if (!result.success) {
           failures.push(
@@ -2330,17 +2346,19 @@ function VisitCentrePageContent() {
 
     for (const write of treatmentWrites) {
       const result =
-        write.previousTreatment
-          ? updateTreatment(
-              write.treatment,
-            )
-          : addTreatment(
-              write.treatment,
-            );
+        await (
+          write.previousTreatment
+            ? updateTreatment(
+                write.treatment,
+              )
+            : addTreatment(
+                write.treatment,
+              )
+        );
 
       if (!result.success) {
         const rollbackFailures = [
-          ...rollbackTreatmentWrites(),
+          ...(await rollbackTreatmentWrites()),
           ...rollbackCustomerWrites(),
           ...(await rollbackProgrammeWrites()),
         ];
@@ -2394,7 +2412,7 @@ function VisitCentrePageContent() {
 
       if (!stockResult.success) {
         const rollbackFailures = [
-          ...rollbackTreatmentWrites(),
+          ...(await rollbackTreatmentWrites()),
           ...rollbackCustomerWrites(),
           ...(await rollbackProgrammeWrites()),
         ];
@@ -2492,7 +2510,7 @@ function VisitCentrePageContent() {
     );
   }
 
-  function applyMissingProductsToCompletedVisits() {
+  async function applyMissingProductsToCompletedVisits() {
     if (
       correctionSelectedProducts.length === 0
     ) {
@@ -2707,14 +2725,14 @@ function VisitCentrePageContent() {
         });
 
       const result =
-        updateTreatment(updated);
+        await updateTreatment(updated);
 
       if (!result.success) {
         for (
           const previous of
           [...saved].reverse()
         ) {
-          updateTreatment(previous);
+          await updateTreatment(previous);
         }
 
         showMessage(
@@ -2751,7 +2769,7 @@ function VisitCentrePageContent() {
         const previous of
         [...saved].reverse()
       ) {
-        updateTreatment(previous);
+        await updateTreatment(previous);
       }
 
       showMessage(
