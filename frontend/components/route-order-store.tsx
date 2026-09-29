@@ -14,6 +14,10 @@ export type RouteOrder = {
   updatedAt: string;
 };
 
+export type RouteOrderSaveResult = {
+  success: boolean;
+  message: string;
+};
 type RouteItem = {
   customer: {
     customerNumber: string;
@@ -147,6 +151,111 @@ function writeOrders(
   );
 }
 
+async function persistRouteOrderToPostgreSQL(
+  routeOrder: RouteOrder,
+): Promise<RouteOrderSaveResult> {
+  try {
+    const response = await fetch(
+      "/api/route-orders",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          routeOrder,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const payload = (await response
+        .json()
+        .catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      return {
+        success: false,
+        message:
+          payload?.error ||
+          "Route order could not be saved to PostgreSQL.",
+      };
+    }
+
+    return {
+      success: true,
+      message:
+        "Route order saved to PostgreSQL.",
+    };
+  } catch (error) {
+    console.error(
+      "Failed to save GreenFlow route order to PostgreSQL:",
+      error,
+    );
+
+    return {
+      success: false,
+      message:
+        "Route order could not be saved to PostgreSQL.",
+    };
+  }
+}
+
+async function deleteRouteOrderFromPostgreSQL(
+  date: string,
+  vanNumber: number,
+): Promise<RouteOrderSaveResult> {
+  try {
+    const response = await fetch(
+      "/api/route-orders",
+      {
+        method: "DELETE",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          date,
+          vanNumber,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const payload = (await response
+        .json()
+        .catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      return {
+        success: false,
+        message:
+          payload?.error ||
+          "Route order could not be deleted from PostgreSQL.",
+      };
+    }
+
+    return {
+      success: true,
+      message:
+        "Route order deleted from PostgreSQL.",
+    };
+  } catch (error) {
+    console.error(
+      "Failed to delete GreenFlow route order from PostgreSQL:",
+      error,
+    );
+
+    return {
+      success: false,
+      message:
+        "Route order could not be deleted from PostgreSQL.",
+    };
+  }
+}
 export function normalisePostcode(
   value: string,
 ) {
@@ -198,8 +307,93 @@ export function useRouteOrderStore() {
     }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     reload();
-    setReady(true);
+
+    async function hydrateFromPostgreSQL() {
+      try {
+        const response = await fetch(
+          "/api/route-orders",
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Route order hydration failed with status ${response.status}.`,
+          );
+        }
+
+        const payload = (await response.json()) as {
+          routeOrders?: unknown;
+        };
+
+        if (!Array.isArray(payload.routeOrders)) {
+          throw new Error(
+            "Route order hydration returned an invalid payload.",
+          );
+        }
+
+        const databaseOrders =
+          payload.routeOrders
+            .filter(
+              (
+                order,
+              ): order is Record<
+                string,
+                unknown
+              > =>
+                Boolean(
+                  order &&
+                    typeof order ===
+                      "object",
+                ),
+            )
+            .map((order) => ({
+              date:
+                typeof order.date ===
+                "string"
+                  ? order.date
+                  : "",
+              vanNumber:
+                Number(order.vanNumber),
+              customerNumbers:
+                normaliseCustomerNumbers(
+                  order.customerNumbers,
+                ),
+              updatedAt:
+                typeof order.updatedAt ===
+                "string"
+                  ? order.updatedAt
+                  : new Date(
+                      0,
+                    ).toISOString(),
+            }))
+            .filter(
+              (order) =>
+                Boolean(order.date) &&
+                Number.isFinite(
+                  order.vanNumber,
+                ) &&
+                order.vanNumber > 0,
+            );
+
+        if (!cancelled) {
+          setOrders(databaseOrders);
+          writeOrders(databaseOrders);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to hydrate GreenFlow route orders from PostgreSQL:",
+          error,
+        );
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
+      }
+    }
+
+    void hydrateFromPostgreSQL();
 
     function handleStorage(
       event: StorageEvent,
@@ -227,6 +421,8 @@ export function useRouteOrderStore() {
     );
 
     return () => {
+      cancelled = true;
+
       window.removeEventListener(
         "storage",
         handleStorage,
@@ -238,7 +434,6 @@ export function useRouteOrderStore() {
       );
     };
   }, [reload]);
-
   const ordersByKey =
     useMemo(
       () =>
@@ -333,11 +528,11 @@ export function useRouteOrderStore() {
 
   const saveRouteOrder =
     useCallback(
-      (
+      async (
         date: string,
         vanNumber: number,
         customerNumbers: string[],
-      ) => {
+      ): Promise<RouteOrderSaveResult> => {
         const nextOrder: RouteOrder = {
           date,
           vanNumber,
@@ -348,6 +543,15 @@ export function useRouteOrderStore() {
           updatedAt:
             new Date().toISOString(),
         };
+
+        const result =
+          await persistRouteOrderToPostgreSQL(
+            nextOrder,
+          );
+
+        if (!result.success) {
+          return result;
+        }
 
         const key =
           makeKey(
@@ -370,16 +574,28 @@ export function useRouteOrderStore() {
           writeOrders(next);
           return next;
         });
+
+        return result;
       },
       [],
     );
 
   const clearRouteOrder =
     useCallback(
-      (
+      async (
         date: string,
         vanNumber: number,
-      ) => {
+      ): Promise<RouteOrderSaveResult> => {
+        const result =
+          await deleteRouteOrderFromPostgreSQL(
+            date,
+            vanNumber,
+          );
+
+        if (!result.success) {
+          return result;
+        }
+
         const key =
           makeKey(
             date,
@@ -399,10 +615,11 @@ export function useRouteOrderStore() {
           writeOrders(next);
           return next;
         });
+
+        return result;
       },
       [],
     );
-
   const createPostcodeOrder =
     useCallback(
       (

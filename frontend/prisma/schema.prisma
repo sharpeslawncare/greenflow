@@ -19,6 +19,7 @@ model Organisation {
   enquiries   Enquiry[]
   seasons     Season[]
   programmes  Programme[]
+  routeOrders RouteOrder[]
 }
 
 model Season {
@@ -214,4 +215,21 @@ model Programme {
   @@index([organisationId])
   @@index([organisationId, year])
   @@index([customerId])
+}
+
+model RouteOrder {
+  id             String @id @default(cuid())
+  organisationId String
+
+  date            String
+  vanNumber       Int
+  customerNumbers Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, date, vanNumber])
+  @@index([organisationId, date])
 }

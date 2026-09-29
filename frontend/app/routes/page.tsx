@@ -938,7 +938,7 @@ function RoutesPageContent() {
     );
   }
 
-  function moveRouteCustomer(
+  async function moveRouteCustomer(
     vanNumber: number,
     customerNumber: string,
     direction: "up" | "down",
@@ -998,18 +998,27 @@ function RoutesPageContent() {
       nextOrder[currentIndex],
     ];
 
-    saveRouteOrder(
-      selectedDate,
-      vanNumber,
-      nextOrder,
-    );
+    const saveResult =
+      await saveRouteOrder(
+        selectedDate,
+        vanNumber,
+        nextOrder,
+      );
+
+    if (!saveResult.success) {
+      showMessage(
+        saveResult.message,
+        "error",
+      );
+      return;
+    }
 
     showMessage(
       "Route order updated. Jobs and Visit Centre will use the saved customer-stop order.",
     );
   }
 
-  function optimiseVanRoute(
+  async function optimiseVanRoute(
     vanNumber: number,
   ) {
     const remainingCustomers =
@@ -1035,13 +1044,22 @@ function RoutesPageContent() {
       return;
     }
 
-    saveRouteOrder(
-      selectedDate,
-      vanNumber,
-      createPostcodeOrder(
-        remainingCustomers,
-      ),
-    );
+    const saveResult =
+      await saveRouteOrder(
+        selectedDate,
+        vanNumber,
+        createPostcodeOrder(
+          remainingCustomers,
+        ),
+      );
+
+    if (!saveResult.success) {
+      showMessage(
+        saveResult.message,
+        "error",
+      );
+      return;
+    }
 
     showMessage(
       `${
@@ -1053,13 +1071,22 @@ function RoutesPageContent() {
     );
   }
 
-  function resetVanRoute(
+  async function resetVanRoute(
     vanNumber: number,
   ) {
-    clearRouteOrder(
-      selectedDate,
-      vanNumber,
-    );
+    const saveResult =
+      await clearRouteOrder(
+        selectedDate,
+        vanNumber,
+      );
+
+    if (!saveResult.success) {
+      showMessage(
+        saveResult.message,
+        "error",
+      );
+      return;
+    }
 
     showMessage(
       `${
@@ -1070,7 +1097,6 @@ function RoutesPageContent() {
       } route order reset.`,
     );
   }
-
   function showMessage(
     text: string,
     tone: RouteMessageTone = "success",
