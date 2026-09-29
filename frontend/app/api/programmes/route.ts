@@ -229,3 +229,89 @@ export async function GET() {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  const { error, membership } =
+    await getCurrentMembership();
+
+  if (error || !membership) {
+    return error;
+  }
+
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON request body." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("programmeId" in body) ||
+    typeof (body as { programmeId?: unknown })
+      .programmeId !== "string" ||
+    (body as { programmeId: string })
+      .programmeId.trim().length === 0
+  ) {
+    return NextResponse.json(
+      { error: "Invalid programme ID." },
+      { status: 400 },
+    );
+  }
+
+  const programmeId = (
+    body as { programmeId: string }
+  ).programmeId.trim();
+
+  try {
+    const programme =
+      await prisma.programme.findFirst({
+        where: {
+          id: programmeId,
+          organisationId:
+            membership.organisationId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    if (!programme) {
+      return NextResponse.json(
+        {
+          error:
+            "Programme was not found in this organisation.",
+        },
+        { status: 404 },
+      );
+    }
+
+    await prisma.programme.delete({
+      where: {
+        id: programme.id,
+      },
+    });
+
+    return NextResponse.json({
+      deletedProgrammeId: programme.id,
+    });
+  } catch (deleteError) {
+    console.error(
+      "Failed to delete GreenFlow programme:",
+      deleteError,
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Unable to delete programme from PostgreSQL.",
+      },
+      { status: 500 },
+    );
+  }
+}

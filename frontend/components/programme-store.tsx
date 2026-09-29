@@ -143,7 +143,7 @@ type ProgrammeStoreValue = {
 
   deleteProgramme: (
     programmeId: string,
-  ) => void;
+  ) => Promise<ProgrammeSaveResult>;
 
   getProgrammeForCustomer: (
     customerNumber: string,
@@ -580,15 +580,65 @@ export function ProgrammeStoreProvider({
     };
   }
 
-  function deleteProgramme(
+  async function deleteProgramme(
     programmeId: string,
-  ) {
+  ): Promise<ProgrammeSaveResult> {
     const deletedProgramme =
       programmesRef.current.find(
         (programme) =>
           programme.id ===
           programmeId,
       );
+
+    if (!deletedProgramme) {
+      return {
+        success: false,
+        message:
+          "Programme could not be found.",
+      };
+    }
+
+    try {
+      const response = await fetch(
+        "/api/programmes",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            programmeId,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const payload = (await response
+          .json()
+          .catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        return {
+          success: false,
+          message:
+            payload?.error ||
+            "Programme could not be deleted from PostgreSQL.",
+        };
+      }
+    } catch (error) {
+      console.error(
+        "Failed to delete GreenFlow programme from PostgreSQL:",
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          "Programme could not be deleted from PostgreSQL.",
+      };
+    }
 
     const next =
       programmesRef.current.filter(
@@ -602,19 +652,22 @@ export function ProgrammeStoreProvider({
 
     setProgrammes(next);
 
-    if (deletedProgramme) {
-      recordAuditEvent({
-        area: "Programmes",
-        action: "Deleted",
-        reference: `${deletedProgramme.customerNumber} / ${deletedProgramme.year}`,
-        description: `Programme ${deletedProgramme.year} deleted for customer ${deletedProgramme.customerNumber}.`,
-        changedFields: [
-          "programme",
-        ],
-      });
-    }
-  }
+    recordAuditEvent({
+      area: "Programmes",
+      action: "Deleted",
+      reference: `${deletedProgramme.customerNumber} / ${deletedProgramme.year}`,
+      description: `Programme ${deletedProgramme.year} deleted for customer ${deletedProgramme.customerNumber}.`,
+      changedFields: [
+        "programme",
+      ],
+    });
 
+    return {
+      success: true,
+      message:
+        "Programme deleted successfully.",
+    };
+  }
   function getProgrammeForCustomer(
     customerNumber: string,
     year: number,
