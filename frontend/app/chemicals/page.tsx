@@ -482,6 +482,67 @@ export default function ChemicalsPage() {
       )
     : null;
 
+  const waterVolumeStatus = (() => {
+    if (!selectedChemical || !calculation) {
+      return null;
+    }
+
+    const minimum =
+      selectedChemical.minimumWaterVolumePerHectare;
+    const maximum =
+      selectedChemical.maximumWaterVolumePerHectare;
+
+    const hasMinimum = minimum > 0;
+    const hasMaximum = maximum > 0;
+
+    if (!hasMinimum && !hasMaximum) {
+      return {
+        status: "not-configured" as const,
+        message: "No label water-volume range recorded.",
+      };
+    }
+
+    if (!calculation.calibrationUsed) {
+      return {
+        status: "needs-calibration" as const,
+        message:
+          "Enter flow, walking speed and spray width to check output against the label range.",
+      };
+    }
+
+    const actual =
+      calculation.calibratedWaterVolumePerHectare;
+
+    if (hasMinimum && actual < minimum) {
+      return {
+        status: "too-low" as const,
+        message: `Water output too low — minimum ${minimum.toFixed(
+          0,
+        )} L/ha.`,
+      };
+    }
+
+    if (hasMaximum && actual > maximum) {
+      return {
+        status: "too-high" as const,
+        message: `Water output too high — maximum ${maximum.toFixed(
+          0,
+        )} L/ha.`,
+      };
+    }
+
+    const rangeText =
+      hasMinimum && hasMaximum
+        ? `${minimum.toFixed(0)}–${maximum.toFixed(0)} L/ha`
+        : hasMinimum
+          ? `minimum ${minimum.toFixed(0)} L/ha`
+          : `maximum ${maximum.toFixed(0)} L/ha`;
+
+    return {
+      status: "within-range" as const,
+      message: `Within label water-volume range (${rangeText}).`,
+    };
+  })();
   function selectChemical(
     chemical: ChemicalRecord,
   ) {
@@ -527,17 +588,47 @@ export default function ChemicalsPage() {
     value: ChemicalRecord[K],
   ) {
     setDraft((current) => {
-      if (!current) {
+      const base = current ?? selectedChemical;
+
+      if (!base) {
         return current;
       }
 
       return {
-        ...current,
+        ...base,
         [field]: value,
       };
     });
   }
 
+  function selectNozzlePreset(
+    colour: string,
+  ) {
+    const preset = nozzlePresets.find(
+      (item) => item.colour === colour,
+    );
+
+    if (!preset) {
+      return;
+    }
+
+    setDraft((current) => {
+      const base = current ?? selectedChemical;
+
+      if (!base) {
+        return current;
+      }
+
+      return {
+        ...base,
+        nozzleColour: preset.colour,
+        nozzleType: preset.type,
+        flowRateLitresPerMinute:
+          preset.flowRateLitresPerMinute,
+        pressureBar: preset.pressureBar,
+      };
+    });
+  }
   function saveChemical(
     event?: FormEvent<HTMLFormElement>,
   ) {
@@ -643,6 +734,45 @@ export default function ChemicalsPage() {
     ) {
       showMessage(
         "Water volume per hectare must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.minimumWaterVolumePerHectare,
+      ) ||
+      draft.minimumWaterVolumePerHectare < 0
+    ) {
+      showMessage(
+        "Minimum water volume must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.maximumWaterVolumePerHectare,
+      ) ||
+      draft.maximumWaterVolumePerHectare < 0
+    ) {
+      showMessage(
+        "Maximum water volume must be 0 or greater.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      draft.minimumWaterVolumePerHectare > 0 &&
+      draft.maximumWaterVolumePerHectare > 0 &&
+      draft.minimumWaterVolumePerHectare >
+        draft.maximumWaterVolumePerHectare
+    ) {
+      showMessage(
+        "Minimum water volume cannot be greater than maximum water volume.",
         "error",
       );
       return;
@@ -1461,47 +1591,459 @@ export default function ChemicalsPage() {
 
                     <Panel>
                       <SectionHeading
-                        title="Product documents & links"
-                        description="Save official manufacturer or supplier links for quick reference."
+                        title="Label application requirements"
+                        description="Record the exact product dose and recommended carrier-water volume shown on the label."
                       />
 
-                      <div className="mt-5 space-y-4">
-                        <ExternalLinkField
-                          label="Product information"
-                          value={selectedChemical.productInformationUrl}
-                          placeholder="https://manufacturer.com/product-page"
-                          buttonLabel="View product page ↗"
-                          onChange={(value) =>
-                            updateDraft("productInformationUrl", value)
+                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                        <NumberField
+                          label="Application rate"
+                          value={
+                            selectedChemical.applicationRate
+                          }
+                          step="0.001"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "applicationRate",
+                              value,
+                            )
                           }
                         />
 
-                        <ExternalLinkField
-                          label="Product label"
-                          value={selectedChemical.productLabelUrl}
-                          placeholder="https://manufacturer.com/product-label.pdf"
-                          buttonLabel="View label ↗"
-                          onChange={(value) =>
-                            updateDraft("productLabelUrl", value)
+                        <Field label="Rate unit">
+                          <select
+                            value={
+                              selectedChemical.applicationRateUnit
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              updateDraft(
+                                "applicationRateUnit",
+                                event.target
+                                  .value as ApplicationRateUnit,
+                              )
+                            }
+                            className={
+                              inputClass
+                            }
+                          >
+                            {applicationRateUnits.map(
+                              (unit) => (
+                                <option
+                                  key={unit}
+                                  value={unit}
+                                >
+                                  {unit}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </Field>
+
+                        <NumberField
+                          label="Label water volume (L/ha)"
+                          value={
+                            selectedChemical.waterVolumePerHectare
+                          }
+                          step="0.1"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "waterVolumePerHectare",
+                              value,
+                            )
                           }
                         />
 
-                        <ExternalLinkField
-                          label="Safety Data Sheet (SDS)"
-                          value={selectedChemical.safetyDataSheetUrl}
-                          placeholder="https://manufacturer.com/safety-data-sheet.pdf"
-                          buttonLabel="View SDS ↗"
-                          onChange={(value) =>
-                            updateDraft("safetyDataSheetUrl", value)
+                        <NumberField
+                          label="Minimum label water volume (L/ha)"
+                          value={
+                            selectedChemical.minimumWaterVolumePerHectare
+                          }
+                          step="0.1"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "minimumWaterVolumePerHectare",
+                              value,
+                            )
                           }
                         />
 
-                        <p className="text-xs leading-5 text-slate-500">
-                          Use official manufacturer or supplier links where possible. Saved links open in a new browser tab.
-                        </p>
+                        <NumberField
+                          label="Maximum label water volume (L/ha)"
+                          value={
+                            selectedChemical.maximumWaterVolumePerHectare
+                          }
+                          step="0.1"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "maximumWaterVolumePerHectare",
+                              value,
+                            )
+                          }
+                        />
+
+                        <NumberField
+                          label="Maximum annual applications"
+                          value={
+                            selectedChemical.maximumAnnualApplications
+                          }
+                          step="1"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "maximumAnnualApplications",
+                              value,
+                            )
+                          }
+                        />
+
+                        <NumberField
+                          label="Maximum annual dose"
+                          value={
+                            selectedChemical.maximumAnnualDose
+                          }
+                          step="0.001"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "maximumAnnualDose",
+                              value,
+                            )
+                          }
+                        />
+                      </div>
+                    </Panel>
+                  </section>
+
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    <Panel>
+                      <SectionHeading
+                        title="Equipment and calibration"
+                        description="Flow, walking speed and spray width determine the calibrated carrier-water volume."
+                      />
+
+                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                        <Field label="Nozzle preset">
+                          <select
+                            value={
+                              nozzlePresets.some(
+                                (preset) =>
+                                  preset.colour ===
+                                  selectedChemical.nozzleColour,
+                              )
+                                ? selectedChemical.nozzleColour
+                                : ""
+                            }
+                            onChange={(event) =>
+                              selectNozzlePreset(
+                                event.target.value,
+                              )
+                            }
+                            className={inputClass}
+                          >
+                            <option value="">
+                              Custom / manual
+                            </option>
+
+                            {nozzlePresets.map(
+                              (preset) => (
+                                <option
+                                  key={preset.colour}
+                                  value={preset.colour}
+                                >
+                                  {preset.colour} —{" "}
+                                  {preset.type}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </Field>
+                        <Field label="Selected nozzle">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+                            {selectedChemical.nozzleColour &&
+                            selectedChemical.nozzleType
+                              ? `${selectedChemical.nozzleColour} — ${selectedChemical.nozzleType}`
+                              : "Custom / not selected"}
+                          </div>
+                        </Field>
+                        <Field label="Knapsack make">
+                          <input
+                            value={
+                              selectedChemical.knapsackMake
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              updateDraft(
+                                "knapsackMake",
+                                event.target
+                                  .value,
+                              )
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+
+                        <Field label="Knapsack model">
+                          <input
+                            value={
+                              selectedChemical.knapsackModel
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              updateDraft(
+                                "knapsackModel",
+                                event.target
+                                  .value,
+                              )
+                            }
+                            className={
+                              inputClass
+                            }
+                          />
+                        </Field>
+
+                        <NumberField
+                          label="Tank capacity (L)"
+                          value={
+                            selectedChemical.tankCapacityLitres
+                          }
+                          step="0.1"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "tankCapacityLitres",
+                              value,
+                            )
+                          }
+                        />
+
+                        <NumberField
+                          label="Walking speed (km/h)"
+                          value={
+                            selectedChemical.walkingSpeedKph
+                          }
+                          step="0.1"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "walkingSpeedKph",
+                              value,
+                            )
+                          }
+                        />
+
+                        <NumberField
+                          label="Flow rate (L/min)"
+                          value={
+                            selectedChemical.flowRateLitresPerMinute
+                          }
+                          step="0.001"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "flowRateLitresPerMinute",
+                              value,
+                            )
+                          }
+                        />
+
+                        <NumberField
+                          label="Spray width (metres)"
+                          value={
+                            selectedChemical.sprayWidthMetres
+                          }
+                          step="0.01"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "sprayWidthMetres",
+                              value,
+                            )
+                          }
+                        />
+
+                        <NumberField
+                          label="Pressure (bar)"
+                          value={
+                            selectedChemical.pressureBar
+                          }
+                          step="0.1"
+                          onChange={(
+                            value,
+                          ) =>
+                            updateDraft(
+                              "pressureBar",
+                              value,
+                            )
+                          }
+                        />
+
+                        <ResultBox
+                          label="Current calibration"
+                          value={
+                            calculation
+                              ? `${calculation.calibratedWaterVolumePerHectare.toFixed(
+                                  2,
+                                )} L/ha`
+                              : "Not available"
+                          }
+                          detail={
+                            calculation?.calibrationUsed
+                              ? "Calculated from flow, speed and width"
+                              : "Using saved label water volume"
+                          }
+                        />
+                        {waterVolumeStatus ? (
+                          <div
+                            className={`sm:col-span-2 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                              waterVolumeStatus.status ===
+                                "within-range"
+                                ? "border-green-200 bg-green-50 text-green-800"
+                                : waterVolumeStatus.status ===
+                                      "too-low" ||
+                                    waterVolumeStatus.status ===
+                                      "too-high"
+                                  ? "border-red-200 bg-red-50 text-red-800"
+                                  : waterVolumeStatus.status ===
+                                      "needs-calibration"
+                                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                                    : "border-slate-200 bg-slate-50 text-slate-600"
+                            }`}
+                          >
+                            {waterVolumeStatus.message}
+                          </div>
+                        ) : null}
                       </div>
                     </Panel>
 
+                    <Panel>
+                      <SectionHeading
+                        title="Application calculator"
+                        description="The chemical dose comes from the product rate. Carrier water comes from the calibration when valid calibration values are present."
+                      />
+
+                      <div className="mt-5">
+                        <NumberField
+                          label="Area to treat (m²)"
+                          value={
+                            calculatorArea
+                          }
+                          step="1"
+                          onChange={
+                            setCalculatorArea
+                          }
+                        />
+                      </div>
+
+                      {calculation ? (
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                          <ResultBox
+                            label="Product required"
+                            value={formatApplicationAmount(
+                              calculation.productRequired,
+                              calculation.productUnit,
+                            )}
+                            detail={`${selectedChemical.applicationRate} ${selectedChemical.applicationRateUnit}`}
+                          />
+
+                          <ResultBox
+                            label="Calibrated water volume"
+                            value={`${calculation.calibratedWaterVolumePerHectare.toFixed(
+                              2,
+                            )} L/ha`}
+                            detail={
+                              calculation.calibrationUsed
+                                ? "Flow ÷ speed ÷ spray width"
+                                : "Saved label water volume"
+                            }
+                          />
+
+                          <ResultBox
+                            label="Water required"
+                            value={`${calculation.waterRequiredLitres.toFixed(
+                              3,
+                            )} L`}
+                            detail={`${calculatorArea.toLocaleString(
+                              "en-GB",
+                            )} m² treatment area`}
+                          />
+
+                          <ResultBox
+                            label="Tank fills"
+                            value={calculation.tankFills.toFixed(
+                              3,
+                            )}
+                            detail={`${selectedChemical.tankCapacityLitres} L tank`}
+                          />
+
+                          <ResultBox
+                            label="Product per tank"
+                            value={formatApplicationAmount(
+                              calculation.productPerTank,
+                              calculation.productUnit,
+                            )}
+                            detail="Per full-equivalent tank"
+                          />
+
+                          <ResultBox
+                            label="Estimated product cost"
+                            value={`£${calculation.productCost.toFixed(
+                              2,
+                            )}`}
+                            detail="Based on pack size and cost"
+                          />
+
+                          <ResultBox
+                            label="Area in hectares"
+                            value={`${(
+                              calculatorArea /
+                              10000
+                            ).toFixed(
+                              4,
+                            )} ha`}
+                            detail={`${calculatorArea.toLocaleString(
+                              "en-GB",
+                            )} m²`}
+                          />
+                        </div>
+                      ) : (
+                        <div className="mt-5 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                          Enter a valid
+                          treatment area.
+                        </div>
+                      )}
+
+                      <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
+                        Always confirm the
+                        approved product label,
+                        equipment setup and
+                        calibration before
+                        mixing or applying a
+                        product.
+                      </div>
+                    </Panel>
+                  </section>
+
+                  <section className="grid gap-4 lg:grid-cols-2">
                     <Panel>
                       <SectionHeading
                         title="Pack and stock"
@@ -1697,302 +2239,7 @@ export default function ChemicalsPage() {
                         />
                       </div>
                     </Panel>
-                  </section>
 
-                  <section className="grid gap-4 lg:grid-cols-2">
-                    <Panel>
-                      <SectionHeading
-                        title="Label application requirements"
-                        description="Record the exact product dose and recommended carrier-water volume shown on the label."
-                      />
-
-                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                        <NumberField
-                          label="Application rate"
-                          value={
-                            selectedChemical.applicationRate
-                          }
-                          step="0.001"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "applicationRate",
-                              value,
-                            )
-                          }
-                        />
-
-                        <Field label="Rate unit">
-                          <select
-                            value={
-                              selectedChemical.applicationRateUnit
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateDraft(
-                                "applicationRateUnit",
-                                event.target
-                                  .value as ApplicationRateUnit,
-                              )
-                            }
-                            className={
-                              inputClass
-                            }
-                          >
-                            {applicationRateUnits.map(
-                              (unit) => (
-                                <option
-                                  key={unit}
-                                  value={unit}
-                                >
-                                  {unit}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </Field>
-
-                        <NumberField
-                          label="Label water volume (L/ha)"
-                          value={
-                            selectedChemical.waterVolumePerHectare
-                          }
-                          step="0.1"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "waterVolumePerHectare",
-                              value,
-                            )
-                          }
-                        />
-
-                        <NumberField
-                          label="Maximum annual applications"
-                          value={
-                            selectedChemical.maximumAnnualApplications
-                          }
-                          step="1"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "maximumAnnualApplications",
-                              value,
-                            )
-                          }
-                        />
-
-                        <NumberField
-                          label="Maximum annual dose"
-                          value={
-                            selectedChemical.maximumAnnualDose
-                          }
-                          step="0.001"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "maximumAnnualDose",
-                              value,
-                            )
-                          }
-                        />
-                      </div>
-                    </Panel>
-
-                    <Panel>
-                      <SectionHeading
-                        title="Equipment and calibration"
-                        description="Flow, walking speed and spray width determine the calibrated carrier-water volume."
-                      />
-
-                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                        <Field label="Nozzle colour">
-                          <input
-                            value={
-                              selectedChemical.nozzleColour
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateDraft(
-                                "nozzleColour",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            placeholder="For example, Blue"
-                            className={
-                              inputClass
-                            }
-                          />
-                        </Field>
-
-                        <Field label="Nozzle type">
-                          <input
-                            value={
-                              selectedChemical.nozzleType
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateDraft(
-                                "nozzleType",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            placeholder="For example, Flat fan"
-                            className={
-                              inputClass
-                            }
-                          />
-                        </Field>
-
-                        <Field label="Knapsack make">
-                          <input
-                            value={
-                              selectedChemical.knapsackMake
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateDraft(
-                                "knapsackMake",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={
-                              inputClass
-                            }
-                          />
-                        </Field>
-
-                        <Field label="Knapsack model">
-                          <input
-                            value={
-                              selectedChemical.knapsackModel
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateDraft(
-                                "knapsackModel",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={
-                              inputClass
-                            }
-                          />
-                        </Field>
-
-                        <NumberField
-                          label="Tank capacity (L)"
-                          value={
-                            selectedChemical.tankCapacityLitres
-                          }
-                          step="0.1"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "tankCapacityLitres",
-                              value,
-                            )
-                          }
-                        />
-
-                        <NumberField
-                          label="Walking speed (km/h)"
-                          value={
-                            selectedChemical.walkingSpeedKph
-                          }
-                          step="0.1"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "walkingSpeedKph",
-                              value,
-                            )
-                          }
-                        />
-
-                        <NumberField
-                          label="Flow rate (L/min)"
-                          value={
-                            selectedChemical.flowRateLitresPerMinute
-                          }
-                          step="0.01"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "flowRateLitresPerMinute",
-                              value,
-                            )
-                          }
-                        />
-
-                        <NumberField
-                          label="Spray width (metres)"
-                          value={
-                            selectedChemical.sprayWidthMetres
-                          }
-                          step="0.01"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "sprayWidthMetres",
-                              value,
-                            )
-                          }
-                        />
-
-                        <NumberField
-                          label="Pressure (bar)"
-                          value={
-                            selectedChemical.pressureBar
-                          }
-                          step="0.1"
-                          onChange={(
-                            value,
-                          ) =>
-                            updateDraft(
-                              "pressureBar",
-                              value,
-                            )
-                          }
-                        />
-
-                        <ResultBox
-                          label="Current calibration"
-                          value={
-                            calculation
-                              ? `${calculation.calibratedWaterVolumePerHectare.toFixed(
-                                  2,
-                                )} L/ha`
-                              : "Not available"
-                          }
-                          detail={
-                            calculation?.calibrationUsed
-                              ? "Calculated from flow, speed and width"
-                              : "Using saved label water volume"
-                          }
-                        />
-                      </div>
-                    </Panel>
-                  </section>
-
-                  <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
                     <Panel>
                       <SectionHeading
                         title="COSHH and safety"
@@ -2064,116 +2311,52 @@ export default function ChemicalsPage() {
                         </Field>
                       </div>
                     </Panel>
-
-                    <Panel>
-                      <SectionHeading
-                        title="Application calculator"
-                        description="The chemical dose comes from the product rate. Carrier water comes from the calibration when valid calibration values are present."
-                      />
-
-                      <div className="mt-5">
-                        <NumberField
-                          label="Area to treat (m²)"
-                          value={
-                            calculatorArea
-                          }
-                          step="1"
-                          onChange={
-                            setCalculatorArea
-                          }
-                        />
-                      </div>
-
-                      {calculation ? (
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                          <ResultBox
-                            label="Product required"
-                            value={formatApplicationAmount(
-                              calculation.productRequired,
-                              calculation.productUnit,
-                            )}
-                            detail={`${selectedChemical.applicationRate} ${selectedChemical.applicationRateUnit}`}
-                          />
-
-                          <ResultBox
-                            label="Calibrated water volume"
-                            value={`${calculation.calibratedWaterVolumePerHectare.toFixed(
-                              2,
-                            )} L/ha`}
-                            detail={
-                              calculation.calibrationUsed
-                                ? "Flow ÷ speed ÷ spray width"
-                                : "Saved label water volume"
-                            }
-                          />
-
-                          <ResultBox
-                            label="Water required"
-                            value={`${calculation.waterRequiredLitres.toFixed(
-                              3,
-                            )} L`}
-                            detail={`${calculatorArea.toLocaleString(
-                              "en-GB",
-                            )} m² treatment area`}
-                          />
-
-                          <ResultBox
-                            label="Tank fills"
-                            value={calculation.tankFills.toFixed(
-                              3,
-                            )}
-                            detail={`${selectedChemical.tankCapacityLitres} L tank`}
-                          />
-
-                          <ResultBox
-                            label="Product per tank"
-                            value={formatApplicationAmount(
-                              calculation.productPerTank,
-                              calculation.productUnit,
-                            )}
-                            detail="Per full-equivalent tank"
-                          />
-
-                          <ResultBox
-                            label="Estimated product cost"
-                            value={`£${calculation.productCost.toFixed(
-                              2,
-                            )}`}
-                            detail="Based on pack size and cost"
-                          />
-
-                          <ResultBox
-                            label="Area in hectares"
-                            value={`${(
-                              calculatorArea /
-                              10000
-                            ).toFixed(
-                              4,
-                            )} ha`}
-                            detail={`${calculatorArea.toLocaleString(
-                              "en-GB",
-                            )} m²`}
-                          />
-                        </div>
-                      ) : (
-                        <div className="mt-5 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                          Enter a valid
-                          treatment area.
-                        </div>
-                      )}
-
-                      <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-                        Always confirm the
-                        approved product label,
-                        equipment setup and
-                        calibration before
-                        mixing or applying a
-                        product.
-                      </div>
-                    </Panel>
                   </section>
 
-                  {selectedChemicalMovements.length > 0 && (
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    <Panel>
+                      <SectionHeading
+                        title="Product documents & links"
+                        description="Save official manufacturer or supplier links for quick reference."
+                      />
+
+                      <div className="mt-5 space-y-4">
+                        <ExternalLinkField
+                          label="Product information"
+                          value={selectedChemical.productInformationUrl}
+                          placeholder="https://manufacturer.com/product-page"
+                          buttonLabel="View product page ↗"
+                          onChange={(value) =>
+                            updateDraft("productInformationUrl", value)
+                          }
+                        />
+
+                        <ExternalLinkField
+                          label="Product label"
+                          value={selectedChemical.productLabelUrl}
+                          placeholder="https://manufacturer.com/product-label.pdf"
+                          buttonLabel="View label ↗"
+                          onChange={(value) =>
+                            updateDraft("productLabelUrl", value)
+                          }
+                        />
+
+                        <ExternalLinkField
+                          label="Safety Data Sheet (SDS)"
+                          value={selectedChemical.safetyDataSheetUrl}
+                          placeholder="https://manufacturer.com/safety-data-sheet.pdf"
+                          buttonLabel="View SDS ↗"
+                          onChange={(value) =>
+                            updateDraft("safetyDataSheetUrl", value)
+                          }
+                        />
+
+                        <p className="text-xs leading-5 text-slate-500">
+                          Use official manufacturer or supplier links where possible. Saved links open in a new browser tab.
+                        </p>
+                      </div>
+                    </Panel>
+
                     <Panel>
                       <SectionHeading
                         title="Recent stock history"
@@ -2211,8 +2394,7 @@ export default function ChemicalsPage() {
                         ))}
                       </div>
                     </Panel>
-                  )}
-
+                  </section>
 
                   <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap gap-2">
@@ -2491,6 +2673,32 @@ function formatDateTime(
   ).format(new Date(value));
 }
 
+const nozzlePresets = [
+  {
+    colour: "Red",
+    type: "DT2.0 (105°)",
+    flowRateLitresPerMinute: 0.912,
+    pressureBar: 1,
+  },
+  {
+    colour: "Grey",
+    type: "DT3.0 (110°)",
+    flowRateLitresPerMinute: 1.367,
+    pressureBar: 1,
+  },
+  {
+    colour: "Blue",
+    type: "DT5.0 (125°)",
+    flowRateLitresPerMinute: 2.279,
+    pressureBar: 1,
+  },
+  {
+    colour: "Black",
+    type: "DT10 (145°)",
+    flowRateLitresPerMinute: 4.558,
+    pressureBar: 1,
+  },
+] as const;
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 focus:border-[#dc6b62] focus:ring-4 focus:ring-red-100";
 

@@ -56,6 +56,8 @@ export type ChemicalRecord = {
   applicationRateUnit: ApplicationRateUnit;
 
   waterVolumePerHectare: number;
+  minimumWaterVolumePerHectare: number;
+  maximumWaterVolumePerHectare: number;
 
   maximumAnnualApplications: number;
   maximumAnnualDose: number;
@@ -290,6 +292,8 @@ const demoChemicals: ChemicalRecord[] = [
     applicationRateUnit: "kg/ha",
 
     waterVolumePerHectare: 0,
+    minimumWaterVolumePerHectare: 0,
+    maximumWaterVolumePerHectare: 0,
 
     maximumAnnualApplications: 3,
     maximumAnnualDose: 750,
@@ -346,6 +350,8 @@ const demoChemicals: ChemicalRecord[] = [
     applicationRateUnit: "L/ha",
 
     waterVolumePerHectare: 200,
+    minimumWaterVolumePerHectare: 200,
+    maximumWaterVolumePerHectare: 200,
 
     maximumAnnualApplications: 1,
     maximumAnnualDose: 2,
@@ -401,6 +407,8 @@ const demoChemicals: ChemicalRecord[] = [
     applicationRateUnit: "L/ha",
 
     waterVolumePerHectare: 200,
+    minimumWaterVolumePerHectare: 200,
+    maximumWaterVolumePerHectare: 200,
 
     maximumAnnualApplications: 4,
     maximumAnnualDose: 80,
@@ -618,6 +626,8 @@ export function ChemicalStoreProvider({
         applicationRateUnit: "L/ha",
 
         waterVolumePerHectare: 0,
+        minimumWaterVolumePerHectare: 0,
+        maximumWaterVolumePerHectare: 0,
 
         maximumAnnualApplications: 0,
         maximumAnnualDose: 0,
@@ -1389,6 +1399,18 @@ function normaliseChemical(
     waterVolumePerHectare:
       toSafeNumber(
         chemical.waterVolumePerHectare,
+      ),
+
+    minimumWaterVolumePerHectare:
+      toSafeNumber(
+        chemical.minimumWaterVolumePerHectare ??
+          0,
+      ),
+
+    maximumWaterVolumePerHectare:
+      toSafeNumber(
+        chemical.maximumWaterVolumePerHectare ??
+          0,
       ),
 
     maximumAnnualApplications:
