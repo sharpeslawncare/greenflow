@@ -14,13 +14,15 @@ model Organisation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  customers   Customer[]
-  enquiries   Enquiry[]
-  seasons     Season[]
-  programmes  Programme[]
-  routeOrders RouteOrder[]
-  treatments  Treatment[]
+  memberships            Membership[]
+  customers              Customer[]
+  enquiries              Enquiry[]
+  seasons                Season[]
+  programmes             Programme[]
+  routeOrders            RouteOrder[]
+  treatments             Treatment[]
+  chemicals              Chemical[]
+  chemicalStockMovements ChemicalStockMovement[]
 }
 
 model Season {
@@ -232,6 +234,42 @@ model RouteOrder {
   organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
   @@unique([organisationId, date, vanNumber])
+  @@index([organisationId, date])
+}
+
+model Chemical {
+  id             String @id
+  organisationId String
+
+  name   String  @default("")
+  active Boolean @default(true)
+  data   Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([organisationId, active])
+  @@index([organisationId, name])
+}
+
+model ChemicalStockMovement {
+  id             String @id
+  organisationId String
+
+  chemicalId String
+  date       String @default("")
+  data       Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([organisationId, chemicalId])
   @@index([organisationId, date])
 }
 
