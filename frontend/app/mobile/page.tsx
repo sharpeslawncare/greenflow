@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 
+import { useActionStore } from "@/components/action-store";
 import {
   useCustomerStore,
 } from "@/components/customer-store";
@@ -35,12 +36,18 @@ export default function MobilePage() {
     ready: treatmentsReady,
   } = useTreatmentStore();
 
+  const {
+    actions,
+    ready: actionsReady,
+  } = useActionStore();
+
   const today = getTodayDateValue();
 
   const todayTreatments = useMemo(
     () =>
       treatments.filter(
         (treatment) =>
+          treatment.completedDate === today ||
           treatment.scheduledDate === today,
       ),
     [treatments, today],
@@ -55,41 +62,67 @@ export default function MobilePage() {
     [todayTreatments],
   );
 
-  const remainingToday = useMemo(
+  const scheduledProgrammeVisits = useMemo(
     () =>
-      programmes.reduce(
-        (total, programme) => {
-          const customer =
-            customers.find(
-              (item) =>
-                item.customerNumber ===
-                programme.customerNumber,
-            );
-
-          if (
-            !customer ||
-            customer.status !== "Active"
-          ) {
-            return total;
-          }
-
-          return (
-            total +
-            programme.visits.filter(
+      programmes
+        .flatMap((programme) =>
+          programme.visits
+            .filter(
               (visit) =>
                 visit.scheduledDate === today &&
                 (
                   visit.status === "Scheduled" ||
                   visit.status === "Planned"
                 ),
-            ).length
-          );
-        },
-        0,
-      ),
-    [programmes, customers, today],
+            )
+            .map((visit) => ({
+              programme,
+              visit,
+              customer: customers.find(
+                (customer) =>
+                  customer.customerNumber ===
+                  programme.customerNumber,
+              ),
+            }))
+            .filter(
+              (item) =>
+                !item.customer ||
+                !hasFinalRecordedOutcome(
+                  treatments,
+                  item.programme,
+                  item.visit,
+                  item.customer.customerNumber,
+                ),
+            ),
+        )
+        .filter(
+          (item) =>
+            item.customer?.status === "Active",
+        ),
+    [programmes, customers, treatments, today],
   );
 
+  const scheduledAdditionalJobs = useMemo(
+    () =>
+      customers
+        .filter(
+          (customer) =>
+            customer.status === "Active",
+        )
+        .flatMap((customer) =>
+          (customer.additionalJobs ?? [])
+            .filter(
+              (job) =>
+                job.status === "Scheduled" &&
+                job.scheduledDate === today,
+            ),
+        ),
+    [customers, today],
+  );
+
+  const remainingToday =
+    scheduledProgrammeVisits.length +
+    scheduledAdditionalJobs.length;
   const plannedToday =
     remainingToday + completedToday;
 
@@ -99,10 +132,52 @@ export default function MobilePage() {
         (treatment) =>
           treatment.status !== "Completed" &&
           treatment.status !== "Cancelled" &&
-          treatment.status !== "Rescheduled",
+          treatment.status !== "Rescheduled" &&
+          treatmentStillNeedsRescheduling(
+            treatment,
+            programmes,
+            customers,
+          ),
       ).length,
-    [todayTreatments],
+    [
+      todayTreatments,
+      programmes,
+      customers,
+    ],
   );
+  const openActions = actions.filter(
+    (action) => action.status === "Open",
+  );
+
+  const overdueActionCount = openActions.filter(
+    (action) =>
+      Boolean(action.dueDate) &&
+      action.dueDate < today,
+  ).length;
+
+  const dueTodayActionCount = openActions.filter(
+    (action) => action.dueDate === today,
+  ).length;
+
+  const reschedulingCount = treatments.filter(
+    (treatment) =>
+      treatmentStillNeedsRescheduling(
+        treatment,
+        programmes,
+        customers,
+      ),
+  ).length;
+
+  const unscheduledAdditionalJobCount = customers
+    .filter((customer) => customer.status === "Active")
+    .reduce(
+      (total, customer) =>
+        total +
+        (customer.additionalJobs ?? []).filter(
+          (job) => job.status === "Unscheduled",
+        ).length,
+      0,
+    );
 
   const ready =
     customersReady &&
@@ -160,6 +235,78 @@ export default function MobilePage() {
                 detail="Need review"
               />
             </div>
+          </section>
+          <section className="mt-4 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">
+                  Needs Attention
+                </p>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">
+                  Things to deal with
+                </h2>
+              </div>
+
+              <Link
+                href="/actions"
+                className="text-sm font-bold text-violet-700"
+              >
+                Action Centre →
+              </Link>
+            </div>
+
+            {!actionsReady || !ready ? (
+              <p className="mt-4 text-sm text-slate-500">
+                Loading attention items…
+              </p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {overdueActionCount > 0 && (
+                  <MobileAttentionItem
+                    href="/actions"
+                    title="Overdue customer actions"
+                    count={overdueActionCount}
+                    tone="danger"
+                  />
+                )}
+
+                {dueTodayActionCount > 0 && (
+                  <MobileAttentionItem
+                    href="/actions"
+                    title="Customer actions due today"
+                    count={dueTodayActionCount}
+                    tone="warning"
+                  />
+                )}
+
+                {reschedulingCount > 0 && (
+                  <MobileAttentionItem
+                    href="/jobs?view=reschedule"
+                    title="Visits needing rescheduling"
+                    count={reschedulingCount}
+                    tone="warning"
+                  />
+                )}
+
+                {unscheduledAdditionalJobCount > 0 && (
+                  <MobileAttentionItem
+                    href="/additional-jobs"
+                    title="Unscheduled Additional Jobs"
+                    count={unscheduledAdditionalJobCount}
+                    tone="information"
+                  />
+                )}
+
+                {overdueActionCount === 0 &&
+                  dueTodayActionCount === 0 &&
+                  reschedulingCount === 0 &&
+                  unscheduledAdditionalJobCount === 0 && (
+                    <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-800">
+                      Nothing currently needs operational attention.
+                    </div>
+                  )}
+              </div>
+            )}
           </section>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <MobileCard
@@ -230,6 +377,140 @@ export default function MobilePage() {
     </AppShell>
   );
 }
+function treatmentStillNeedsRescheduling(
+  treatment: ReturnType<
+    typeof useTreatmentStore
+  >["treatments"][number],
+  programmes: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"],
+  customers: ReturnType<
+    typeof useCustomerStore
+  >["customers"],
+) {
+  return (
+    treatment.status === "Needs Rescheduling" &&
+    !replacementIsAlreadyScheduled(
+      treatment,
+      programmes,
+      customers,
+    )
+  );
+}
+
+function replacementIsAlreadyScheduled(
+  treatment: ReturnType<
+    typeof useTreatmentStore
+  >["treatments"][number],
+  programmes: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"],
+  customers: ReturnType<
+    typeof useCustomerStore
+  >["customers"],
+) {
+  if (!isDateValue(treatment.nextVisitDate)) {
+    return false;
+  }
+
+  if (
+    treatment.jobType === "additional" ||
+    treatment.programmeId.startsWith(
+      "additional-jobs-",
+    )
+  ) {
+    const customer = customers.find(
+      (item) =>
+        item.customerNumber ===
+        treatment.customerNumber,
+    );
+
+    const job = customer?.additionalJobs.find(
+      (item) =>
+        item.id === treatment.programmeVisitId,
+    );
+
+    return Boolean(
+      job &&
+        job.status === "Scheduled" &&
+        job.scheduledDate ===
+          treatment.nextVisitDate,
+    );
+  }
+
+  const programme = programmes.find(
+    (item) =>
+      item.id === treatment.programmeId &&
+      item.customerNumber ===
+        treatment.customerNumber,
+  );
+
+  const visit = programme?.visits.find(
+    (item) =>
+      item.id === treatment.programmeVisitId,
+  );
+
+  return Boolean(
+    visit &&
+      (
+        visit.status === "Scheduled" ||
+        visit.status === "Planned"
+      ) &&
+      visit.scheduledDate ===
+        treatment.nextVisitDate,
+  );
+}
+
+function isDateValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+function hasFinalRecordedOutcome(
+  treatments: ReturnType<
+    typeof useTreatmentStore
+  >["treatments"],
+  programme: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number],
+  visit: ReturnType<
+    typeof useProgrammeStore
+  >["programmes"][number]["visits"][number],
+  customerNumber: string,
+) {
+  return treatments.some(
+    (treatment) => {
+      const finalForThisDate =
+        treatment.status === "Completed" ||
+        treatment.status === "Cancelled" ||
+        (
+          treatment.status === "Rescheduled" &&
+          treatment.scheduledDate ===
+            visit.scheduledDate
+        );
+
+      if (!finalForThisDate) {
+        return false;
+      }
+
+      return (
+        (
+          treatment.programmeId ===
+            programme.id &&
+          treatment.programmeVisitId ===
+            visit.id
+        ) ||
+        (
+          !treatment.programmeVisitId &&
+          treatment.customerNumber ===
+            customerNumber &&
+          treatment.scheduledDate ===
+            visit.scheduledDate &&
+          treatment.treatmentName ===
+            visit.treatmentName
+        )
+      );
+    },
+  );
+}
 function MobileMetric({
   label,
   value,
@@ -253,6 +534,39 @@ function MobileMetric({
         {detail}
       </div>
     </div>
+  );
+}
+function MobileAttentionItem({
+  href,
+  title,
+  count,
+  tone,
+}: {
+  href: string;
+  title: string;
+  count: number;
+  tone: "danger" | "warning" | "information";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-violet-200 bg-violet-50 text-violet-700";
+
+  return (
+    <Link
+      href={href}
+      className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${toneClass}`}
+    >
+      <span className="text-sm font-bold">
+        {title}
+      </span>
+
+      <span className="min-w-8 rounded-full bg-white px-2.5 py-1 text-center text-sm font-black shadow-sm">
+        {count}
+      </span>
+    </Link>
   );
 }
 function MobileCard({
