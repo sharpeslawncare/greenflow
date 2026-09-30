@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useActionStore } from "@/components/action-store";
+import { useChemicalStore } from "@/components/chemical-store";
 import {
   useCustomerStore,
 } from "@/components/customer-store";
@@ -40,6 +41,36 @@ export default function MobilePage() {
     actions,
     ready: actionsReady,
   } = useActionStore();
+
+  const {
+    chemicals,
+    ready: chemicalsReady,
+    calculateApplication,
+  } = useChemicalStore();
+
+  const [selectedChemicalId, setSelectedChemicalId] = useState("");
+  const [calibrationArea, setCalibrationArea] = useState(100);
+
+  const activeChemicals = useMemo(
+    () =>
+      chemicals
+        .filter((chemical) => chemical.active)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [chemicals],
+  );
+
+  const selectedChemical =
+    activeChemicals.find(
+      (chemical) => chemical.id === selectedChemicalId,
+    ) ?? null;
+
+  const calibrationCalculation =
+    selectedChemical && calibrationArea > 0
+      ? calculateApplication(
+          selectedChemical.id,
+          calibrationArea,
+        )
+      : null;
 
   const [customerSearch, setCustomerSearch] = useState("");
 
@@ -308,6 +339,159 @@ export default function MobilePage() {
               </div>
             )}
           </section>
+          <section className="mt-4 rounded-2xl border-2 border-[#dc6b62] bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#b42318]">
+                  Chemicals & Calibration
+                </p>
+
+                <h2 className="mt-1 text-lg font-bold text-slate-900">
+                  Quick Calibration
+                </h2>
+              </div>
+
+              <Link
+                href="/chemicals"
+                className="text-sm font-bold text-[#b42318]"
+              >
+                Full details →
+              </Link>
+            </div>
+
+            {!chemicalsReady ? (
+              <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-slate-600">
+                Loading chemicals…
+              </p>
+            ) : activeChemicals.length === 0 ? (
+              <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-slate-600">
+                No active chemicals available.
+              </p>
+            ) : (
+              <>
+                <label className="mt-4 block">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Chemical
+                  </span>
+
+                  <select
+                    value={selectedChemicalId}
+                    onChange={(event) =>
+                      setSelectedChemicalId(event.target.value)
+                    }
+                    className="mt-1 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base font-semibold text-slate-900 outline-none focus:border-[#b42318] focus:ring-2 focus:ring-red-100"
+                  >
+                    <option value="">Select chemical…</option>
+
+                    {activeChemicals.map((chemical) => (
+                      <option
+                        key={chemical.id}
+                        value={chemical.id}
+                      >
+                        {chemical.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="mt-3 block">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Area to treat (m²)
+                  </span>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="decimal"
+                    value={calibrationArea}
+                    onChange={(event) =>
+                      setCalibrationArea(
+                        Math.max(
+                          0,
+                          Number(event.target.value) || 0,
+                        ),
+                      )
+                    }
+                    className="mt-1 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base font-semibold text-slate-900 outline-none focus:border-[#b42318] focus:ring-2 focus:ring-red-100"
+                  />
+                </label>
+
+                {selectedChemical && calibrationCalculation ? (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <MobileCalibrationMetric
+                        label="Product required"
+                        value={`${calibrationCalculation.productRequired.toFixed(
+                          3,
+                        )} ${calibrationCalculation.productUnit}`}
+                      />
+
+                      <MobileCalibrationMetric
+                        label="Water required"
+                        value={`${calibrationCalculation.waterRequiredLitres.toFixed(
+                          3,
+                        )} L`}
+                      />
+
+                      <MobileCalibrationMetric
+                        label="Product / tank"
+                        value={`${calibrationCalculation.productPerTank.toFixed(
+                          3,
+                        )} ${calibrationCalculation.productUnit}`}
+                      />
+
+                      <MobileCalibrationMetric
+                        label="Water rate"
+                        value={`${calibrationCalculation.calibratedWaterVolumePerHectare.toFixed(
+                          2,
+                        )} L/ha`}
+                      />
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-[#b42318]">
+                        Equipment
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">
+                        {[
+                          selectedChemical.nozzleColour &&
+                            `${selectedChemical.nozzleColour} nozzle`,
+                          selectedChemical.nozzleType,
+                          selectedChemical.flowRateLitresPerMinute > 0 &&
+                            `${selectedChemical.flowRateLitresPerMinute} L/min`,
+                          selectedChemical.walkingSpeedKph > 0 &&
+                            `${selectedChemical.walkingSpeedKph} km/h`,
+                          selectedChemical.sprayWidthMetres > 0 &&
+                            `${selectedChemical.sprayWidthMetres} m width`,
+                          selectedChemical.pressureBar > 0 &&
+                            `${selectedChemical.pressureBar} bar`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "No equipment details recorded"}
+                      </p>
+
+                      <p className="mt-2 text-xs font-semibold text-slate-500">
+                        {calibrationCalculation.calibrationUsed
+                          ? "Water rate calculated from flow, speed and spray width."
+                          : "Using the saved label water volume."}
+                      </p>
+                    </div>
+                  </>
+                ) : selectedChemical ? (
+                  <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                    Enter an area above zero to calculate the application.
+                  </p>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-500">
+                    Select a chemical to see its calibration and application figures.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+
           <section className="mt-4 rounded-2xl border border-green-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
               Working day
@@ -618,6 +802,26 @@ function hasFinalRecordedOutcome(
     },
   );
 }
+function MobileCalibrationMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-red-100 bg-red-50 p-3">
+      <div className="text-xs font-semibold text-slate-500">
+        {label}
+      </div>
+
+      <div className="mt-1 text-lg font-bold text-slate-900">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function MobileMetric({
   label,
   value,
