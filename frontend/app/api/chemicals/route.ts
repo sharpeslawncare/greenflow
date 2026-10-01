@@ -249,3 +249,240 @@ export async function POST(request: Request) {
     );
   }
 }
+export async function PUT(request: Request) {
+  const { error, membership } =
+    await getCurrentMembership();
+
+  if (error || !membership) {
+    return error;
+  }
+
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON request body." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("chemical" in body)
+  ) {
+    return NextResponse.json(
+      { error: "Invalid chemical payload." },
+      { status: 400 },
+    );
+  }
+
+  const chemical =
+    (body as { chemical?: unknown }).chemical;
+
+  if (
+    typeof chemical !== "object" ||
+    chemical === null
+  ) {
+    return NextResponse.json(
+      { error: "Invalid chemical payload." },
+      { status: 400 },
+    );
+  }
+
+  const value =
+    chemical as Record<string, unknown>;
+
+  if (
+    typeof value.id !== "string" ||
+    value.id.trim().length === 0
+  ) {
+    return NextResponse.json(
+      { error: "Chemical id is required." },
+      { status: 400 },
+    );
+  }
+
+  const id = value.id.trim();
+
+  try {
+    const existing =
+      await prisma.chemical.findUnique({
+        where: {
+          id,
+        },
+        select: {
+          organisationId: true,
+        },
+      });
+
+    if (
+      existing &&
+      existing.organisationId !==
+        membership.organisationId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Chemical does not belong to this organisation.",
+        },
+        { status: 403 },
+      );
+    }
+
+    const savedChemical =
+      await prisma.chemical.upsert({
+        where: {
+          id,
+        },
+        create: {
+          id,
+          organisationId:
+            membership.organisationId,
+          name:
+            typeof value.name === "string"
+              ? value.name
+              : "",
+          active:
+            typeof value.active === "boolean"
+              ? value.active
+              : true,
+          data:
+            value as Prisma.InputJsonValue,
+        },
+        update: {
+          name:
+            typeof value.name === "string"
+              ? value.name
+              : "",
+          active:
+            typeof value.active === "boolean"
+              ? value.active
+              : true,
+          data:
+            value as Prisma.InputJsonValue,
+        },
+      });
+
+    return NextResponse.json({
+      chemical: savedChemical.data,
+    });
+  } catch (saveError) {
+    console.error(
+      "Failed to save GreenFlow chemical:",
+      saveError,
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Unable to save chemical to PostgreSQL.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const { error, membership } =
+    await getCurrentMembership();
+
+  if (error || !membership) {
+    return error;
+  }
+
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON request body." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("chemicalId" in body)
+  ) {
+    return NextResponse.json(
+      { error: "Invalid chemical delete payload." },
+      { status: 400 },
+    );
+  }
+
+  const chemicalId =
+    (body as { chemicalId?: unknown }).chemicalId;
+
+  if (
+    typeof chemicalId !== "string" ||
+    chemicalId.trim().length === 0
+  ) {
+    return NextResponse.json(
+      { error: "Invalid chemical delete payload." },
+      { status: 400 },
+    );
+  }
+
+  const id = chemicalId.trim();
+
+  try {
+    const existing =
+      await prisma.chemical.findFirst({
+        where: {
+          id,
+          organisationId:
+            membership.organisationId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    if (!existing) {
+      return NextResponse.json({
+        deletedChemical: {
+          id,
+        },
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.chemicalStockMovement.deleteMany({
+        where: {
+          chemicalId: id,
+          organisationId:
+            membership.organisationId,
+        },
+      }),
+      prisma.chemical.delete({
+        where: {
+          id,
+        },
+      }),
+    ]);
+
+    return NextResponse.json({
+      deletedChemical: {
+        id,
+      },
+    });
+  } catch (deleteError) {
+    console.error(
+      "Failed to delete GreenFlow chemical:",
+      deleteError,
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Unable to delete chemical from PostgreSQL.",
+      },
+      { status: 500 },
+    );
+  }
+}

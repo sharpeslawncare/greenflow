@@ -233,6 +233,104 @@ const STORAGE_KEY =
 const STOCK_MOVEMENT_STORAGE_KEY =
   "greenflow-chemical-stock-movements-v1";
 
+type ChemicalDatabaseResponse = {
+  chemicals: Partial<ChemicalRecord>[];
+  stockMovements: ChemicalStockMovement[];
+  databaseEmpty: boolean;
+};
+
+async function loadChemicalsFromDatabase(): Promise<
+  ChemicalDatabaseResponse | null
+> {
+  try {
+    const response = await fetch(
+      "/api/chemicals",
+      {
+        method: "GET",
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload =
+      (await response.json()) as unknown;
+
+    if (
+      typeof payload !== "object" ||
+      payload === null
+    ) {
+      return null;
+    }
+
+    const value =
+      payload as Record<string, unknown>;
+
+    if (
+      !Array.isArray(value.chemicals) ||
+      !Array.isArray(value.stockMovements) ||
+      typeof value.databaseEmpty !== "boolean"
+    ) {
+      return null;
+    }
+
+    return {
+      chemicals:
+        value.chemicals as Partial<ChemicalRecord>[],
+      stockMovements:
+        value.stockMovements as ChemicalStockMovement[],
+      databaseEmpty:
+        value.databaseEmpty,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function bootstrapChemicalsToDatabase(
+  chemicals: ChemicalRecord[],
+  stockMovements: ChemicalStockMovement[],
+) {
+  const response = await fetch(
+    "/api/chemicals",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chemicals,
+        stockMovements,
+      }),
+    },
+  );
+
+  const payload =
+    (await response.json()) as unknown;
+
+  if (!response.ok) {
+    let message =
+      "Unable to import chemicals to the GreenFlow database.";
+
+    if (
+      typeof payload === "object" &&
+      payload !== null
+    ) {
+      const errorValue =
+        (payload as Record<string, unknown>).error;
+
+      if (typeof errorValue === "string") {
+        message = errorValue;
+      }
+    }
+
+    throw new Error(message);
+  }
+
+  return payload;
+}
 const DEFAULT_EQUIPMENT = {
   nozzleColour: "Grey",
   nozzleType: "Deflector Tip",
@@ -467,32 +565,93 @@ export function ChemicalStoreProvider({
     useState(false);
 
   useEffect(() => {
-    const saved =
-      window.localStorage.getItem(
-        STORAGE_KEY,
-      );
+    let cancelled = false;
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(
-          saved,
-        ) as Array<
-          Partial<ChemicalRecord>
-        >;
+    async function initialiseChemicalStore() {
+      const database =
+        await loadChemicalsFromDatabase();
 
-        if (Array.isArray(parsed)) {
-          const loadedChemicals =
-            parsed.map(
-              normaliseChemical,
-            );
+      if (cancelled) {
+        return;
+      }
 
-          chemicalsRef.current =
-            loadedChemicals;
-
-          setChemicals(
-            loadedChemicals,
+      if (
+        database &&
+        !database.databaseEmpty &&
+        database.chemicals.length > 0
+      ) {
+        const loadedChemicals =
+          database.chemicals.map(
+            normaliseChemical,
           );
-        } else {
+
+        chemicalsRef.current =
+          loadedChemicals;
+
+        setChemicals(
+          loadedChemicals,
+        );
+
+        stockMovementsRef.current =
+          database.stockMovements;
+
+        setStockMovements(
+          database.stockMovements,
+        );
+
+        setReady(true);
+        return;
+      }
+
+      /*
+       * PostgreSQL is currently empty, or unavailable.
+       *
+       * Keep the existing browser data available so that
+       * the current desktop Chemical Centre is not lost.
+       * Migration to PostgreSQL is deliberately handled
+       * separately and explicitly.
+       */
+      const saved =
+        window.localStorage.getItem(
+          STORAGE_KEY,
+        );
+
+      if (saved) {
+        try {
+          const parsed = JSON.parse(
+            saved,
+          ) as Array<
+            Partial<ChemicalRecord>
+          >;
+
+          if (Array.isArray(parsed)) {
+            const loadedChemicals =
+              parsed.map(
+                normaliseChemical,
+              );
+
+            chemicalsRef.current =
+              loadedChemicals;
+
+            setChemicals(
+              loadedChemicals,
+            );
+          } else {
+            const demo =
+              cloneDemoChemicals();
+
+            chemicalsRef.current =
+              demo;
+
+            setChemicals(
+              demo,
+            );
+          }
+        } catch {
+          window.localStorage.removeItem(
+            STORAGE_KEY,
+          );
+
           const demo =
             cloneDemoChemicals();
 
@@ -503,11 +662,7 @@ export function ChemicalStoreProvider({
             demo,
           );
         }
-      } catch {
-        window.localStorage.removeItem(
-          STORAGE_KEY,
-        );
-
+      } else {
         const demo =
           cloneDemoChemicals();
 
@@ -518,46 +673,44 @@ export function ChemicalStoreProvider({
           demo,
         );
       }
-    } else {
-      const demo =
-        cloneDemoChemicals();
 
-      chemicalsRef.current =
-        demo;
-
-      setChemicals(
-        demo,
-      );
-    }
-
-    const savedMovements =
-      window.localStorage.getItem(
-        STOCK_MOVEMENT_STORAGE_KEY,
-      );
-
-    if (savedMovements) {
-      try {
-        const parsed =
-          JSON.parse(
-            savedMovements,
-          ) as ChemicalStockMovement[];
-
-        if (Array.isArray(parsed)) {
-          stockMovementsRef.current =
-            parsed;
-
-          setStockMovements(
-            parsed,
-          );
-        }
-      } catch {
-        window.localStorage.removeItem(
+      const savedMovements =
+        window.localStorage.getItem(
           STOCK_MOVEMENT_STORAGE_KEY,
         );
+
+      if (savedMovements) {
+        try {
+          const parsed =
+            JSON.parse(
+              savedMovements,
+            ) as ChemicalStockMovement[];
+
+          if (Array.isArray(parsed)) {
+            stockMovementsRef.current =
+              parsed;
+
+            setStockMovements(
+              parsed,
+            );
+          }
+        } catch {
+          window.localStorage.removeItem(
+            STOCK_MOVEMENT_STORAGE_KEY,
+          );
+        }
+      }
+
+      if (!cancelled) {
+        setReady(true);
       }
     }
 
-    setReady(true);
+    void initialiseChemicalStore();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -658,9 +811,64 @@ export function ChemicalStoreProvider({
 
     setChemicals(next);
 
+    void fetch(
+      "/api/chemicals",
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chemical: newChemical,
+        }),
+      },
+    ).then(async (response) => {
+      if (!response.ok) {
+        let message =
+          "Unable to save new chemical to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        console.error(
+          "Failed to save new GreenFlow chemical:",
+          message,
+        );
+      }
+    }).catch((saveError) => {
+      console.error(
+        "Failed to save new GreenFlow chemical:",
+        saveError,
+      );
+    });
+
     return newChemical;
   }
-
   function updateChemical(
     chemical: ChemicalRecord,
   ) {
@@ -685,8 +893,63 @@ export function ChemicalStoreProvider({
       next;
 
     setChemicals(next);
-  }
 
+    void fetch(
+      "/api/chemicals",
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chemical: updatedChemical,
+        }),
+      },
+    ).then(async (response) => {
+      if (!response.ok) {
+        let message =
+          "Unable to save chemical to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        console.error(
+          "Failed to save GreenFlow chemical:",
+          message,
+        );
+      }
+    }).catch((saveError) => {
+      console.error(
+        "Failed to save GreenFlow chemical:",
+        saveError,
+      );
+    });
+  }
   function deleteChemical(
     chemicalId: string,
   ) {
@@ -700,8 +963,63 @@ export function ChemicalStoreProvider({
       next;
 
     setChemicals(next);
-  }
 
+    void fetch(
+      "/api/chemicals",
+      {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chemicalId,
+        }),
+      },
+    ).then(async (response) => {
+      if (!response.ok) {
+        let message =
+          "Unable to delete chemical from the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        console.error(
+          "Failed to delete GreenFlow chemical:",
+          message,
+        );
+      }
+    }).catch((deleteError) => {
+      console.error(
+        "Failed to delete GreenFlow chemical:",
+        deleteError,
+      );
+    });
+  }
   function getChemicalById(
     chemicalId: string,
   ) {
@@ -750,77 +1068,208 @@ export function ChemicalStoreProvider({
 
     setStockMovements(next);
 
+    void fetch(
+      "/api/chemicals/stock-movements",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          movement: created,
+        }),
+      },
+    ).then(async (response) => {
+      if (!response.ok) {
+        let message =
+          "Unable to save stock movement to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        console.error(
+          "Failed to save GreenFlow stock movement:",
+          message,
+        );
+      }
+    }).catch((saveError) => {
+      console.error(
+        "Failed to save GreenFlow stock movement:",
+        saveError,
+      );
+    });
+
     return created;
   }
-
   function reconcileChemicalStock(
     chemicalId: string,
     actualPhysicalAmount: number,
     note = "",
   ): StockReconciliationResult {
-    const chemical = chemicalsRef.current.find(
-      (item) => item.id === chemicalId,
-    );
+    const chemical =
+      chemicalsRef.current.find(
+        (item) => item.id === chemicalId,
+      );
 
     if (!chemical) {
-      return { success: false, message: "The selected product could not be found." };
-    }
-
-    if (!Number.isFinite(actualPhysicalAmount) || actualPhysicalAmount < 0) {
-      return { success: false, message: "Enter a valid physical stock amount of zero or more." };
-    }
-
-    if (!Number.isFinite(chemical.packSize) || chemical.packSize <= 0) {
-      return { success: false, message: `${chemical.name} does not have a valid pack size.` };
-    }
-
-    const previousPhysicalAmount = chemical.currentStock * chemical.packSize;
-    const nextPacks = roundToThreeDecimals(actualPhysicalAmount / chemical.packSize);
-    const physicalDifference = roundToThreeDecimals(actualPhysicalAmount - previousPhysicalAmount);
-    const packDifference = roundToThreeDecimals(nextPacks - chemical.currentStock);
-
-    if (Math.abs(physicalDifference) < 0.0005) {
       return {
-        success: true,
-        message: "Physical stock already matches GreenFlow.",
-        currentStockPacks: chemical.currentStock,
+        success: false,
+        message:
+          "The selected product could not be found.",
       };
     }
 
-    const now = new Date().toISOString();
-    const nextChemicals = chemicalsRef.current.map((item) =>
-      item.id === chemicalId
-        ? { ...item, currentStock: nextPacks, updatedAt: now }
-        : item,
-    );
+    if (
+      !Number.isFinite(actualPhysicalAmount) ||
+      actualPhysicalAmount < 0
+    ) {
+      return {
+        success: false,
+        message:
+          "Enter a valid physical stock amount of zero or more.",
+      };
+    }
 
-    const movement: ChemicalStockMovement = {
-      id: createStockMovementId(),
-      chemicalId,
-      type: "Adjustment",
-      packQuantity: packDifference,
-      physicalAmount: physicalDifference,
-      physicalUnit: chemical.packUnit,
-      balanceAfterPacks: nextPacks,
-      date: toDateValue(new Date()),
-      reference: "Physical stocktake",
-      notes:
-        note.trim() ||
-        `Physical stock reconciled from ${roundToThreeDecimals(previousPhysicalAmount)} ${chemical.packUnit} to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}.`,
-      source: "Stock Page",
-      createdAt: now,
-    };
+    if (
+      !Number.isFinite(chemical.packSize) ||
+      chemical.packSize <= 0
+    ) {
+      return {
+        success: false,
+        message:
+          `${chemical.name} does not have a valid pack size.`,
+      };
+    }
 
-    const nextMovements = [movement, ...stockMovementsRef.current];
-    chemicalsRef.current = nextChemicals;
-    stockMovementsRef.current = nextMovements;
+    const previousPhysicalAmount =
+      chemical.currentStock *
+      chemical.packSize;
+
+    const nextPacks =
+      roundToThreeDecimals(
+        actualPhysicalAmount /
+          chemical.packSize,
+      );
+
+    const physicalDifference =
+      roundToThreeDecimals(
+        actualPhysicalAmount -
+          previousPhysicalAmount,
+      );
+
+    const packDifference =
+      roundToThreeDecimals(
+        nextPacks -
+          chemical.currentStock,
+      );
+
+    if (
+      Math.abs(physicalDifference) <
+      0.0005
+    ) {
+      return {
+        success: true,
+        message:
+          "Physical stock already matches GreenFlow.",
+        currentStockPacks:
+          chemical.currentStock,
+      };
+    }
+
+    const now =
+      new Date().toISOString();
+
+    const updatedChemical =
+      normaliseChemical({
+        ...chemical,
+        currentStock:
+          nextPacks,
+        updatedAt:
+          now,
+      });
+
+    const nextChemicals =
+      chemicalsRef.current.map(
+        (item) =>
+          item.id === chemicalId
+            ? updatedChemical
+            : item,
+      );
+
+    const movement:
+      ChemicalStockMovement = {
+        id:
+          createStockMovementId(),
+        chemicalId,
+        type: "Adjustment",
+        packQuantity:
+          packDifference,
+        physicalAmount:
+          physicalDifference,
+        physicalUnit:
+          chemical.packUnit,
+        balanceAfterPacks:
+          nextPacks,
+        date:
+          toDateValue(new Date()),
+        reference:
+          "Physical stocktake",
+        notes:
+          note.trim() ||
+          `Physical stock reconciled from ${roundToThreeDecimals(previousPhysicalAmount)} ${chemical.packUnit} to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}.`,
+        source:
+          "Stock Page",
+        createdAt:
+          now,
+      };
+
+    const nextMovements = [
+      movement,
+      ...stockMovementsRef.current,
+    ];
+
+    chemicalsRef.current =
+      nextChemicals;
+
+    stockMovementsRef.current =
+      nextMovements;
+
     setChemicals(nextChemicals);
-    setStockMovements(nextMovements);
+    setStockMovements(
+      nextMovements,
+    );
 
     return {
       success: true,
-      message: `Stock updated to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}. Adjustment: ${physicalDifference > 0 ? "+" : ""}${physicalDifference} ${chemical.packUnit}.`,
-      currentStockPacks: nextPacks,
+      message:
+        `Stock updated to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}. Adjustment: ${physicalDifference > 0 ? "+" : ""}${physicalDifference} ${chemical.packUnit}.`,
+      currentStockPacks:
+        nextPacks,
     };
   }
 
@@ -855,11 +1304,22 @@ export function ChemicalStoreProvider({
     const physicalDifference = roundToThreeDecimals(packDifference * chemical.packSize);
     const now = new Date().toISOString();
 
-    const nextChemicals = chemicalsRef.current.map((item) =>
-      item.id === chemicalId
-        ? { ...item, currentStock: nextPacks, updatedAt: now }
-        : item,
-    );
+    const updatedChemical =
+      normaliseChemical({
+        ...chemical,
+        currentStock:
+          nextPacks,
+        updatedAt:
+          now,
+      });
+
+    const nextChemicals =
+      chemicalsRef.current.map(
+        (item) =>
+          item.id === chemicalId
+            ? updatedChemical
+            : item,
+      );
 
     const movement: ChemicalStockMovement = {
       id: createStockMovementId(),
@@ -881,6 +1341,65 @@ export function ChemicalStoreProvider({
     stockMovementsRef.current = nextMovements;
     setChemicals(nextChemicals);
     setStockMovements(nextMovements);
+
+    void fetch(
+      "/api/chemicals/stock-movements",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          movement,
+          chemical:
+            updatedChemical,
+        }),
+      },
+    ).then(async (response) => {
+      if (!response.ok) {
+        let message =
+          "Unable to save stock to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        console.error(
+          "Failed to save GreenFlow stock:",
+          message,
+        );
+      }
+    }).catch((saveError) => {
+      console.error(
+        "Failed to save GreenFlow stock:",
+        saveError,
+      );
+    });
 
     return {
       success: true,
@@ -1227,6 +1746,82 @@ export function ChemicalStoreProvider({
     setStockMovements(
       nextMovements,
     );
+
+    /*
+     * Persist the calculated stock balance and the Usage movement
+     * to PostgreSQL. The API saves both together.
+     */
+    for (const movement of newMovements) {
+      const updatedChemical =
+        nextChemicals.find(
+          (chemical) =>
+            chemical.id ===
+            movement.chemicalId,
+        );
+
+      if (!updatedChemical) {
+        continue;
+      }
+
+      void fetch(
+        "/api/chemicals/stock-movements",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            movement,
+            chemical:
+              updatedChemical,
+          }),
+        },
+      ).then(async (response) => {
+        if (!response.ok) {
+          let message =
+            "Unable to save treatment stock usage to the GreenFlow database.";
+
+          try {
+            const payload =
+              (await response.json()) as unknown;
+
+            if (
+              typeof payload === "object" &&
+              payload !== null
+            ) {
+              const errorValue =
+                (
+                  payload as Record<
+                    string,
+                    unknown
+                  >
+                ).error;
+
+              if (
+                typeof errorValue ===
+                "string"
+              ) {
+                message =
+                  errorValue;
+              }
+            }
+          } catch {
+            // Keep the default error message.
+          }
+
+          console.error(
+            "Failed to save treatment stock usage:",
+            message,
+          );
+        }
+      }).catch((saveError) => {
+        console.error(
+          "Failed to save treatment stock usage:",
+          saveError,
+        );
+      });
+    }
 
     const reorderWarnings =
       prepared

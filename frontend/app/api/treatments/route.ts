@@ -221,16 +221,16 @@ export async function POST(request: Request) {
               membership.organisationId,
             programmeId,
             programmeVisitId,
-            NOT: {
-              id,
-            },
           },
           select: {
             id: true,
           },
         });
 
-      if (duplicateTreatment) {
+      if (
+        duplicateTreatment &&
+        duplicateTreatment.id !== id
+      ) {
         return NextResponse.json(
           {
             reason: "duplicate-treatment",
@@ -249,16 +249,16 @@ export async function POST(request: Request) {
             organisationId:
               membership.organisationId,
             invoiceNumberNormalized,
-            NOT: {
-              id,
-            },
           },
           select: {
             id: true,
           },
         });
 
-      if (duplicateInvoice) {
+      if (
+        duplicateInvoice &&
+        duplicateInvoice.id !== id
+      ) {
         return NextResponse.json(
           {
             reason: "duplicate-invoice",
