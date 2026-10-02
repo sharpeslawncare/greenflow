@@ -247,6 +247,15 @@ export default function DashboardPage() {
     }
   }
 
+  function closeSelectedDay() {
+    if (!readyToCloseDay || dayClosed) {
+      return;
+    }
+
+    updateCloseDayRecord({
+      closed: true,
+    });
+  }
   function updateCloseDayRecord(
     patch: Partial<CloseDayRecord>,
   ) {
@@ -1535,6 +1544,95 @@ export default function DashboardPage() {
               <WorkStatusMetric label="Completed" value={String(completedOnSelectedDate)} detail="Completed treatment records" positive={completedOnSelectedDate > 0} />
               <WorkStatusMetric label="Remaining" value={String(remainingWorkCount)} detail="Still need an outcome" warning={remainingWorkCount > 0} />
               <WorkStatusMetric label="Exceptions" value={String(selectedDateProblemRecords.length)} detail={selectedDateProblemRecords.length === 0 ? "No recorded problems" : "Need review"} danger={selectedDateProblemRecords.length > 0} />
+            </div>
+          </section>
+
+          <section
+            id="close-day"
+            className="mt-4 rounded-[24px] border border-green-300 bg-white p-5 shadow-sm md:p-6"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-[#176b37]">
+                  End of day
+                </div>
+                <h2 className="gf-h2 mt-1">Close Day</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                  Finish the selected working day once the work, chemical check and QuickBooks export are complete.
+                </p>
+              </div>
+
+              <CloseDayStatusBadge status={closeDayStatus} />
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <CloseDayMetric
+                icon="✓"
+                label="Work"
+                value={operationalDayClear ? "Clear" : `${closeDayOutstandingCount} outstanding`}
+                detail={
+                  operationalDayClear
+                    ? "All planned work has an outcome."
+                    : "Complete the remaining work or resolve the exceptions."
+                }
+                warning={!operationalDayClear}
+              />
+
+              <CloseDayMetric
+                icon="✓"
+                label="Chemicals"
+                value={chemicalsChecked ? "Checked" : "Not checked"}
+                detail={
+                  chemicalsChecked
+                    ? "Chemical usage has been confirmed."
+                    : "Confirm chemical usage before closing the day."
+                }
+                warning={!chemicalsChecked}
+              />
+
+              <CloseDayMetric
+                icon="✓"
+                label="QuickBooks"
+                value={quickbooksExported ? "Exported" : "Not exported"}
+                detail={
+                  quickbooksExported
+                    ? "The day's QuickBooks export is complete."
+                    : "Complete the QuickBooks export before closing the day."
+                }
+                warning={!quickbooksExported}
+              />
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div>
+                <div className="font-black text-slate-950">
+                  {dayClosed
+                    ? "This working day is closed."
+                    : readyToCloseDay
+                      ? "Everything is ready to close."
+                      : "Complete the outstanding steps before closing."}
+                </div>
+                <div className="mt-1 text-sm text-slate-600">
+                  {dayClosed
+                    ? "The dashboard will keep this day marked as closed."
+                    : `Working day: ${formatDateWithDay(selectedDate)}`}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeSelectedDay}
+                disabled={!readyToCloseDay || dayClosed}
+                className={`inline-flex min-w-[170px] justify-center rounded-xl px-5 py-3 text-sm font-black text-white transition ${
+                  dayClosed
+                    ? "cursor-default bg-slate-400"
+                    : readyToCloseDay
+                      ? "bg-[#176b37] hover:bg-[#125b2f]"
+                      : "cursor-not-allowed bg-slate-300"
+                }`}
+              >
+                {dayClosed ? "Day closed" : "Close Day"}
+              </button>
             </div>
           </section>
 
