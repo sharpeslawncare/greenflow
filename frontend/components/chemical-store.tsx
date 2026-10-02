@@ -674,32 +674,15 @@ export function ChemicalStoreProvider({
         );
       }
 
-      const savedMovements =
-        window.localStorage.getItem(
-          STOCK_MOVEMENT_STORAGE_KEY,
-        );
-
-      if (savedMovements) {
-        try {
-          const parsed =
-            JSON.parse(
-              savedMovements,
-            ) as ChemicalStockMovement[];
-
-          if (Array.isArray(parsed)) {
-            stockMovementsRef.current =
-              parsed;
-
-            setStockMovements(
-              parsed,
-            );
-          }
-        } catch {
-          window.localStorage.removeItem(
-            STOCK_MOVEMENT_STORAGE_KEY,
-          );
-        }
-      }
+      /*
+       * Stock movements are PostgreSQL-backed.
+       *
+       * Do not restore the legacy browser movement cache here.
+       * A stale localStorage value must never override the database
+       * movement history.
+       */
+      stockMovementsRef.current = [];
+      setStockMovements([]);
 
       if (!cancelled) {
         setReady(true);

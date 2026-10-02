@@ -180,7 +180,7 @@ function QuickBooksExportPageContent() {
             treatment.invoiceAmount <= 0
           ) {
             problems.push(
-              "Invoice amount must be greater than £0",
+              "Invoice amount must be greater than Â£0",
             );
           }
 
@@ -312,7 +312,7 @@ function QuickBooksExportPageContent() {
                 href={`/?date=${selectedDate}`}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                ← Back to Dashboard
+                â† Back to Dashboard
               </Link>
             </div>
 
@@ -372,7 +372,7 @@ function QuickBooksExportPageContent() {
                     End-of-day workflow
                   </div>
                   <h2 className="mt-1 text-xl font-bold text-slate-950">
-                    Step 3 of 4 · QuickBooks
+                    Step 3 of 4 Â· QuickBooks
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
                     Review and download the day&apos;s QuickBooks CSV, then return to GreenFlow for the final close.
@@ -383,7 +383,7 @@ function QuickBooksExportPageContent() {
                   href={`/chemical-usage?date=${selectedDate}&workflow=close`}
                   className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  ← Back
+                  â† Back
                 </Link>
               </div>
 
@@ -415,7 +415,7 @@ function QuickBooksExportPageContent() {
                     href={`/?date=${selectedDate}#close-day`}
                     className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#12582d]"
                   >
-                    Next: Close working day →
+                    Next: Close working day â†’
                   </Link>
                 ) : (
                   <button
@@ -507,11 +507,11 @@ function QuickBooksExportPageContent() {
                       >
                         <div className="font-bold text-slate-900">
                           {row.invoiceNo || "No invoice number"}
-                          {" · "}
+                          {" Â· "}
                           {row.customer}
                         </div>
                         <div className="mt-1 text-amber-800">
-                          {row.problems.join(" • ")}
+                          {row.problems.join(" â€¢ ")}
                         </div>
                       </div>
                     ))}
@@ -564,7 +564,7 @@ function QuickBooksExportPageContent() {
                           className="align-top"
                         >
                           <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
-                            {row.invoiceNo || "—"}
+                            {row.invoiceNo || "â€”"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                             {row.customer}
@@ -613,7 +613,7 @@ function QuickBooksExportPageContent() {
                       QuickBooks fields
                     </div>
                     <div className="mt-1 leading-6">
-                      Due date matches invoice date, Terms is “Due on receipt”, Item Rate is 1, and Tax Code is “20.0% S”, matching your successful template.
+                      Due date matches invoice date, Terms is â€œDue on receiptâ€, Item Rate is 1, and Tax Code is â€œ20.0% Sâ€, matching your successful template.
                     </div>
                   </div>
 
@@ -666,7 +666,7 @@ function WorkflowProgressCard({
                 : "bg-slate-200 text-slate-600"
           }`}
         >
-          {state === "done" ? "✓" : number}
+          {state === "done" ? "âœ“" : number}
         </span>
         <div>
           <div className="text-sm font-bold text-slate-950">{title}</div>
@@ -728,6 +728,24 @@ function markQuickBooksExported(
       storageKey,
       JSON.stringify(next),
     );
+
+    void fetch("/api/working-days", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        date: workingDate,
+        quickbooksExported: true,
+        closed: false,
+      }),
+    }).catch((saveError) => {
+      console.warn(
+        "QuickBooks export was saved locally but could not be saved to PostgreSQL:",
+        saveError,
+      );
+    });
   } catch {
     // The CSV has still been downloaded even if the browser cannot
     // persist the Dashboard convenience flag.
@@ -840,7 +858,7 @@ function formatQuickBooksMoney(
   const safeValue =
     Number.isFinite(value) ? value : 0;
 
-  return `£${safeValue.toFixed(2)}`;
+  return `Â£${safeValue.toFixed(2)}`;
 }
 
 function formatPounds(value: number) {

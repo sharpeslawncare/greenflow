@@ -107,7 +107,7 @@ type StockReconciliationRow = {
 const STOCK_RECONCILIATION_TOLERANCE_BASE = 1;
 
 const TEST_DAY_NOTE =
-  "TEST DAY · Stock not deducted";
+  "TEST DAY - Stock not deducted";
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#dc6b62] focus:ring-4 focus:ring-red-100";
@@ -1195,10 +1195,10 @@ export default function ChemicalUsagePage() {
     const correctionNote =
       `Application corrected ${toDateValue(
         new Date(),
-      )}: ${selectedApplication.productName} · ${previousMethod} → ${nextMethod} · actual quantity ${formatProductAmount(
+      )}: ${selectedApplication.productName} - ${previousMethod} -> ${nextMethod} - actual quantity ${formatProductAmount(
         currentActual,
         selectedApplication.productUnit,
-      )} → ${formatProductAmount(
+      )} - ${formatProductAmount(
         targetActual,
         selectedApplication.productUnit,
       )}.`;
@@ -1272,9 +1272,9 @@ export default function ChemicalUsagePage() {
         date:
           selectedRow.date,
         reference:
-          `Application correction · ${selectedRow.customerNumber}`,
+          `Application correction - ${selectedRow.customerNumber}`,
         notes:
-          `${selectedRow.customerName} · ${selectedRow.treatmentName} · ${previousMethod} → ${nextMethod}.`,
+          `${selectedRow.customerName} - ${selectedRow.treatmentName} - ${previousMethod} -> ${nextMethod}.`,
         source: "Stock Page",
       });
     }
@@ -1362,6 +1362,24 @@ export default function ChemicalUsagePage() {
         storageKey,
         JSON.stringify(next),
       );
+
+      void fetch("/api/working-days", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          date: workingDate,
+          chemicalsChecked: true,
+          closed: false,
+        }),
+      }).catch((saveError) => {
+        console.warn(
+          "Chemical check was saved locally but could not be saved to PostgreSQL:",
+          saveError,
+        );
+      });
     } catch {
       // The chemical audit itself is still valid even if the browser
       // cannot persist the Dashboard convenience flag.
@@ -1536,7 +1554,7 @@ export default function ChemicalUsagePage() {
                 }
                 className="mt-2 inline-flex text-sm font-semibold text-slate-600 hover:text-slate-950 hover:underline"
               >
-                ← Dashboard
+                Back to Dashboard
               </Link>
             </div>
 
@@ -1564,7 +1582,7 @@ export default function ChemicalUsagePage() {
                 Test day usage
               </div>
               <h2 className="mt-1 text-xl font-bold text-amber-950">
-                Product calculations shown · Live stock unchanged
+              Product calculations shown - Live stock unchanged
               </h2>
               <p className="mt-1 text-sm leading-6 text-amber-900">
                 {visibleTestDayRows.length} product application record{visibleTestDayRows.length === 1 ? "" : "s"} in the selected view came from Test Day completions. They remain available for chemical-usage review, but are deliberately excluded from live-stock reconciliation.
@@ -1580,7 +1598,7 @@ export default function ChemicalUsagePage() {
                     End-of-day workflow
                   </div>
                   <h2 className="mt-1 text-xl font-bold text-slate-950">
-                    Step 2 of 4 · Check chemical usage
+                    Step 2 of 4 - Check chemical usage
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
                     Confirm the saved customer applications agree with the stock deducted for this working day.
@@ -1591,7 +1609,7 @@ export default function ChemicalUsagePage() {
                   href={`/visit-centre?date=${dateFrom === dateTo ? dateFrom : dateTo}&workflow=close`}
                   className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  ← Back
+                      Test Day - review only
                 </Link>
               </div>
 
@@ -1624,12 +1642,12 @@ export default function ChemicalUsagePage() {
                     onClick={continueToQuickBooks}
                     className="inline-flex items-center rounded-xl bg-[#b42318] px-5 py-3 text-sm font-bold text-white hover:bg-[#8f1d14]"
                   >
-                    Check complete · Next: QuickBooks →
+                    Check complete - Next: QuickBooks
                   </button>
                 ) : (
                   <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800">
                     {hasVisibleTestDayUsage
-                      ? "Test Day · review only"
+                      ? "Test Day - review only"
                       : dateFrom !== dateTo
                         ? "Select one working day"
                         : `${reconciliationIssueCount} need review`}
@@ -1674,7 +1692,7 @@ export default function ChemicalUsagePage() {
               label="Treated area"
               value={`${totalArea.toLocaleString(
                 "en-GB",
-              )} m²`}
+              )} square metres`}
               detail="Counted once per visit"
             />
 
@@ -1910,7 +1928,7 @@ export default function ChemicalUsagePage() {
                           >
                             {row.status ===
                             "Matched"
-                              ? "—"
+                              ? "No stock deduction required"
                               : `${
                                   row.differenceBaseAmount >
                                   0
@@ -1990,7 +2008,7 @@ export default function ChemicalUsagePage() {
                               summary.productType ||
                               "Uncategorised"
                             }{" "}
-                            ·{" "}
+                            -{" "}
                             {
                               summary.customers
                             }{" "}
@@ -2015,7 +2033,7 @@ export default function ChemicalUsagePage() {
                                 null &&
                               summary.currentStock <=
                                 summary.reorderLevel
-                                ? " · Reorder level reached"
+                                ? " - Reorder level reached"
                                 : ""}
                             </div>
                           )}
@@ -2037,7 +2055,7 @@ export default function ChemicalUsagePage() {
                           {summary.totalAreaSquareMetres.toLocaleString(
                             "en-GB",
                           )}{" "}
-                          m²
+                          square metres
                         </span>
 
                         <span className="font-semibold">
@@ -2055,7 +2073,7 @@ export default function ChemicalUsagePage() {
                         </span>
 
                         <span className="font-semibold">
-                          £
+                          GBP
                           {summary.totalCost.toFixed(
                             2,
                           )}
@@ -2114,7 +2132,7 @@ export default function ChemicalUsagePage() {
                         label="Area"
                         value={`${selectedRow.areaSquareMetres.toLocaleString(
                           "en-GB",
-                        )} m²`}
+                        )} square metres`}
                       />
                     </div>
 
@@ -2131,7 +2149,7 @@ export default function ChemicalUsagePage() {
                           label="Type"
                           value={
                             selectedRow.productType ||
-                            "—"
+                            "Uncategorised"
                           }
                         />
 
@@ -2140,7 +2158,7 @@ export default function ChemicalUsagePage() {
                           value={
                             selectedRow.applicationMethod ===
                             "Spot Spray"
-                              ? `Spot Spray · ${formatPercentage(
+                              ? `Spot Spray - ${formatPercentage(
                                   selectedRow.spotSprayPercentage,
                                 )}`
                               : selectedRow.applicationMethod ||
@@ -2268,16 +2286,15 @@ export default function ChemicalUsagePage() {
                               <div className="mt-1 text-slate-600">
                                 {selectedRow.applicationMethod ===
                                 "Spot Spray"
-                                  ? `Spot Spray · ${formatPercentage(
+                                  ? `Spot Spray - ${formatPercentage(
                                       selectedRow.spotSprayPercentage,
                                     )}`
                                   : "Full Lawn Spray"}{" "}
-                                ·{" "}
-                                {formatProductAmount(
+                                {`GBP ${formatProductAmount(
                                   selectedRow.actualProductRequired ||
                                     selectedRow.productRequired,
                                   selectedRow.productUnit,
-                                )}
+                                )}`}
                               </div>
                             </div>
 
@@ -2546,7 +2563,7 @@ export default function ChemicalUsagePage() {
                             >
                               {row.applicationMethod ===
                               "Spot Spray"
-                                ? `Spot Spray · ${formatPercentage(
+                                ? `Spot Spray - ${formatPercentage(
                                     row.spotSprayPercentage,
                                   )}`
                                 : row.applicationMethod}
@@ -2571,7 +2588,7 @@ export default function ChemicalUsagePage() {
                       </span>
 
                       <span className="font-semibold">
-                        £
+                        £${row.estimatedProductCost.toFixed(2)}
                         {row.estimatedProductCost.toFixed(
                           2,
                         )}
@@ -2770,7 +2787,7 @@ function formatSummaryAmount(
   unit: string,
 ) {
   if (!unit) {
-    return "—";
+    return "m²"
   }
 
   return `${amount.toFixed(
@@ -2887,8 +2904,8 @@ function formatSignedProductAmount(
     amount > 0
       ? "+"
       : amount < 0
-        ? "−"
-        : "";
+      ? "−"
+              : "";
 
   return `${prefix}${formatProductAmount(
     Math.abs(amount),

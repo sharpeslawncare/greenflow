@@ -23,6 +23,7 @@ model Organisation {
   treatments             Treatment[]
   chemicals              Chemical[]
   chemicalStockMovements ChemicalStockMovement[]
+  workingDays            WorkingDay[]
 }
 
 model Season {
@@ -291,4 +292,23 @@ model Treatment {
 
   @@index([organisationId, customerNumber])
   @@index([organisationId, recordedDate])
+}
+
+model WorkingDay {
+  id             String @id
+  organisationId String
+  date           String
+
+  chemicalsChecked   Boolean @default(false)
+  quickbooksExported Boolean @default(false)
+  closed             Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, date])
+  @@index([organisationId])
+  @@index([organisationId, date])
 }

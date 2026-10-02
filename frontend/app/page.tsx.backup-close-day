@@ -227,8 +227,6 @@ export default function DashboardPage() {
         CLOSE_DAY_STORAGE_KEY,
       );
 
-    let localCloseDayData: CloseDayData = {};
-
     if (savedCloseDayData) {
       try {
         const parsedCloseDayData =
@@ -239,77 +237,14 @@ export default function DashboardPage() {
           typeof parsedCloseDayData === "object" &&
           !Array.isArray(parsedCloseDayData)
         ) {
-          localCloseDayData = parsedCloseDayData;
           setCloseDayData(parsedCloseDayData);
         }
       } catch {
-        localCloseDayData = {};
+        setCloseDayData({});
       }
+    } else {
+      setCloseDayData({});
     }
-
-    void fetch("/api/working-days", {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(
-            `Working day load failed with status ${response.status}.`,
-          );
-        }
-
-        return (await response.json()) as {
-          workingDays?: Array<{
-            id: string;
-            date: string;
-            chemicalsChecked: boolean;
-            quickbooksExported: boolean;
-            closed: boolean;
-            updatedAt: string;
-          }>;
-        };
-      })
-      .then((payload) => {
-        if (!Array.isArray(payload.workingDays)) {
-          return;
-        }
-
-        const serverCloseDayData: CloseDayData =
-          Object.fromEntries(
-            payload.workingDays.map((workingDay) => [
-              workingDay.date,
-              {
-                chemicalsChecked:
-                  workingDay.chemicalsChecked,
-                quickbooksExported:
-                  workingDay.quickbooksExported,
-                closed: workingDay.closed,
-                updatedAt: workingDay.updatedAt,
-              },
-            ]),
-          );
-
-        const mergedCloseDayData = {
-          ...localCloseDayData,
-          ...serverCloseDayData,
-        };
-
-        setCloseDayData(mergedCloseDayData);
-
-        window.localStorage.setItem(
-          CLOSE_DAY_STORAGE_KEY,
-          JSON.stringify(mergedCloseDayData),
-        );
-      })
-      .catch((loadError) => {
-        console.warn(
-          "Using local close-day data because PostgreSQL could not be loaded:",
-          loadError,
-        );
-      });
   }
 
   function closeSelectedDay() {
@@ -347,25 +282,6 @@ export default function DashboardPage() {
         CLOSE_DAY_STORAGE_KEY,
         JSON.stringify(next),
       );
-
-      void fetch("/api/working-days", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          date: selectedDate,
-          chemicalsChecked: nextRecord.chemicalsChecked,
-          quickbooksExported: nextRecord.quickbooksExported,
-          closed: nextRecord.closed,
-        }),
-      }).catch((saveError) => {
-        console.warn(
-          "Close-day state was saved locally but could not be saved to PostgreSQL:",
-          saveError,
-        );
-      });
 
       return next;
     });

@@ -144,7 +144,7 @@ const STANDARD_MIX_STORAGE_KEY =
 const DEFAULT_SPOT_SPRAY_PERCENTAGE = 10;
 
 const TEST_DAY_NOTE =
-  "TEST DAY · Stock not deducted";
+  "TEST DAY - Stock not deducted";
 
 const SPOT_SPRAY_PRESETS = [
   5,
@@ -5803,7 +5803,7 @@ function calculateApplication(
       : chemical.applicationRate * safeArea;
 
   const waterRequiredLitres =
-    chemical.applicationRateUnit === "g/m²"
+    chemical.applicationRateUnit === "g/m\u00B2"
       ? 0
       : waterPerHectare * areaHectares;
 
@@ -5851,11 +5851,11 @@ function getProductUnit(
     return "kg";
   }
 
-  if (rateUnit === "g/m²") {
+  if (rateUnit === "g/m\u00B2") {
     return "g";
   }
 
-  if (rateUnit === "ml/m²") {
+  if (rateUnit === "ml/m\u00B2") {
     return "ml";
   }
 
