@@ -123,8 +123,7 @@ export default function ChemicalUsagePage() {
     chemicals,
     stockMovements,
     ready: chemicalsReady,
-    updateChemical,
-    recordStockMovement,
+    applyStockMovement,
   } = useChemicalStore();
 
   const {
@@ -1241,42 +1240,61 @@ export default function ChemicalUsagePage() {
         stockDifferenceInPackUnit,
       ) > 0.0000001
     ) {
-      updateChemical({
-        ...chemical,
-        currentStock:
-          nextChemicalStock,
-      });
-
       const packsDifference =
         stockDifferenceInPackUnit /
         chemical.packSize;
 
-      recordStockMovement({
-        chemicalId:
-          chemical.id,
-        type: "Adjustment",
-        packQuantity:
-          -roundToThreeDecimals(
-            packsDifference,
-          ),
-        physicalAmount:
-          -roundToThreeDecimals(
-            stockDifferenceInPackUnit,
-          ),
-        physicalUnit:
-          chemical.packUnit,
-        balanceAfterPacks:
+      const stockResult =
+        await applyStockMovement(
+          {
+            chemicalId:
+              chemical.id,
+            type: "Adjustment",
+            packQuantity:
+              -roundToThreeDecimals(
+                packsDifference,
+              ),
+            physicalAmount:
+              -roundToThreeDecimals(
+                stockDifferenceInPackUnit,
+              ),
+            physicalUnit:
+              chemical.packUnit,
+            balanceAfterPacks:
+              roundToThreeDecimals(
+                nextChemicalStock,
+              ),
+            date:
+              selectedRow.date,
+            reference:
+              `Application correction - ${selectedRow.customerNumber}`,
+            notes:
+              `${selectedRow.customerName} - ${selectedRow.treatmentName} - ${previousMethod} -> ${nextMethod}.`,
+            source: "Stock Page",
+          },
           roundToThreeDecimals(
             nextChemicalStock,
           ),
-        date:
-          selectedRow.date,
-        reference:
-          `Application correction - ${selectedRow.customerNumber}`,
-        notes:
-          `${selectedRow.customerName} - ${selectedRow.treatmentName} - ${previousMethod} -> ${nextMethod}.`,
-        source: "Stock Page",
-      });
+        );
+
+      if (!stockResult.success) {
+        const rollbackResult =
+          await updateTreatment(
+            selectedTreatment,
+          );
+
+        if (!rollbackResult.success) {
+          showMessage(
+            `The stock correction could not be saved, and GreenFlow could not automatically restore the previous treatment record. Stock was not changed. Review this treatment before continuing. ${rollbackResult.message}`,
+          );
+          return;
+        }
+
+        showMessage(
+          `The stock correction could not be saved, so GreenFlow restored the previous treatment record. No correction was saved. ${stockResult.message}`,
+        );
+        return;
+      }
     }
 
     setCorrectionOpen(false);
