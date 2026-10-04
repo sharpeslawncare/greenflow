@@ -575,11 +575,7 @@ export function ChemicalStoreProvider({
         return;
       }
 
-      if (
-        database &&
-        !database.databaseEmpty &&
-        database.chemicals.length > 0
-      ) {
+      if (database) {
         const loadedChemicals =
           database.chemicals.map(
             normaliseChemical,
