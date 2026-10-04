@@ -2383,7 +2383,7 @@ function VisitCentrePageContent() {
 
     if (outcome === "Completed" && !testDayMode) {
       const stockResult =
-        deductChemicalStockBatch(
+        await deductChemicalStockBatch(
           requirements.map(
             (requirement) => ({
               chemicalId:
@@ -2746,7 +2746,7 @@ function VisitCentrePageContent() {
     }
 
     const stockResult =
-      deductChemicalStockBatch(
+      await deductChemicalStockBatch(
         requirements.map(
           (requirement) => ({
             chemicalId:

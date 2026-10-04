@@ -199,12 +199,12 @@ type ChemicalStoreValue = {
     productAmount: number,
     productUnit: ChemicalUnit,
     context?: StockDeductionContext,
-  ) => StockDeductionResult;
+  ) => Promise<StockDeductionResult>;
 
   deductChemicalStockBatch: (
     requests: ChemicalStockDeductionRequest[],
     context?: StockDeductionContext,
-  ) => StockBatchDeductionResult;
+  ) => Promise<StockBatchDeductionResult>;
 
   recordStockMovement: (
     movement: NewChemicalStockMovement,
@@ -1394,12 +1394,12 @@ export function ChemicalStoreProvider({
     setStockMovements([]);
   }
 
-  function deductChemicalStock(
+  async function deductChemicalStock(
     chemicalId: string,
     productAmount: number,
     productUnit: ChemicalUnit,
     context: StockDeductionContext = {},
-  ): StockDeductionResult {
+  ): Promise<StockDeductionResult> {
     return deductChemicalStockBatch(
       [
         {
@@ -1412,10 +1412,10 @@ export function ChemicalStoreProvider({
     );
   }
 
-  function deductChemicalStockBatch(
+  async function deductChemicalStockBatch(
     requests: ChemicalStockDeductionRequest[],
     context: StockDeductionContext = {},
-  ): StockBatchDeductionResult {
+  ): Promise<StockBatchDeductionResult> {
     if (requests.length === 0) {
       return {
         success: true,
@@ -1708,9 +1708,102 @@ export function ChemicalStoreProvider({
     ];
 
     /*
-     * Commit both state changes only after the full
-     * batch has passed validation and both next-state
-     * snapshots have been calculated.
+     * Save the entire Usage batch to PostgreSQL before changing
+     * browser state. The API commits every chemical balance and
+     * movement together in one database transaction.
+     */
+    try {
+      const items =
+        newMovements.map(
+          (movement) => {
+            const updatedChemical =
+              nextChemicals.find(
+                (chemical) =>
+                  chemical.id ===
+                  movement.chemicalId,
+              );
+
+            if (!updatedChemical) {
+              throw new Error(
+                "A calculated stock balance could not be matched to its chemical.",
+              );
+            }
+
+            return {
+              movement,
+              chemical:
+                updatedChemical,
+            };
+          },
+        );
+
+      const response = await fetch(
+        "/api/chemicals/stock-movements",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            items,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        let message =
+          "Unable to save treatment stock usage to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        return {
+          success: false,
+          message,
+        };
+      }
+    } catch (saveError) {
+      console.error(
+        "Failed to save treatment stock usage:",
+        saveError,
+      );
+
+      return {
+        success: false,
+        message:
+          "Unable to save treatment stock usage to the GreenFlow database.",
+      };
+    }
+
+    /*
+     * PostgreSQL is now committed successfully, so update the
+     * browser state to match the central database.
      */
     chemicalsRef.current =
       nextChemicals;
@@ -1725,82 +1818,6 @@ export function ChemicalStoreProvider({
     setStockMovements(
       nextMovements,
     );
-
-    /*
-     * Persist the calculated stock balance and the Usage movement
-     * to PostgreSQL. The API saves both together.
-     */
-    for (const movement of newMovements) {
-      const updatedChemical =
-        nextChemicals.find(
-          (chemical) =>
-            chemical.id ===
-            movement.chemicalId,
-        );
-
-      if (!updatedChemical) {
-        continue;
-      }
-
-      void fetch(
-        "/api/chemicals/stock-movements",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            movement,
-            chemical:
-              updatedChemical,
-          }),
-        },
-      ).then(async (response) => {
-        if (!response.ok) {
-          let message =
-            "Unable to save treatment stock usage to the GreenFlow database.";
-
-          try {
-            const payload =
-              (await response.json()) as unknown;
-
-            if (
-              typeof payload === "object" &&
-              payload !== null
-            ) {
-              const errorValue =
-                (
-                  payload as Record<
-                    string,
-                    unknown
-                  >
-                ).error;
-
-              if (
-                typeof errorValue ===
-                "string"
-              ) {
-                message =
-                  errorValue;
-              }
-            }
-          } catch {
-            // Keep the default error message.
-          }
-
-          console.error(
-            "Failed to save treatment stock usage:",
-            message,
-          );
-        }
-      }).catch((saveError) => {
-        console.error(
-          "Failed to save treatment stock usage:",
-          saveError,
-        );
-      });
-    }
 
     const reorderWarnings =
       prepared
