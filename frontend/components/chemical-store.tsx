@@ -233,13 +233,13 @@ type ChemicalStoreValue = {
     chemicalId: string,
     actualPhysicalAmount: number,
     note?: string,
-  ) => StockReconciliationResult;
+  ) => Promise<StockReconciliationResult>;
 
   setChemicalStockPacks: (
     chemicalId: string,
     packQuantity: number,
     note?: string,
-  ) => StockReconciliationResult;
+  ) => Promise<StockReconciliationResult>;
 
   clearStockMovements: () => void;
 
@@ -1530,11 +1530,11 @@ export function ChemicalStoreProvider({
     };
   }
 
-  function reconcileChemicalStock(
+  async function reconcileChemicalStock(
     chemicalId: string,
     actualPhysicalAmount: number,
     note = "",
-  ): StockReconciliationResult {
+  ): Promise<StockReconciliationResult> {
     const chemical =
       chemicalsRef.current.find(
         (item) => item.id === chemicalId,
@@ -1605,210 +1605,138 @@ export function ChemicalStoreProvider({
       };
     }
 
-    const now =
-      new Date().toISOString();
-
-    const updatedChemical =
-      normaliseChemical({
-        ...chemical,
-        currentStock:
-          nextPacks,
-        updatedAt:
-          now,
-      });
-
-    const nextChemicals =
-      chemicalsRef.current.map(
-        (item) =>
-          item.id === chemicalId
-            ? updatedChemical
-            : item,
+    const result =
+      await applyStockMovement(
+        {
+          chemicalId,
+          type: "Adjustment",
+          packQuantity:
+            packDifference,
+          physicalAmount:
+            physicalDifference,
+          physicalUnit:
+            chemical.packUnit,
+          balanceAfterPacks:
+            nextPacks,
+          date:
+            toDateValue(new Date()),
+          reference:
+            "Physical stocktake",
+          notes:
+            note.trim() ||
+            `Physical stock reconciled from ${roundToThreeDecimals(previousPhysicalAmount)} ${chemical.packUnit} to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}.`,
+          source:
+            "Stock Page",
+        },
+        nextPacks,
       );
 
-    const movement:
-      ChemicalStockMovement = {
-        id:
-          createStockMovementId(),
-        chemicalId,
-        type: "Adjustment",
-        packQuantity:
-          packDifference,
-        physicalAmount:
-          physicalDifference,
-        physicalUnit:
-          chemical.packUnit,
-        balanceAfterPacks:
-          nextPacks,
-        date:
-          toDateValue(new Date()),
-        reference:
-          "Physical stocktake",
-        notes:
-          note.trim() ||
-          `Physical stock reconciled from ${roundToThreeDecimals(previousPhysicalAmount)} ${chemical.packUnit} to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}.`,
-        source:
-          "Stock Page",
-        createdAt:
-          now,
-      };
-
-    const nextMovements = [
-      movement,
-      ...stockMovementsRef.current,
-    ];
-
-    chemicalsRef.current =
-      nextChemicals;
-
-    stockMovementsRef.current =
-      nextMovements;
-
-    setChemicals(nextChemicals);
-    setStockMovements(
-      nextMovements,
-    );
+    if (!result.success) {
+      return result;
+    }
 
     return {
       success: true,
       message:
         `Stock updated to ${roundToThreeDecimals(actualPhysicalAmount)} ${chemical.packUnit}. Adjustment: ${physicalDifference > 0 ? "+" : ""}${physicalDifference} ${chemical.packUnit}.`,
       currentStockPacks:
+        result.currentStockPacks ??
         nextPacks,
     };
   }
 
-  function setChemicalStockPacks(
+  async function setChemicalStockPacks(
     chemicalId: string,
     packQuantity: number,
     note = "",
-  ): StockReconciliationResult {
+  ): Promise<StockReconciliationResult> {
     const chemical = chemicalsRef.current.find(
       (item) => item.id === chemicalId,
     );
 
     if (!chemical) {
-      return { success: false, message: "The selected product could not be found." };
+      return {
+        success: false,
+        message:
+          "The selected product could not be found.",
+      };
     }
 
-    if (!Number.isFinite(packQuantity) || packQuantity < 0) {
-      return { success: false, message: "Enter a valid stock quantity of zero packs or more." };
+    if (
+      !Number.isFinite(packQuantity) ||
+      packQuantity < 0
+    ) {
+      return {
+        success: false,
+        message:
+          "Enter a valid stock quantity of zero packs or more.",
+      };
     }
 
-    const nextPacks = roundToThreeDecimals(packQuantity);
-    const packDifference = roundToThreeDecimals(nextPacks - chemical.currentStock);
+    const nextPacks =
+      roundToThreeDecimals(packQuantity);
+
+    const packDifference =
+      roundToThreeDecimals(
+        nextPacks -
+          chemical.currentStock,
+      );
 
     if (Math.abs(packDifference) < 0.0005) {
       return {
         success: true,
-        message: "Stock already matches the entered quantity.",
-        currentStockPacks: chemical.currentStock,
+        message:
+          "Stock already matches the entered quantity.",
+        currentStockPacks:
+          chemical.currentStock,
       };
     }
 
-    const physicalDifference = roundToThreeDecimals(packDifference * chemical.packSize);
-    const now = new Date().toISOString();
-
-    const updatedChemical =
-      normaliseChemical({
-        ...chemical,
-        currentStock:
-          nextPacks,
-        updatedAt:
-          now,
-      });
-
-    const nextChemicals =
-      chemicalsRef.current.map(
-        (item) =>
-          item.id === chemicalId
-            ? updatedChemical
-            : item,
+    const physicalDifference =
+      roundToThreeDecimals(
+        packDifference *
+          chemical.packSize,
       );
 
-    const movement: ChemicalStockMovement = {
-      id: createStockMovementId(),
-      chemicalId,
-      type: "Adjustment",
-      packQuantity: packDifference,
-      physicalAmount: physicalDifference,
-      physicalUnit: chemical.packUnit,
-      balanceAfterPacks: nextPacks,
-      date: toDateValue(new Date()),
-      reference: chemical.currentStock === 0 ? "Opening stock" : "Manual stock entry",
-      notes: note.trim() || `Stock set from ${roundToThreeDecimals(chemical.currentStock)} to ${nextPacks} pack equivalents.`,
-      source: "Stock Page",
-      createdAt: now,
-    };
-
-    const nextMovements = [movement, ...stockMovementsRef.current];
-    chemicalsRef.current = nextChemicals;
-    stockMovementsRef.current = nextMovements;
-    setChemicals(nextChemicals);
-    setStockMovements(nextMovements);
-
-    void fetch(
-      "/api/chemicals/stock-movements",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
+    const result =
+      await applyStockMovement(
+        {
+          chemicalId,
+          type: "Adjustment",
+          packQuantity:
+            packDifference,
+          physicalAmount:
+            physicalDifference,
+          physicalUnit:
+            chemical.packUnit,
+          balanceAfterPacks:
+            nextPacks,
+          date:
+            toDateValue(new Date()),
+          reference:
+            chemical.currentStock === 0
+              ? "Opening stock"
+              : "Manual stock entry",
+          notes:
+            note.trim() ||
+            `Stock set from ${roundToThreeDecimals(chemical.currentStock)} to ${nextPacks} pack equivalents.`,
+          source:
+            "Stock Page",
         },
-        body: JSON.stringify({
-          movement,
-          chemical:
-            updatedChemical,
-        }),
-      },
-    ).then(async (response) => {
-      if (!response.ok) {
-        let message =
-          "Unable to save stock to the GreenFlow database.";
-
-        try {
-          const payload =
-            (await response.json()) as unknown;
-
-          if (
-            typeof payload === "object" &&
-            payload !== null
-          ) {
-            const errorValue =
-              (
-                payload as Record<
-                  string,
-                  unknown
-                >
-              ).error;
-
-            if (
-              typeof errorValue ===
-              "string"
-            ) {
-              message =
-                errorValue;
-            }
-          }
-        } catch {
-          // Keep the default error message.
-        }
-
-        console.error(
-          "Failed to save GreenFlow stock:",
-          message,
-        );
-      }
-    }).catch((saveError) => {
-      console.error(
-        "Failed to save GreenFlow stock:",
-        saveError,
+        nextPacks,
       );
-    });
+
+    if (!result.success) {
+      return result;
+    }
 
     return {
       success: true,
-      message: `Stock saved at ${nextPacks} pack${nextPacks === 1 ? "" : "s"} (${roundToThreeDecimals(nextPacks * chemical.packSize)} ${chemical.packUnit}).`,
-      currentStockPacks: nextPacks,
+      message:
+        `Stock saved at ${nextPacks} pack${nextPacks === 1 ? "" : "s"} (${roundToThreeDecimals(nextPacks * chemical.packSize)} ${chemical.packUnit}).`,
+      currentStockPacks:
+        result.currentStockPacks ??
+        nextPacks,
     };
   }
 

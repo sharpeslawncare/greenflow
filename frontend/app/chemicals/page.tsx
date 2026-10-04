@@ -240,10 +240,10 @@ export default function ChemicalsPage() {
     );
   }
 
-  function saveEnteredStock() {
+  async function saveEnteredStock() {
     if (!selectedChemical) return;
 
-    const result = setChemicalStockPacks(
+    const result = await setChemicalStockPacks(
       selectedChemical.id,
       Number(editingStockPacks),
       selectedChemical.currentStock === 0
@@ -287,10 +287,10 @@ export default function ChemicalsPage() {
     setReviewingStock(true);
   }
 
-  function saveStockReview() {
+  async function saveStockReview() {
     if (!selectedChemical) return;
 
-    const result = reconcileChemicalStock(
+    const result = await reconcileChemicalStock(
       selectedChemical.id,
       Number(actualStockAmount),
       stockReviewNote,
