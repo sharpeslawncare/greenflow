@@ -160,10 +160,6 @@ type TreatmentStoreValue = {
   addTreatment: (
     treatment: TreatmentRecord,
   ) => Promise<TreatmentSaveResult>;
-  addTreatments: (treatments: TreatmentRecord[]) => {
-    added: number;
-    skipped: number;
-  };
   updateTreatment: (
     treatment: TreatmentRecord,
   ) => Promise<TreatmentSaveResult>;
@@ -195,12 +191,6 @@ const LEGACY_STORAGE_KEYS = [
 
 const DEMO_AUTOSEED_CLEANUP_KEY =
   "greenflow-treatment-demo-autoseed-cleanup-v1";
-
-const BUILT_IN_DEMO_TREATMENT_IDS =
-  new Set([
-    "treatment-demo-1",
-    "treatment-demo-2",
-  ]);
 
 const TreatmentStoreContext =
   createContext<TreatmentStoreValue | null>(null);
@@ -394,55 +384,7 @@ export function TreatmentStoreProvider({
     let cancelled = false;
 
     const hydrateTreatments = async () => {
-      const saved = getSavedData();
-
-      let localTreatments:
-        TreatmentRecord[] = [];
-
-      /*
-       * A fresh/empty GreenFlow installation must stay empty.
-       *
-       * Older versions automatically inserted demo treatment
-       * records whenever no saved treatment data existed. Demo
-       * treatments are now only created when explicitly restored.
-       */
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as Array<
-            Partial<TreatmentRecord>
-          >;
-
-          const normalisedTreatments =
-            Array.isArray(parsed)
-              ? deduplicateTreatmentRecords(
-                  parsed.map(
-                    normaliseTreatmentRecord,
-                  ),
-                )
-              : [];
-
-          localTreatments =
-            hasCompletedDemoAutoseedCleanup()
-              ? normalisedTreatments
-              : normalisedTreatments.filter(
-                  (treatment) =>
-                    !BUILT_IN_DEMO_TREATMENT_IDS.has(
-                      treatment.id,
-                    ),
-                );
-        } catch {
-          clearStoredData();
-          localTreatments = [];
-        }
-      }
-
       markDemoAutoseedCleanupComplete();
-
-      if (cancelled) return;
-
-      treatmentsRef.current =
-        localTreatments;
-      setTreatments(localTreatments);
 
       try {
         const databaseTreatments =
@@ -464,10 +406,7 @@ export function TreatmentStoreProvider({
          * A successful database read replaces the browser copy,
          * including when PostgreSQL correctly returns an empty list.
          * This prevents stale or browser-only treatments from an old
-         * device being merged back into Live business history.
-         *
-         * localStorage remains a temporary fallback only when the
-         * PostgreSQL read itself fails.
+         * device being treated as Live business history.
          */
         treatmentsRef.current =
           databaseTreatments;
@@ -476,11 +415,14 @@ export function TreatmentStoreProvider({
         );
       } catch {
         /*
-         * If PostgreSQL is temporarily unavailable, keep the local
-         * browser copy visible for resilience. It is not merged into
-         * PostgreSQL and cannot become central treatment history merely
-         * because this browser contains it.
+         * Fail closed if PostgreSQL cannot be read. Do not substitute
+         * browser-cached treatment history, because stale local data
+         * could otherwise look like current Live business data.
          */
+        if (!cancelled) {
+          treatmentsRef.current = [];
+          setTreatments([]);
+        }
       } finally {
         if (!cancelled) {
           setReady(true);
@@ -607,86 +549,6 @@ export function TreatmentStoreProvider({
       };
     }
   }
-  function addTreatments(
-    incoming: TreatmentRecord[],
-  ) {
-    const normalised =
-      incoming.map(
-        normaliseTreatmentRecord,
-      );
-
-    const current =
-      treatmentsRef.current;
-
-    const unique:
-      TreatmentRecord[] = [];
-
-    for (
-      const candidate of normalised
-    ) {
-      if (
-        candidate.status ===
-          "Completed" &&
-        !candidate.invoiceNumber
-      ) {
-        continue;
-      }
-
-      const duplicateIdentity =
-        current.some((item) =>
-          isSameTreatmentIdentity(
-            item,
-            candidate,
-          ),
-        ) ||
-        unique.some((item) =>
-          isSameTreatmentIdentity(
-            item,
-            candidate,
-          ),
-        );
-
-      const duplicateInvoice =
-        current.some((item) =>
-          hasSameInvoiceNumber(
-            item,
-            candidate,
-          ),
-        ) ||
-        unique.some((item) =>
-          hasSameInvoiceNumber(
-            item,
-            candidate,
-          ),
-        );
-
-      if (
-        !duplicateIdentity &&
-        !duplicateInvoice
-      ) {
-        unique.push(candidate);
-      }
-    }
-
-    if (unique.length > 0) {
-      const next = [
-        ...unique,
-        ...current,
-      ];
-
-      treatmentsRef.current =
-        next;
-      setTreatments(next);
-    }
-
-    return {
-      added: unique.length,
-      skipped:
-        normalised.length -
-        unique.length,
-    };
-  }
-
   async function updateTreatment(
     treatment: TreatmentRecord,
   ): Promise<TreatmentSaveResult> {
@@ -941,7 +803,6 @@ export function TreatmentStoreProvider({
       treatments,
       ready,
       addTreatment,
-      addTreatments,
       updateTreatment,
       deleteTreatment,
       getTreatmentById,
@@ -1589,37 +1450,6 @@ function isFinalTreatmentStatus(
   return (
     status === "Completed" ||
     status === "Cancelled"
-  );
-}
-
-function getSavedData() {
-  const current =
-    window.localStorage.getItem(STORAGE_KEY);
-
-  if (current) return current;
-
-  for (const key of LEGACY_STORAGE_KEYS) {
-    const legacy =
-      window.localStorage.getItem(key);
-
-    if (legacy) return legacy;
-  }
-
-  return null;
-}
-
-function clearStoredData() {
-  window.localStorage.removeItem(STORAGE_KEY);
-  LEGACY_STORAGE_KEYS.forEach((key) =>
-    window.localStorage.removeItem(key),
-  );
-}
-
-function hasCompletedDemoAutoseedCleanup() {
-  return (
-    window.localStorage.getItem(
-      DEMO_AUTOSEED_CLEANUP_KEY,
-    ) === "1"
   );
 }
 
