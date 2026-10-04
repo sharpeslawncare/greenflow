@@ -454,40 +454,32 @@ export function TreatmentStoreProvider({
             ),
           );
 
-        if (
-          cancelled ||
-          databaseTreatments.length === 0
-        ) {
+        if (cancelled) {
           return;
         }
 
-        const localOnly =
-          localTreatments.filter(
-            (localTreatment) =>
-              !databaseTreatments.some(
-                (databaseTreatment) =>
-                  isSameTreatmentIdentity(
-                    localTreatment,
-                    databaseTreatment,
-                  ) ||
-                  hasSameInvoiceNumber(
-                    localTreatment,
-                    databaseTreatment,
-                  ),
-              ),
-          );
-
-        const merged = [
-          ...databaseTreatments,
-          ...localOnly,
-        ];
-
-        treatmentsRef.current = merged;
-        setTreatments(merged);
+        /*
+         * PostgreSQL is the authority for treatment history.
+         *
+         * A successful database read replaces the browser copy,
+         * including when PostgreSQL correctly returns an empty list.
+         * This prevents stale or browser-only treatments from an old
+         * device being merged back into Live business history.
+         *
+         * localStorage remains a temporary fallback only when the
+         * PostgreSQL read itself fails.
+         */
+        treatmentsRef.current =
+          databaseTreatments;
+        setTreatments(
+          databaseTreatments,
+        );
       } catch {
         /*
-         * A failed PostgreSQL read must not destroy
-         * existing local-only treatment history.
+         * If PostgreSQL is temporarily unavailable, keep the local
+         * browser copy visible for resilience. It is not merged into
+         * PostgreSQL and cannot become central treatment history merely
+         * because this browser contains it.
          */
       } finally {
         if (!cancelled) {
