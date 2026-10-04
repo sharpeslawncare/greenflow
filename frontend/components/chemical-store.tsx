@@ -619,89 +619,20 @@ export function ChemicalStoreProvider({
       }
 
       /*
-       * PostgreSQL is currently empty, or unavailable.
+       * Fail closed when PostgreSQL cannot be reached or returns an
+       * invalid response. Do not substitute browser-cached or demo
+       * chemical data, because it could look like current Live data.
        *
-       * Keep the existing browser data available so that
-       * the current desktop Chemical Centre is not lost.
-       * Migration to PostgreSQL is deliberately handled
-       * separately and explicitly.
+       * A successful database response containing zero chemicals is
+       * handled above and remains authoritative.
        */
-      const saved =
-        window.localStorage.getItem(
-          STORAGE_KEY,
-        );
-
-      if (saved) {
-        try {
-          const parsed = JSON.parse(
-            saved,
-          ) as Array<
-            Partial<ChemicalRecord>
-          >;
-
-          if (Array.isArray(parsed)) {
-            const loadedChemicals =
-              parsed.map(
-                normaliseChemical,
-              );
-
-            chemicalsRef.current =
-              loadedChemicals;
-
-            setChemicals(
-              loadedChemicals,
-            );
-          } else {
-            const demo =
-              cloneDemoChemicals();
-
-            chemicalsRef.current =
-              demo;
-
-            setChemicals(
-              demo,
-            );
-          }
-        } catch {
-          window.localStorage.removeItem(
-            STORAGE_KEY,
-          );
-
-          const demo =
-            cloneDemoChemicals();
-
-          chemicalsRef.current =
-            demo;
-
-          setChemicals(
-            demo,
-          );
-        }
-      } else {
-        const demo =
-          cloneDemoChemicals();
-
-        chemicalsRef.current =
-          demo;
-
-        setChemicals(
-          demo,
-        );
-      }
-
-      /*
-       * Stock movements are PostgreSQL-backed.
-       *
-       * Do not restore the legacy browser movement cache here.
-       * A stale localStorage value must never override the database
-       * movement history.
-       */
+      chemicalsRef.current = [];
       stockMovementsRef.current = [];
+
+      setChemicals([]);
       setStockMovements([]);
 
-      if (!cancelled) {
-        setReady(true);
-      }
+      setReady(true);
     }
 
     void initialiseChemicalStore();
