@@ -222,13 +222,21 @@ export default function TreatmentDocumentPage() {
       )
     ];
 
+  const hasHistoricalDocumentSnapshot =
+    completed &&
+    Boolean(
+      treatment.documentSnapshotCapturedAt.trim(),
+    );
+
   const visitInformation =
     completed
-      ? treatment.jobType ===
-          "additional" &&
-        treatment.customerWording.trim()
+      ? hasHistoricalDocumentSnapshot
         ? treatment.customerWording
-        : treatmentWording.description
+        : treatment.jobType ===
+              "additional" &&
+            treatment.customerWording.trim()
+          ? treatment.customerWording
+          : treatmentWording.description
       : createCustomerSafeVisitInformation(
           treatment,
           settings.treatmentWording,
@@ -487,10 +495,15 @@ export default function TreatmentDocumentPage() {
           }
           treatmentTitle={
             completed
-              ? treatment.jobType ===
-                  "additional"
-                ? treatment.treatmentName
-                : treatmentWording.title
+              ? hasHistoricalDocumentSnapshot
+                ? treatment
+                    .treatmentNameSnapshot
+                    .trim() ||
+                  treatment.treatmentName
+                : treatment.jobType ===
+                    "additional"
+                  ? treatment.treatmentName
+                  : treatmentWording.title
               : treatment.treatmentName
           }
           invoiceLabel="Invoice"
@@ -499,6 +512,12 @@ export default function TreatmentDocumentPage() {
           }
           treatmentDescription={
             visitInformation
+          }
+          advisories={
+            completed &&
+            hasHistoricalDocumentSnapshot
+              ? treatment.customerAdvisories
+              : undefined
           }
           mowingAdvice={
             completed

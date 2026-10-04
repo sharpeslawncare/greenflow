@@ -83,10 +83,6 @@ const tabs: Array<{
     label: "Communications",
   },
   {
-    id: "advisories",
-    label: "Advisories",
-  },
-  {
     id: "branding",
     label: "Branding",
   },
@@ -1199,6 +1195,9 @@ export default function SettingsPage() {
                   treatmentLibrary={
                     settings.treatmentLibrary
                   }
+                  advisories={
+                    settings.advisories
+                  }
                   updateSettings={
                     updateTreatmentWording
                   }
@@ -1211,6 +1210,15 @@ export default function SettingsPage() {
                   deleteTreatment={
                     deleteTreatmentLibraryItem
                   }
+                  updateAdvisory={
+                    updateAdvisory
+                  }
+                  addAdvisory={
+                    addAdvisory
+                  }
+                  deleteAdvisory={
+                    deleteAdvisory
+                  }
                 />
               )}
 
@@ -1219,21 +1227,6 @@ export default function SettingsPage() {
                   settings={settings.communications}
                   updateSettings={
                     updateCommunicationSettings
-                  }
-                />
-              )}
-
-              {activeTab === "advisories" && (
-                <AdvisoriesTab
-                  advisories={
-                    settings.advisories
-                  }
-                  updateAdvisory={
-                    updateAdvisory
-                  }
-                  addAdvisory={addAdvisory}
-                  deleteAdvisory={
-                    deleteAdvisory
                   }
                 />
               )}
@@ -3394,13 +3387,24 @@ function renderCommunicationTemplate(
 function TreatmentWordingTab({
   settings,
   treatmentLibrary,
+  advisories,
   updateSettings,
   addTreatment,
   updateTreatment,
   deleteTreatment,
+  updateAdvisory,
+  addAdvisory,
+  deleteAdvisory,
 }: {
   settings: TreatmentWordingSettings;
   treatmentLibrary: TreatmentLibraryItem[];
+  advisories: Array<{
+    id: string;
+    title: string;
+    wording: string;
+    type: AdvisoryType;
+    active: boolean;
+  }>;
   updateSettings: (
     updates: Partial<TreatmentWordingSettings>,
   ) => void;
@@ -3410,30 +3414,46 @@ function TreatmentWordingTab({
     updates: Partial<
       Pick<
         TreatmentLibraryItem,
-        "name" | "wording" | "active"
+        "code" | "name" | "wording" | "advisoryIds" | "active"
       >
     >,
   ) => void;
-  deleteTreatment: (
-    treatmentId: string,
+  deleteTreatment: (treatmentId: string) => void;
+  updateAdvisory: (
+    advisoryId: string,
+    updates: Partial<{
+      title: string;
+      wording: string;
+      type: AdvisoryType;
+      active: boolean;
+    }>,
   ) => void;
+  addAdvisory: () => string;
+  deleteAdvisory: (advisoryId: string) => void;
 }) {
-  const [newTreatmentId, setNewTreatmentId] =
-    useState("");
+  const [newTreatmentId, setNewTreatmentId] = useState("");
+  const [editingAdvisory, setEditingAdvisory] = useState<{
+    treatmentId: string;
+    advisoryId: string;
+  } | null>(null);
+  const [addingAdvisoryToTreatmentId, setAddingAdvisoryToTreatmentId] =
+    useState<string | null>(null);
+  const [expandedTreatmentIds, setExpandedTreatmentIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   function handleAddTreatment() {
-    const treatmentId =
-      addTreatment();
-
-    setNewTreatmentId(
-      treatmentId,
-    );
+    const treatmentId = addTreatment();
+    setNewTreatmentId(treatmentId);
+    setExpandedTreatmentIds((current) => {
+      const next = new Set(current);
+      next.add(treatmentId);
+      return next;
+    });
 
     window.setTimeout(() => {
       document
-        .getElementById(
-          `treatment-library-${treatmentId}`,
-        )
+        .getElementById(`treatment-library-${treatmentId}`)
         ?.scrollIntoView({
           behavior: "smooth",
           block: "center",
@@ -3441,193 +3461,171 @@ function TreatmentWordingTab({
     }, 0);
   }
 
-  const annualTreatments =
-    treatmentLibrary.filter(
-      (treatment) =>
-        treatment.category ===
-        "Annual programme",
-    );
+  function handleCreateAdvisory(treatment: TreatmentLibraryItem) {
+    const advisoryId = addAdvisory();
 
-  const specialistTreatments =
-    treatmentLibrary.filter(
-      (treatment) =>
-        treatment.category ===
-        "Specialist",
-    );
+    updateTreatment(treatment.id, {
+      advisoryIds: [
+        ...new Set([
+          ...treatment.advisoryIds,
+          advisoryId,
+        ]),
+      ],
+    });
 
-  const additionalTreatments =
-    treatmentLibrary.filter(
-      (treatment) =>
-        treatment.category ===
-        "Additional",
+    setAddingAdvisoryToTreatmentId(null);
+    setEditingAdvisory({
+      treatmentId: treatment.id,
+      advisoryId,
+    });
+  }
+
+  function toggleTreatment(treatmentId: string) {
+    setExpandedTreatmentIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(treatmentId)) {
+        next.delete(treatmentId);
+      } else {
+        next.add(treatmentId);
+      }
+
+      return next;
+    });
+  }
+
+  function expandAllTreatments() {
+    setExpandedTreatmentIds(
+      new Set(treatmentLibrary.map((treatment) => treatment.id)),
     );
+  }
+
+  function collapseAllTreatments() {
+    setExpandedTreatmentIds(new Set());
+    setEditingAdvisory(null);
+    setAddingAdvisoryToTreatmentId(null);
+  }
+
+  function treatmentCodeNumber(code: string) {
+    const match = code.trim().match(/^T(\d+)$/i);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  }
+
+  function sortByTreatmentCode(
+    treatments: TreatmentLibraryItem[],
+  ) {
+    return [...treatments].sort((a, b) => {
+      const codeDifference =
+        treatmentCodeNumber(a.code) - treatmentCodeNumber(b.code);
+
+      if (codeDifference !== 0) {
+        return codeDifference;
+      }
+
+      return a.code.localeCompare(b.code, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+  }
+
+  const annualTreatments = sortByTreatmentCode(
+    treatmentLibrary.filter(
+      (treatment) => treatment.category === "Annual programme",
+    ),
+  );
+  const additionalJobs = sortByTreatmentCode(
+    treatmentLibrary.filter(
+      (treatment) => treatment.category !== "Annual programme",
+    ),
+  );
+
+  const sectionProps = {
+    advisories,
+    updateTreatment,
+    deleteTreatment,
+    updateAdvisory,
+    deleteAdvisory,
+    onCreateAdvisory: handleCreateAdvisory,
+    editingAdvisory,
+    setEditingAdvisory,
+    addingAdvisoryToTreatmentId,
+    setAddingAdvisoryToTreatmentId,
+    expandedTreatmentIds,
+    toggleTreatment,
+  };
 
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <SectionHeading
-          title="Treatment library"
-          description="Manage the treatments and customer-facing wording GreenFlow can use. Add new services here as the business grows; inactive treatments stay in the library for historical use but can be hidden from future job selection."
+          title="Treatment Codes"
+          description="Set the Treatment Code and Customer Wording, then add only the Advisories that should go with that Treatment."
         />
 
         <button
           type="button"
-          onClick={
-            handleAddTreatment
-          }
+          onClick={handleAddTreatment}
           className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#125b2f]"
         >
-          + Add treatment
+          + Add Treatment Code
+        </button>
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-green-200 bg-green-50/60 p-4 text-sm leading-6 text-green-900">
+        <strong>Advisories Belong to Each Treatment Separately.</strong>{" "}
+        Each Treatment shows only the Advisories assigned to it. Use Add Advisory to reuse an existing Advisory or create a new one just for that Treatment.
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={expandAllTreatments}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        >
+          Expand All
+        </button>
+        <button
+          type="button"
+          onClick={collapseAllTreatments}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        >
+          Collapse All
         </button>
       </div>
 
       <TreatmentLibrarySection
-        title="Annual programme"
-        description="Protected core treatments used by the standard yearly programme."
-        treatments={
-          annualTreatments
-        }
-        updateTreatment={
-          updateTreatment
-        }
-        deleteTreatment={
-          deleteTreatment
-        }
+        title="Annual Programme"
+        description="Your Regular Seasonal Treatments."
+        treatments={annualTreatments}
+        {...sectionProps}
+        highlightId={newTreatmentId}
       />
 
       <TreatmentLibrarySection
-        title="Specialist treatments"
-        description="Existing specialist lawn-care services."
-        treatments={
-          specialistTreatments
-        }
-        updateTreatment={
-          updateTreatment
-        }
-        deleteTreatment={
-          deleteTreatment
-        }
-      />
-
-      <TreatmentLibrarySection
-        title="Additional treatments"
-        description="New and bespoke services you add yourself. These will become available for job selection in the next integration stage."
-        treatments={
-          additionalTreatments
-        }
-        updateTreatment={
-          updateTreatment
-        }
-        deleteTreatment={
-          deleteTreatment
-        }
-        emptyMessage="No additional treatments yet. Use “Add treatment” to create your first one."
-        highlightId={
-          newTreatmentId
-        }
+        title="Additional Jobs"
+        description="Aeration, Scarification, Overseeding and Any Other Work Outside the Annual Programme."
+        treatments={additionalJobs}
+        {...sectionProps}
+        emptyMessage="No Additional Jobs Yet. Use “Add Treatment Code” When You Need One."
+        highlightId={newTreatmentId}
       />
 
       <details className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <summary className="cursor-pointer font-bold text-slate-800">
           Existing compatibility wording
         </summary>
-
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          GreenFlow still uses these fields in older customer-document logic. They are being retained while the new Treatment Library is connected across the rest of the system.
+          These older wording fields are retained while the Treatment Code Library is connected across the rest of GreenFlow.
         </p>
-
         <div className="mt-5 grid gap-5 lg:grid-cols-2">
-          <TextSetting
-            label="Seasonal fertiliser visit"
-            value={
-              settings.seasonalFertiliserVisit
-            }
-            onChange={(value) =>
-              updateSettings({
-                seasonalFertiliserVisit:
-                  value,
-              })
-            }
-          />
-
-          <TextSetting
-            label="Selective herbicide visit"
-            value={
-              settings.herbicideVisit
-            }
-            onChange={(value) =>
-              updateSettings({
-                herbicideVisit:
-                  value,
-              })
-            }
-          />
-
-          <TextSetting
-            label="Combined fertiliser and herbicide"
-            value={
-              settings.combinedFertiliserAndHerbicideVisit
-            }
-            onChange={(value) =>
-              updateSettings({
-                combinedFertiliserAndHerbicideVisit:
-                  value,
-              })
-            }
-          />
-
-          <TextSetting
-            label="Generic moss-control visit"
-            value={
-              settings.mossControlVisit
-            }
-            onChange={(value) =>
-              updateSettings({
-                mossControlVisit:
-                  value,
-              })
-            }
-          />
-
-          <TextSetting
-            label="Cancelled visit"
-            value={
-              settings.cancelledVisit
-            }
-            onChange={(value) =>
-              updateSettings({
-                cancelledVisit:
-                  value,
-              })
-            }
-          />
-
-          <TextSetting
-            label="Rescheduled visit"
-            value={
-              settings.rescheduledVisit
-            }
-            onChange={(value) =>
-              updateSettings({
-                rescheduledVisit:
-                  value,
-              })
-            }
-          />
-
-          <TextSetting
-            label="Preparing for the next visit"
-            value={
-              settings.nextVisitPreparation
-            }
-            onChange={(value) =>
-              updateSettings({
-                nextVisitPreparation:
-                  value,
-              })
-            }
-            large
-          />
+          <TextSetting label="Seasonal fertiliser visit" value={settings.seasonalFertiliserVisit} onChange={(value) => updateSettings({ seasonalFertiliserVisit: value })} />
+          <TextSetting label="Selective herbicide visit" value={settings.herbicideVisit} onChange={(value) => updateSettings({ herbicideVisit: value })} />
+          <TextSetting label="Combined fertiliser and herbicide" value={settings.combinedFertiliserAndHerbicideVisit} onChange={(value) => updateSettings({ combinedFertiliserAndHerbicideVisit: value })} />
+          <TextSetting label="Generic moss-control visit" value={settings.mossControlVisit} onChange={(value) => updateSettings({ mossControlVisit: value })} />
+          <TextSetting label="Cancelled visit" value={settings.cancelledVisit} onChange={(value) => updateSettings({ cancelledVisit: value })} />
+          <TextSetting label="Rescheduled visit" value={settings.rescheduledVisit} onChange={(value) => updateSettings({ rescheduledVisit: value })} />
+          <TextSetting label="Preparing for the next visit" value={settings.nextVisitPreparation} onChange={(value) => updateSettings({ nextVisitPreparation: value })} large />
         </div>
       </details>
     </div>
@@ -3638,209 +3636,24 @@ function TreatmentLibrarySection({
   title,
   description,
   treatments,
+  advisories,
   updateTreatment,
   deleteTreatment,
+  updateAdvisory,
+  deleteAdvisory,
+  onCreateAdvisory,
+  editingAdvisory,
+  setEditingAdvisory,
+  addingAdvisoryToTreatmentId,
+  setAddingAdvisoryToTreatmentId,
+  expandedTreatmentIds,
+  toggleTreatment,
   emptyMessage = "",
   highlightId = "",
 }: {
   title: string;
   description: string;
   treatments: TreatmentLibraryItem[];
-  updateTreatment: (
-    treatmentId: string,
-    updates: Partial<
-      Pick<
-        TreatmentLibraryItem,
-        "name" | "wording" | "active"
-      >
-    >,
-  ) => void;
-  deleteTreatment: (
-    treatmentId: string,
-  ) => void;
-  emptyMessage?: string;
-  highlightId?: string;
-}) {
-  return (
-    <section className="mt-7">
-      <div>
-        <h3 className="text-lg font-bold">
-          {title}
-        </h3>
-
-        <p className="mt-1 text-sm leading-6 text-slate-500">
-          {description}
-        </p>
-      </div>
-
-      {treatments.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-sm text-slate-500">
-          {emptyMessage ||
-            "No treatments in this section."}
-        </div>
-      ) : (
-        <div className="mt-4 grid gap-4">
-          {treatments.map(
-            (treatment) => (
-              <article
-                id={`treatment-library-${treatment.id}`}
-                key={
-                  treatment.id
-                }
-                className={`rounded-2xl border bg-white p-5 shadow-sm transition ${
-                  highlightId ===
-                  treatment.id
-                    ? "border-green-400 ring-4 ring-green-100"
-                    : treatment.active
-                      ? "border-slate-200"
-                      : "border-slate-200 bg-slate-50 opacity-75"
-                }`}
-              >
-                <div className="grid gap-5 xl:grid-cols-[minmax(220px,0.8fr)_minmax(420px,2fr)_170px]">
-                  <div>
-                    <Field label="Treatment name">
-                      <input
-                        value={
-                          treatment.name
-                        }
-                        onChange={(
-                          event,
-                        ) =>
-                          updateTreatment(
-                            treatment.id,
-                            {
-                              name: event
-                                .target
-                                .value,
-                            },
-                          )
-                        }
-                        className={
-                          inputClass
-                        }
-                      />
-                    </Field>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {treatment.builtIn && (
-                        <span className="rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-bold text-green-800">
-                          Built in
-                        </span>
-                      )}
-
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                          treatment.active
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-slate-200 text-slate-600"
-                        }`}
-                      >
-                        {treatment.active
-                          ? "Active"
-                          : "Inactive"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Field label="Customer-facing wording">
-                    <textarea
-                      rows={6}
-                      value={
-                        treatment.wording
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        updateTreatment(
-                          treatment.id,
-                          {
-                            wording:
-                              event
-                                .target
-                                .value,
-                          },
-                        )
-                      }
-                      placeholder="Explain clearly what the treatment was for, what the customer should expect and any useful aftercare."
-                      className={
-                        inputClass
-                      }
-                    />
-                  </Field>
-
-                  <div className="flex flex-col gap-3">
-                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <span className="text-sm font-semibold text-slate-700">
-                        Available
-                      </span>
-
-                      <input
-                        type="checkbox"
-                        checked={
-                          treatment.active
-                        }
-                        onChange={(
-                          event,
-                        ) =>
-                          updateTreatment(
-                            treatment.id,
-                            {
-                              active:
-                                event
-                                  .target
-                                  .checked,
-                            },
-                          )
-                        }
-                        className="h-4 w-4"
-                      />
-                    </label>
-
-                    {!treatment.builtIn && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const confirmed =
-                            window.confirm(
-                              `Delete "${treatment.name}" from the Treatment Library? This is safe only before the treatment is used on completed jobs.`,
-                            );
-
-                          if (
-                            confirmed
-                          ) {
-                            deleteTreatment(
-                              treatment.id,
-                            );
-                          }
-                        }}
-                        className="rounded-xl border border-red-300 bg-white px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50"
-                      >
-                        Delete treatment
-                      </button>
-                    )}
-
-                    {treatment.builtIn && (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-500">
-                        Built-in treatments can be edited or made inactive, but not deleted.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </article>
-            ),
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function AdvisoriesTab({
-  advisories,
-  updateAdvisory,
-  addAdvisory,
-  deleteAdvisory,
-}: {
   advisories: Array<{
     id: string;
     title: string;
@@ -3848,172 +3661,416 @@ function AdvisoriesTab({
     type: AdvisoryType;
     active: boolean;
   }>;
+  updateTreatment: (
+    treatmentId: string,
+    updates: Partial<
+      Pick<
+        TreatmentLibraryItem,
+        "code" | "name" | "wording" | "advisoryIds" | "active"
+      >
+    >,
+  ) => void;
+  deleteTreatment: (treatmentId: string) => void;
   updateAdvisory: (
     advisoryId: string,
-    updates: {
-      title?: string;
-      wording?: string;
-      type?: AdvisoryType;
-      active?: boolean;
-    },
+    updates: Partial<{
+      title: string;
+      wording: string;
+      type: AdvisoryType;
+      active: boolean;
+    }>,
   ) => void;
-  addAdvisory: () => void;
-  deleteAdvisory: (
-    advisoryId: string,
+  deleteAdvisory: (advisoryId: string) => void;
+  onCreateAdvisory: (treatment: TreatmentLibraryItem) => void;
+  editingAdvisory: {
+    treatmentId: string;
+    advisoryId: string;
+  } | null;
+  setEditingAdvisory: (
+    value: {
+      treatmentId: string;
+      advisoryId: string;
+    } | null,
   ) => void;
+  addingAdvisoryToTreatmentId: string | null;
+  setAddingAdvisoryToTreatmentId: (value: string | null) => void;
+  expandedTreatmentIds: Set<string>;
+  toggleTreatment: (treatmentId: string) => void;
+  emptyMessage?: string;
+  highlightId?: string;
 }) {
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <SectionHeading
-          title="Customer advisories"
-          description="Control the prominent warning and advice boxes shown on treatment paperwork."
-        />
+    <section className="mt-7">
+      <h3 className="text-lg font-bold">{title}</h3>
+      <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
 
-        <button
-          type="button"
-          onClick={addAdvisory}
-          className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
-        >
-          + Add advisory
-        </button>
-      </div>
+      {treatments.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-7 text-sm text-slate-500">
+          {emptyMessage || "No treatments in this section."}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4">
+          {treatments.map((treatment) => {
+            const selectedAdvisories = advisories.filter((advisory) =>
+              treatment.advisoryIds.includes(advisory.id),
+            );
+            const availableAdvisories = advisories.filter(
+              (advisory) =>
+                advisory.active && !treatment.advisoryIds.includes(advisory.id),
+            );
+            const isAddingAdvisory =
+              addingAdvisoryToTreatmentId === treatment.id;
+            const isExpanded = expandedTreatmentIds.has(treatment.id);
+            const advisoryBeingEdited =
+              editingAdvisory?.treatmentId === treatment.id
+                ? advisories.find(
+                    (advisory) => advisory.id === editingAdvisory.advisoryId,
+                  )
+                : undefined;
 
-      <div className="mt-6 space-y-4">
-        {advisories.map((advisory) => (
-          <article
-            key={advisory.id}
-            className={`rounded-2xl border p-5 ${
-              advisory.type === "danger"
-                ? "border-red-200 bg-red-50/40"
-                : advisory.type ===
-                    "warning"
-                  ? "border-amber-200 bg-amber-50/40"
-                  : "border-blue-200 bg-blue-50/40"
-            }`}
-          >
-            <div className="grid gap-5 lg:grid-cols-[1fr_190px_150px]">
-              <div className="space-y-4">
-                <Field label="Heading">
-                  <input
-                    value={advisory.title}
-                    onChange={(event) =>
-                      updateAdvisory(
-                        advisory.id,
-                        {
-                          title:
-                            event.target.value,
-                        },
-                      )
-                    }
-                    className={inputClass}
-                  />
-                </Field>
-
-                <Field label="Customer-facing wording">
-                  <textarea
-                    rows={4}
-                    value={
-                      advisory.wording
-                    }
-                    onChange={(event) =>
-                      updateAdvisory(
-                        advisory.id,
-                        {
-                          wording:
-                            event.target.value,
-                        },
-                      )
-                    }
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
-
-              <Field label="Advisory type">
-                <select
-                  value={advisory.type}
-                  onChange={(event) =>
-                    updateAdvisory(
-                      advisory.id,
-                      {
-                        type: event.target
-                          .value as AdvisoryType,
-                      },
-                    )
-                  }
-                  className={inputClass}
-                >
-                  <option value="danger">
-                    Red warning
-                  </option>
-
-                  <option value="warning">
-                    Amber caution
-                  </option>
-
-                  <option value="information">
-                    Blue information
-                  </option>
-                </select>
-              </Field>
-
-              <div className="space-y-3">
-                <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
-                  <span className="text-sm font-semibold">
-                    Active
-                  </span>
-
-                  <input
-                    type="checkbox"
-                    checked={
-                      advisory.active
-                    }
-                    onChange={(event) =>
-                      updateAdvisory(
-                        advisory.id,
-                        {
-                          active:
-                            event.target
-                              .checked,
-                        },
-                      )
-                    }
-                    className="h-5 w-5"
-                  />
-                </label>
-
+            return (
+              <article
+                id={`treatment-library-${treatment.id}`}
+                key={treatment.id}
+                className={`rounded-2xl border bg-white p-5 shadow-sm transition ${
+                  highlightId === treatment.id
+                    ? "border-green-400 ring-4 ring-green-100"
+                    : treatment.active
+                      ? "border-slate-200"
+                      : "border-slate-200 bg-slate-50 opacity-75"
+                }`}
+              >
                 <button
                   type="button"
-                  onClick={() => {
-                    const confirmed =
-                      window.confirm(
-                        `Delete "${advisory.title}"?`,
-                      );
-
-                    if (confirmed) {
-                      deleteAdvisory(
-                        advisory.id,
-                      );
-                    }
-                  }}
-                  className="w-full rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                  onClick={() => toggleTreatment(treatment.id)}
+                  className="flex w-full items-center gap-3 rounded-xl px-1 py-1 text-left"
+                  aria-expanded={isExpanded}
                 >
-                  Delete advisory
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#176b37] text-base font-extrabold text-white shadow-sm">
+                    {treatment.code}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">
+                    {treatment.name}
+                  </span>
+                  <span className="hidden shrink-0 text-xs font-semibold text-slate-500 sm:inline">
+                    {selectedAdvisories.length}{" "}
+                    {selectedAdvisories.length === 1 ? "Advisory" : "Advisories"}
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
+                      treatment.active
+                        ? "bg-green-100 text-green-800"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    {treatment.active ? "Active" : "Inactive"}
+                  </span>
+                  <span className="w-5 shrink-0 text-center text-sm font-black text-slate-500">
+                    {isExpanded ? "▲" : "▼"}
+                  </span>
                 </button>
-              </div>
-            </div>
 
-            <AdvisoryPreview
-              title={advisory.title}
-              wording={advisory.wording}
-              type={advisory.type}
-              active={advisory.active}
-            />
-          </article>
-        ))}
-      </div>
-    </div>
+                {isExpanded && (
+                  <div className="mt-4 border-t border-slate-200 pt-4">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="grid min-w-0 flex-1 gap-4 md:grid-cols-[120px_minmax(240px,1fr)]">
+                        <Field label="Treatment Code">
+                          <input
+                            value={treatment.code}
+                            onChange={(event) =>
+                              updateTreatment(treatment.id, {
+                                code: event.target.value,
+                              })
+                            }
+                            className={`${inputClass} font-bold`}
+                            placeholder="T1"
+                          />
+                        </Field>
+                        <Field label="Treatment Name">
+                          <input
+                            value={treatment.name}
+                            onChange={(event) =>
+                              updateTreatment(treatment.id, {
+                                name: event.target.value,
+                              })
+                            }
+                            className={inputClass}
+                          />
+                        </Field>
+                      </div>
+
+                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={treatment.active}
+                          onChange={(event) =>
+                            updateTreatment(treatment.id, {
+                              active: event.target.checked,
+                            })
+                          }
+                          className="h-4 w-4"
+                        />
+                        <span className="text-sm font-semibold text-slate-700">
+                          Active
+                        </span>
+                      </label>
+                    </div>
+
+                <div className="mt-4">
+                  <Field label="Customer Wording">
+                    <textarea
+                      rows={5}
+                      value={treatment.wording}
+                      onChange={(event) => updateTreatment(treatment.id, { wording: event.target.value })}
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-3">
+                    <div className="text-sm font-bold text-slate-900">Advisories</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Only Advisories added to this Treatment are shown here.
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    {selectedAdvisories.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs font-medium text-slate-500">
+                        No Advisories have been added to this Treatment.
+                      </div>
+                    ) : (
+                      selectedAdvisories.map((advisory) => {
+                        const advisoryTone =
+                          advisory.type === "danger"
+                            ? "border-red-400 bg-red-100 text-red-950"
+                            : advisory.type === "warning"
+                              ? "border-amber-400 bg-amber-100 text-amber-950"
+                              : advisory.type === "information"
+                                ? "border-blue-400 bg-blue-100 text-blue-950"
+                                : advisory.type === "orange"
+                                  ? "border-orange-400 bg-orange-100 text-orange-950"
+                                  : advisory.type === "purple"
+                                    ? "border-purple-400 bg-purple-100 text-purple-950"
+                                    : "border-slate-400 bg-slate-100 text-slate-950";
+
+                        return (
+                          <div
+                            key={advisory.id}
+                            className={`flex items-start gap-3 rounded-xl border-2 p-3 ${advisoryTone}`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-extrabold">{advisory.title}</div>
+                              <div className="mt-0.5 text-xs font-medium leading-5 opacity-80">
+                                {advisory.wording}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingAdvisory({
+                                    treatmentId: treatment.id,
+                                    advisoryId: advisory.id,
+                                  })
+                                }
+                                className="text-xs font-semibold text-[#176b37] hover:underline"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateTreatment(treatment.id, {
+                                    advisoryIds: treatment.advisoryIds.filter(
+                                      (id) => id !== advisory.id,
+                                    ),
+                                  })
+                                }
+                                className="text-xs font-semibold text-slate-600 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAddingAdvisoryToTreatmentId(
+                        isAddingAdvisory ? null : treatment.id,
+                      )
+                    }
+                    className="mt-3 rounded-xl border border-[#176b37] bg-white px-3 py-2 text-sm font-bold text-[#176b37] hover:bg-green-50"
+                  >
+                    {isAddingAdvisory ? "Close Advisory Choices" : "+ Add Advisory"}
+                  </button>
+
+                  {isAddingAdvisory && (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                        Available Advisories
+                      </div>
+
+                      {availableAdvisories.length > 0 ? (
+                        <div className="mt-2 grid gap-2">
+                          {availableAdvisories.map((advisory) => (
+                            <button
+                              key={advisory.id}
+                              type="button"
+                              onClick={() => {
+                                updateTreatment(treatment.id, {
+                                  advisoryIds: [
+                                    ...new Set([
+                                      ...treatment.advisoryIds,
+                                      advisory.id,
+                                    ]),
+                                  ],
+                                });
+                                setAddingAdvisoryToTreatmentId(null);
+                              }}
+                              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-green-300 hover:bg-green-50"
+                            >
+                              <span>
+                                <span className="block text-sm font-bold text-slate-800">
+                                  {advisory.title}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-slate-500">
+                                  {advisory.wording}
+                                </span>
+                              </span>
+                              <span className="shrink-0 text-xs font-bold text-[#176b37]">
+                                Add
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-xs text-slate-500">
+                          All Available Advisories are already assigned to this Treatment.
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => onCreateAdvisory(treatment)}
+                        className="mt-3 rounded-lg bg-[#176b37] px-3 py-2 text-sm font-bold text-white hover:bg-[#125b2f]"
+                      >
+                        + Create New Advisory
+                      </button>
+                    </div>
+                  )}
+
+                  {advisoryBeingEdited && (
+                    <div className="mt-4 rounded-xl border border-green-200 bg-green-50/60 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-bold text-green-900">
+                          {advisoryBeingEdited.title.startsWith("Advisory ")
+                            ? "New Advisory"
+                            : "Edit Advisory"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingAdvisory(null)}
+                          className="text-xs font-semibold text-slate-600 hover:underline"
+                        >
+                          Done
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-3">
+                        <Field label="Advisory Name">
+                          <input
+                            value={advisoryBeingEdited.title}
+                            onChange={(event) => updateAdvisory(advisoryBeingEdited.id, { title: event.target.value })}
+                            className={inputClass}
+                          />
+                        </Field>
+                        <Field label="Advisory Wording">
+                          <textarea
+                            rows={3}
+                            value={advisoryBeingEdited.wording}
+                            onChange={(event) => updateAdvisory(advisoryBeingEdited.id, { wording: event.target.value })}
+                            className={inputClass}
+                          />
+                        </Field>
+                        <Field label="Advisory Colour">
+                          <select
+                            value={advisoryBeingEdited.type}
+                            onChange={(event) =>
+                              updateAdvisory(advisoryBeingEdited.id, {
+                                type: event.target.value as AdvisoryType,
+                              })
+                            }
+                            className={inputClass}
+                          >
+                            <option value="danger">Red - Safety / Keep Off</option>
+                            <option value="warning">Amber - Mowing / Caution</option>
+                            <option value="information">Blue - Watering / Information</option>
+                            <option value="neutral">Slate - General Advice</option>
+                            <option value="orange">Orange - Specialist Advice</option>
+                            <option value="purple">Purple - Specialist Advice</option>
+                          </select>
+                        </Field>
+
+                        { !["keep-off-lawn", "delay-mowing", "water-if-required"].includes(
+                          advisoryBeingEdited.id,
+                        ) ? (
+                          <div className="flex justify-end border-t border-green-200 pt-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const confirmed = window.confirm(
+                                  `Delete "${advisoryBeingEdited.title}"? It will no longer appear as an advisory choice.`,
+                                );
+                                if (confirmed) {
+                                  deleteAdvisory(advisoryBeingEdited.id);
+                                  setEditingAdvisory(null);
+                                }
+                              }}
+                              className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                            >
+                              Delete advisory
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-xs font-medium text-slate-500">
+                            This is one of GreenFlow&apos;s three Standard Advisories. It can be edited or made inactive, but it is protected from deletion.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                    {!treatment.builtIn && (
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              `Delete "${treatment.name}" from the Treatment Library? This is safe only before the treatment is used on completed jobs.`,
+                            );
+                            if (confirmed) deleteTreatment(treatment.id);
+                          }}
+                          className="text-xs font-semibold text-red-700 hover:underline"
+                        >
+                          Delete treatment
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 

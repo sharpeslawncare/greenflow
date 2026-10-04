@@ -1,5 +1,3 @@
-
-
 import type {
   CSSProperties,
   ReactNode,
@@ -13,6 +11,13 @@ export type CustomerTreatmentDocumentNextVisit = {
   treatmentName: string;
   date: string;
   isOverride?: boolean;
+};
+
+export type CustomerTreatmentDocumentAdvisory = {
+  id: string;
+  title: string;
+  wording: string;
+  type: string;
 };
 
 export type CustomerTreatmentDocumentProps = {
@@ -34,6 +39,7 @@ export type CustomerTreatmentDocumentProps = {
   invoiceReference: string;
 
   treatmentDescription: string;
+  advisories?: CustomerTreatmentDocumentAdvisory[];
   mowingAdvice?: string;
   wateringAdvice?: string;
   safetyAdvice?: string;
@@ -127,6 +133,7 @@ export function CustomerTreatmentDocument({
   invoiceLabel = "Invoice / Reference",
   invoiceReference,
   treatmentDescription,
+  advisories,
   mowingAdvice = "",
   wateringAdvice = "",
   safetyAdvice = "",
@@ -296,24 +303,40 @@ export function CustomerTreatmentDocument({
             </div>
 
             <div className="divide-y divide-slate-200">
-              <AdvicePanel
-                title="Mowing"
-                detail={mowingAdvice}
-                colour={primaryColour}
-                tone="mowing"
-              />
-              <AdvicePanel
-                title="Watering"
-                detail={wateringAdvice}
-                colour={primaryColour}
-                tone="watering"
-              />
-              <AdvicePanel
-                title="Safety"
-                detail={safetyAdvice}
-                colour={primaryColour}
-                tone="safety"
-              />
+              {advisories !== undefined ? (
+                advisories.map((advisory) => (
+                  <AdvicePanel
+                    key={advisory.id}
+                    title={advisory.title}
+                    detail={advisory.wording}
+                    colour={primaryColour}
+                    tone={normaliseAdviceTone(
+                      advisory.type,
+                    )}
+                  />
+                ))
+              ) : (
+                <>
+                  <AdvicePanel
+                    title="Mowing"
+                    detail={mowingAdvice}
+                    colour={primaryColour}
+                    tone="mowing"
+                  />
+                  <AdvicePanel
+                    title="Watering"
+                    detail={wateringAdvice}
+                    colour={primaryColour}
+                    tone="watering"
+                  />
+                  <AdvicePanel
+                    title="Safety"
+                    detail={safetyAdvice}
+                    colour={primaryColour}
+                    tone="safety"
+                  />
+                </>
+              )}
             </div>
           </div>
         )}
@@ -485,6 +508,56 @@ function ContactItem({
   );
 }
 
+type AdviceTone =
+  | "mowing"
+  | "watering"
+  | "safety"
+  | "slate"
+  | "orange"
+  | "purple";
+
+function normaliseAdviceTone(
+  type: string,
+): AdviceTone {
+  const value = type
+    .trim()
+    .toLowerCase();
+
+  if (
+    value === "danger" ||
+    value === "red" ||
+    value === "safety"
+  ) {
+    return "safety";
+  }
+
+  if (
+    value === "warning" ||
+    value === "amber" ||
+    value === "mowing"
+  ) {
+    return "mowing";
+  }
+
+  if (
+    value === "information" ||
+    value === "blue" ||
+    value === "watering"
+  ) {
+    return "watering";
+  }
+
+  if (value === "orange") {
+    return "orange";
+  }
+
+  if (value === "purple") {
+    return "purple";
+  }
+
+  return "slate";
+}
+
 function AdvicePanel({
   title,
   detail,
@@ -494,24 +567,33 @@ function AdvicePanel({
   title: string;
   detail: string;
   colour: string;
-  tone:
-    | "mowing"
-    | "watering"
-    | "safety";
+  tone: AdviceTone;
 }) {
   const toneClass =
     tone === "mowing"
       ? "bg-amber-50/70"
       : tone === "watering"
         ? "bg-sky-50/70"
-        : "bg-red-50/60";
+        : tone === "safety"
+          ? "bg-red-50/60"
+          : tone === "orange"
+            ? "bg-orange-50/70"
+            : tone === "purple"
+              ? "bg-purple-50/70"
+              : "bg-slate-50/80";
 
   const headingClass =
     tone === "mowing"
       ? "text-amber-800"
       : tone === "watering"
         ? "text-sky-800"
-        : "text-red-800";
+        : tone === "safety"
+          ? "text-red-800"
+          : tone === "orange"
+            ? "text-orange-800"
+            : tone === "purple"
+              ? "text-purple-800"
+              : "text-slate-700";
 
   return (
     <div className={`p-[3mm] ${toneClass}`}>

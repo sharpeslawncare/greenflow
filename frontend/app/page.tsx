@@ -1572,16 +1572,22 @@ export default function DashboardPage() {
                     ←
                   </button>
 
-                  <div className="min-w-[190px] rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-bold text-slate-800">
-                    {formatDateWithDay(selectedDate)}
-                  </div>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(event) =>
+                      setSelectedDate(event.target.value)
+                    }
+                    aria-label="Select working date"
+                    className="h-11 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+                  />
 
                   <button
                     type="button"
                     onClick={() =>
                       setSelectedDate(getTodayDateValue())
                     }
-                    className="rounded-xl border border-[#338b45] bg-green-50 px-4 py-2.5 text-sm font-semibold text-[#176b37] transition hover:bg-green-100"
+                    className="h-11 rounded-xl border border-[#338b45] bg-green-50 px-4 text-sm font-semibold text-[#176b37] transition hover:bg-green-100"
                   >
                     Today
                   </button>

@@ -73,6 +73,13 @@ export type TreatmentApplication = {
   pressureBar: number;
 };
 
+export type TreatmentAdvisorySnapshot = {
+  id: string;
+  title: string;
+  wording: string;
+  type: string;
+};
+
 export type TreatmentRecord = {
   id: string;
   programmeId: string;
@@ -99,7 +106,23 @@ export type TreatmentRecord = {
    */
   jobType: "programme" | "additional";
   invoiceAmount: number;
+
+  /*
+   * Historical treatment-document snapshot.
+   *
+   * These values are copied from the Treatment Code Library when a
+   * treatment is completed. Later edits to Treatment Codes or Advisories
+   * must not rewrite the paperwork that the customer received.
+   *
+   * Empty values remain valid for older records created before historical
+   * document snapshots were introduced.
+   */
+  treatmentCodeSnapshot: string;
+  treatmentNameSnapshot: string;
   customerWording: string;
+  customerAdvisories: TreatmentAdvisorySnapshot[];
+  documentSnapshotCapturedAt: string;
+
   invoiceInformationOnly: boolean;
   invoicePaymentSnapshotCaptured: boolean;
 
@@ -932,8 +955,25 @@ function normaliseTreatmentRecord(
         treatment.invoiceAmount,
       ),
 
+    treatmentCodeSnapshot:
+      treatment.treatmentCodeSnapshot?.trim() ??
+      "",
+
+    treatmentNameSnapshot:
+      treatment.treatmentNameSnapshot?.trim() ??
+      "",
+
     customerWording:
       treatment.customerWording ??
+      "",
+
+    customerAdvisories:
+      normaliseTreatmentAdvisorySnapshots(
+        treatment.customerAdvisories,
+      ),
+
+    documentSnapshotCapturedAt:
+      treatment.documentSnapshotCapturedAt?.trim() ??
       "",
 
     invoiceInformationOnly:
@@ -951,6 +991,52 @@ function normaliseTreatmentRecord(
       treatment.nextVisitDate ?? "",
     ...legacy,
   };
+}
+
+function normaliseTreatmentAdvisorySnapshots(
+  advisories:
+    | TreatmentAdvisorySnapshot[]
+    | undefined,
+): TreatmentAdvisorySnapshot[] {
+  if (!Array.isArray(advisories)) {
+    return [];
+  }
+
+  return advisories
+    .filter(
+      (
+        advisory,
+      ): advisory is TreatmentAdvisorySnapshot =>
+        Boolean(
+          advisory &&
+            typeof advisory === "object",
+        ),
+    )
+    .map((advisory) => ({
+      id:
+        typeof advisory.id === "string"
+          ? advisory.id.trim()
+          : "",
+      title:
+        typeof advisory.title === "string"
+          ? advisory.title.trim()
+          : "",
+      wording:
+        typeof advisory.wording === "string"
+          ? advisory.wording
+          : "",
+      type:
+        typeof advisory.type === "string"
+          ? advisory.type.trim()
+          : "",
+    }))
+    .filter(
+      (advisory) =>
+        Boolean(
+          advisory.title ||
+            advisory.wording,
+        ),
+    );
 }
 
 function normaliseApplications(
@@ -1469,6 +1555,12 @@ function cloneDemoTreatments() {
           ...application,
         }),
       ),
+      customerAdvisories:
+        item.customerAdvisories.map(
+          (advisory) => ({
+            ...advisory,
+          }),
+        ),
     }),
   );
 }

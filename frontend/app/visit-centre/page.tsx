@@ -29,7 +29,10 @@ import {
   useProgrammeStore,
 } from "@/components/programme-store";
 import { useSeasonStore } from "@/components/season-store";
-import { useSettingsStore } from "@/components/settings-store";
+import {
+  type TreatmentLibraryItem,
+  useSettingsStore,
+} from "@/components/settings-store";
 import { getTodayDateValue } from "@/lib/date-utils";
 import { useRouteOrderStore } from "@/components/route-order-store";
 import {
@@ -256,6 +259,7 @@ function VisitCentrePageContent() {
   } = useRouteOrderStore();
 
   const {
+    settings,
     ready: settingsReady,
     reserveInvoiceNumbers,
     reconcileInvoiceSequence,
@@ -1955,6 +1959,59 @@ function VisitCentrePageContent() {
         ),
       );
 
+      const treatmentLibraryItem =
+        (job.source === "additional" &&
+        job.additionalJob?.treatmentLibraryId
+          ? settings.treatmentLibrary.find(
+              (item) =>
+                item.id ===
+                job.additionalJob?.treatmentLibraryId,
+            )
+          : undefined) ??
+        findTreatmentLibraryItem(
+          job.visit.treatmentName,
+          settings.treatmentLibrary,
+        );
+
+      const advisoryIds =
+        treatmentLibraryItem?.advisoryIds?.length
+          ? treatmentLibraryItem.advisoryIds
+          : treatmentLibraryItem?.advisoryId
+            ? [treatmentLibraryItem.advisoryId]
+            : [];
+
+      const customerAdvisories =
+        outcome === "Completed"
+          ? advisoryIds
+              .map((advisoryId) =>
+                settings.advisories.find(
+                  (advisory) =>
+                    advisory.id === advisoryId &&
+                    advisory.active,
+                ),
+              )
+              .filter(
+                (
+                  advisory,
+                ): advisory is NonNullable<
+                  typeof advisory
+                > => Boolean(advisory),
+              )
+              .map((advisory) => ({
+                id: advisory.id,
+                title: advisory.title,
+                wording: advisory.wording,
+                type: advisory.type,
+              }))
+          : [];
+
+      const customerWordingSnapshot =
+        outcome === "Completed"
+          ? job.additionalJob?.wordingSnapshot?.trim() ||
+            treatmentLibraryItem?.wording?.trim() ||
+            ""
+          : "";
+
       const commonFields = {
         programmeId: job.programme.id,
         programmeVisitId: job.visit.id,
@@ -1986,10 +2043,26 @@ function VisitCentrePageContent() {
               )
             : 0,
 
+        treatmentCodeSnapshot:
+          outcome === "Completed"
+            ? treatmentLibraryItem?.code ?? ""
+            : "",
+
+        treatmentNameSnapshot:
+          outcome === "Completed"
+            ? treatmentLibraryItem?.name ??
+              job.visit.treatmentName
+            : "",
+
         customerWording:
-          job.additionalJob
-            ?.wordingSnapshot ??
-          "",
+          customerWordingSnapshot,
+
+        customerAdvisories,
+
+        documentSnapshotCapturedAt:
+          outcome === "Completed"
+            ? new Date().toISOString()
+            : "",
 
         invoiceInformationOnly:
           outcome === "Completed" &&
@@ -5127,6 +5200,104 @@ function VisitCentrePageContent() {
       </main>
     </AppShell>
   );
+}
+
+function findTreatmentLibraryItem(
+  treatmentName: string,
+  treatmentLibrary: TreatmentLibraryItem[],
+) {
+  const key = normaliseTreatmentName(
+    treatmentName,
+  );
+
+  const directMatch =
+    treatmentLibrary.find(
+      (treatment) =>
+        normaliseTreatmentName(
+          treatment.name,
+        ) === key,
+    );
+
+  if (directMatch) {
+    return directMatch;
+  }
+
+  /*
+   * Programme visits keep their scheduled treatment name, while the
+   * Treatment Code Library name is editable. Match GreenFlow's built-in
+   * treatments by their stable library id so changing customer-facing
+   * wording or the Treatment Name does not break historical snapshots.
+   */
+  const builtInAliases: Array<{
+    id: string;
+    names: string[];
+  }> = [
+    {
+      id: "treatment-spring",
+      names: [
+        "Spring Weed and Feed",
+        "Spring Treatment",
+      ],
+    },
+    {
+      id: "treatment-summer",
+      names: [
+        "Summer Weed and Feed",
+        "Summer Treatment",
+      ],
+    },
+    {
+      id: "treatment-autumn",
+      names: [
+        "Autumn Weed and Feed",
+        "Autumn Treatment",
+      ],
+    },
+    {
+      id: "treatment-early-winter-moss",
+      names: [
+        "Winter Moss Control 1",
+        "Early Winter Moss Treatment",
+      ],
+    },
+    {
+      id: "treatment-winter-moss",
+      names: [
+        "Winter Moss Control 2",
+        "Winter Moss Treatment",
+      ],
+    },
+    {
+      id: "treatment-aeration",
+      names: ["Aeration"],
+    },
+    {
+      id: "treatment-scarification",
+      names: ["Scarification"],
+    },
+    {
+      id: "treatment-overseeding",
+      names: ["Overseeding"],
+    },
+  ];
+
+  const builtInAlias =
+    builtInAliases.find((item) =>
+      item.names.some(
+        (name) =>
+          normaliseTreatmentName(
+            name,
+          ) === key,
+      ),
+    );
+
+  return builtInAlias
+    ? treatmentLibrary.find(
+        (treatment) =>
+          treatment.id ===
+          builtInAlias.id,
+      )
+    : undefined;
 }
 
 function normaliseTreatmentName(
