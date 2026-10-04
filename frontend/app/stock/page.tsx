@@ -62,9 +62,8 @@ export default function StockPage() {
     chemicals,
     stockMovements,
     ready,
-    addChemical,
-    updateChemical,
-    recordStockMovement,
+    addChemicalSafely,
+    updateChemicalSafely,
     applyStockMovement,
     clearStockMovements,
   } = useChemicalStore();
@@ -111,6 +110,17 @@ export default function StockPage() {
   ] = useState<ProductForm>(
     createEmptyProductForm(),
   );
+
+  const [stockSettingsDraft, setStockSettingsDraft] =
+    useState<{
+      reorderLevel: string;
+      packSize: string;
+      packUnit: ChemicalUnit;
+    }>({
+      reorderLevel: "",
+      packSize: "",
+      packUnit: "kg",
+    });
 
   useEffect(() => {
     const savedMetadata =
@@ -250,6 +260,32 @@ export default function StockPage() {
     ) ??
     activeChemicals[0] ??
     null;
+
+  useEffect(() => {
+    if (!selectedChemical) {
+      setStockSettingsDraft({
+        reorderLevel: "",
+        packSize: "",
+        packUnit: "kg",
+      });
+      return;
+    }
+
+    setStockSettingsDraft({
+      reorderLevel: String(
+        selectedChemical.reorderLevel,
+      ),
+      packSize: String(
+        selectedChemical.packSize,
+      ),
+      packUnit: selectedChemical.packUnit,
+    });
+  }, [
+    selectedChemical?.id,
+    selectedChemical?.reorderLevel,
+    selectedChemical?.packSize,
+    selectedChemical?.packUnit,
+  ]);
 
   const selectedMetadata =
     selectedChemical
@@ -592,7 +628,7 @@ export default function StockPage() {
     );
   }
 
-  function saveProduct(
+  async function saveProduct(
     event:
       FormEvent<HTMLFormElement>,
   ) {
@@ -627,29 +663,18 @@ export default function StockPage() {
     }
 
     const packSize =
-      Number(
-        productForm.packSize,
-      );
-
+      Number(productForm.packSize);
     const openingStock =
-      Number(
-        productForm.openingStock,
-      );
-
+      Number(productForm.openingStock);
     const reorderLevel =
-      Number(
-        productForm.reorderLevel,
-      );
-
+      Number(productForm.reorderLevel);
     const preferredOrderQuantity =
       Number(
         productForm.preferredOrderQuantity,
       );
 
     if (
-      !Number.isFinite(
-        packSize,
-      ) ||
+      !Number.isFinite(packSize) ||
       packSize <= 0
     ) {
       showMessage(
@@ -661,9 +686,7 @@ export default function StockPage() {
 
     if (
       productForm.openingStock.trim() === "" ||
-      !Number.isFinite(
-        openingStock,
-      ) ||
+      !Number.isFinite(openingStock) ||
       openingStock < 0
     ) {
       showMessage(
@@ -675,9 +698,7 @@ export default function StockPage() {
 
     if (
       productForm.reorderLevel.trim() === "" ||
-      !Number.isFinite(
-        reorderLevel,
-      ) ||
+      !Number.isFinite(reorderLevel) ||
       reorderLevel < 0
     ) {
       showMessage(
@@ -701,85 +722,148 @@ export default function StockPage() {
       return;
     }
 
-    const chemical =
-      addChemical({
-        name:
-          productName,
-        type:
-          productForm.type,
+    /*
+     * Create the product at zero stock first. Opening stock is then
+     * saved through the shared stock-movement transaction so the live
+     * balance and its audit entry cannot drift apart.
+     */
+    const createResult =
+      await addChemicalSafely({
+        name: productName,
+        type: productForm.type,
         packSize,
-        packUnit:
-          productForm.packUnit,
-        currentStock:
-          openingStock,
+        packUnit: productForm.packUnit,
+        currentStock: 0,
         reorderLevel,
         active: true,
       });
 
-    setMetadata(
-      (current) => ({
-        ...current,
-        [chemical.id]: {
-          supplier:
-            productForm.supplier.trim(),
-          preferredOrderQuantity,
-        },
-      }),
-    );
-
     if (
-      chemical.currentStock > 0
+      !createResult.success ||
+      !createResult.chemical
     ) {
-      recordStockMovement({
-        chemicalId:
-          chemical.id,
-        type:
-          "Adjustment",
-        packQuantity:
-          chemical.currentStock,
-        physicalAmount:
-          chemical.currentStock *
-          chemical.packSize,
-        physicalUnit:
-          chemical.packUnit,
-        balanceAfterPacks:
-          chemical.currentStock,
-        date:
-          todayDate(),
-        reference:
-          "Opening stock",
-        notes:
-          "Opening pack-equivalent stock entered when product was created.",
-        source:
-          "Stock Page",
-      });
+      showMessage(
+        createResult.message,
+        "error",
+      );
+      return;
     }
 
-    setSelectedChemicalId(
-      chemical.id,
-    );
-    setProductForm(
-      createEmptyProductForm(),
-    );
+    const chemical =
+      createResult.chemical;
+
+    setMetadata((current) => ({
+      ...current,
+      [chemical.id]: {
+        supplier:
+          productForm.supplier.trim(),
+        preferredOrderQuantity,
+      },
+    }));
+
+    setSelectedChemicalId(chemical.id);
+    setProductForm(createEmptyProductForm());
     setShowProductForm(false);
+
+    if (openingStock > 0) {
+      const openingStockResult =
+        await applyStockMovement(
+          {
+            chemicalId: chemical.id,
+            type: "Adjustment",
+            packQuantity:
+              roundToThreeDecimals(
+                openingStock,
+              ),
+            physicalAmount:
+              roundToThreeDecimals(
+                openingStock * packSize,
+              ),
+            physicalUnit:
+              productForm.packUnit,
+            balanceAfterPacks:
+              roundToThreeDecimals(
+                openingStock,
+              ),
+            date: todayDate(),
+            reference: "Opening stock",
+            notes:
+              "Opening pack-equivalent stock entered when product was created.",
+            source: "Stock Page",
+          },
+          openingStock,
+        );
+
+      if (!openingStockResult.success) {
+        showMessage(
+          `Product created with zero stock, but opening stock could not be saved. ${openingStockResult.message} Use Set stock count to enter the opening balance.`,
+          "error",
+        );
+        return;
+      }
+    }
 
     showMessage(
       "Product added to the Chemical Store and Stock page.",
     );
   }
 
-  function updateSelectedChemical(
-    changes:
-      Partial<ChemicalRecord>,
-  ) {
+  async function saveStockSettings() {
     if (!selectedChemical) {
       return;
     }
 
-    updateChemical({
-      ...selectedChemical,
-      ...changes,
-    });
+    const reorderLevel = Number(
+      stockSettingsDraft.reorderLevel,
+    );
+    const packSize = Number(
+      stockSettingsDraft.packSize,
+    );
+
+    if (
+      stockSettingsDraft.reorderLevel.trim() === "" ||
+      !Number.isFinite(reorderLevel) ||
+      reorderLevel < 0
+    ) {
+      showMessage(
+        "Enter a reorder level of zero or more pack-equivalents.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      stockSettingsDraft.packSize.trim() === "" ||
+      !Number.isFinite(packSize) ||
+      packSize <= 0
+    ) {
+      showMessage(
+        "Enter a valid pack size greater than zero.",
+        "error",
+      );
+      return;
+    }
+
+    const saveResult =
+      await updateChemicalSafely({
+        ...selectedChemical,
+        reorderLevel,
+        packSize,
+        packUnit:
+          stockSettingsDraft.packUnit,
+      });
+
+    if (!saveResult.success) {
+      showMessage(
+        saveResult.message,
+        "error",
+      );
+      return;
+    }
+
+    showMessage(
+      "Stock settings saved to the Chemical Store.",
+    );
   }
 
   function updateSelectedMetadata(
@@ -802,7 +886,7 @@ export default function StockPage() {
     );
   }
 
-  function archiveSelectedProduct() {
+  async function archiveSelectedProduct() {
     if (!selectedChemical) {
       return;
     }
@@ -816,10 +900,19 @@ export default function StockPage() {
       return;
     }
 
-    updateChemical({
-      ...selectedChemical,
-      active: false,
-    });
+    const archiveResult =
+      await updateChemicalSafely({
+        ...selectedChemical,
+        active: false,
+      });
+
+    if (!archiveResult.success) {
+      showMessage(
+        archiveResult.message,
+        "error",
+      );
+      return;
+    }
 
     showMessage(
       "Product archived in the Chemical Store.",
@@ -1426,22 +1519,15 @@ export default function StockPage() {
                           min="0"
                           step="0.001"
                           value={
-                            selectedChemical.reorderLevel
+                            stockSettingsDraft.reorderLevel
                           }
                           onChange={(event) =>
-                            updateSelectedChemical(
-                              {
+                            setStockSettingsDraft(
+                              (current) => ({
+                                ...current,
                                 reorderLevel:
-                                  Math.max(
-                                    0,
-                                    Number(
-                                      event
-                                        .target
-                                        .value,
-                                    ) ||
-                                      0,
-                                  ),
-                              },
+                                  event.target.value,
+                              }),
                             )
                           }
                           className={
@@ -1456,22 +1542,15 @@ export default function StockPage() {
                           min="0.001"
                           step="0.001"
                           value={
-                            selectedChemical.packSize
+                            stockSettingsDraft.packSize
                           }
                           onChange={(event) =>
-                            updateSelectedChemical(
-                              {
+                            setStockSettingsDraft(
+                              (current) => ({
+                                ...current,
                                 packSize:
-                                  Math.max(
-                                    0.001,
-                                    Number(
-                                      event
-                                        .target
-                                        .value,
-                                    ) ||
-                                      0.001,
-                                  ),
-                              },
+                                  event.target.value,
+                              }),
                             )
                           }
                           className={
@@ -1483,16 +1562,16 @@ export default function StockPage() {
                       <Field label="Pack unit">
                         <select
                           value={
-                            selectedChemical.packUnit
+                            stockSettingsDraft.packUnit
                           }
                           onChange={(event) =>
-                            updateSelectedChemical(
-                              {
+                            setStockSettingsDraft(
+                              (current) => ({
+                                ...current,
                                 packUnit:
-                                  event
-                                    .target
+                                  event.target
                                     .value as ChemicalUnit,
-                              },
+                              }),
                             )
                           }
                           className={
@@ -1566,15 +1645,25 @@ export default function StockPage() {
                       </Field>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={
-                        archiveSelectedProduct
-                      }
-                      className="mt-5 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-                    >
-                      Archive product
-                    </button>
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={saveStockSettings}
+                        className="rounded-xl bg-[#b42318] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#8f1d14]"
+                      >
+                        Save stock settings
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={
+                          archiveSelectedProduct
+                        }
+                        className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                      >
+                        Archive product
+                      </button>
+                    </div>
                   </article>
 
                   <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
