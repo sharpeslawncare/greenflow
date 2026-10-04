@@ -65,6 +65,7 @@ export default function StockPage() {
     addChemical,
     updateChemical,
     recordStockMovement,
+    applyStockMovement,
     clearStockMovements,
   } = useChemicalStore();
 
@@ -432,7 +433,7 @@ export default function StockPage() {
     setShowMovementForm(true);
   }
 
-  function saveMovement(
+  async function saveMovement(
     event:
       FormEvent<HTMLFormElement>,
   ) {
@@ -528,12 +529,6 @@ export default function StockPage() {
         ),
       );
 
-    updateChemical({
-      ...chemical,
-      currentStock:
-        roundedStock,
-    });
-
     const movementQuantity =
       movementForm.type ===
       "Usage"
@@ -544,33 +539,45 @@ export default function StockPage() {
             chemical.currentStock
           : quantity;
 
-    recordStockMovement({
-      chemicalId:
-        chemical.id,
-      type:
-        movementForm.type,
-      packQuantity:
-        roundToThreeDecimals(
-          movementQuantity,
-        ),
-      physicalAmount:
-        roundToThreeDecimals(
-          movementQuantity *
-            chemical.packSize,
-        ),
-      physicalUnit:
-        chemical.packUnit,
-      balanceAfterPacks:
+    const stockResult =
+      await applyStockMovement(
+        {
+          chemicalId:
+            chemical.id,
+          type:
+            movementForm.type,
+          packQuantity:
+            roundToThreeDecimals(
+              movementQuantity,
+            ),
+          physicalAmount:
+            roundToThreeDecimals(
+              movementQuantity *
+                chemical.packSize,
+            ),
+          physicalUnit:
+            chemical.packUnit,
+          balanceAfterPacks:
+            roundedStock,
+          date:
+            movementForm.date,
+          reference:
+            movementForm.reference.trim(),
+          notes:
+            movementForm.notes.trim(),
+          source:
+            "Stock Page",
+        },
         roundedStock,
-      date:
-        movementForm.date,
-      reference:
-        movementForm.reference.trim(),
-      notes:
-        movementForm.notes.trim(),
-      source:
-        "Stock Page",
-    });
+      );
+
+    if (!stockResult.success) {
+      showMessage(
+        stockResult.message,
+        "error",
+      );
+      return;
+    }
 
     setShowMovementForm(false);
 

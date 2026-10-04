@@ -210,6 +210,11 @@ type ChemicalStoreValue = {
     movement: NewChemicalStockMovement,
   ) => ChemicalStockMovement;
 
+  applyStockMovement: (
+    movement: NewChemicalStockMovement,
+    currentStockPacks: number,
+  ) => Promise<StockReconciliationResult>;
+
   reconcileChemicalStock: (
     chemicalId: string,
     actualPhysicalAmount: number,
@@ -1105,6 +1110,175 @@ export function ChemicalStoreProvider({
 
     return created;
   }
+
+  async function applyStockMovement(
+    movement: NewChemicalStockMovement,
+    currentStockPacks: number,
+  ): Promise<StockReconciliationResult> {
+    const chemical =
+      chemicalsRef.current.find(
+        (item) =>
+          item.id === movement.chemicalId,
+      );
+
+    if (!chemical) {
+      return {
+        success: false,
+        message:
+          "The selected product could not be found.",
+      };
+    }
+
+    if (
+      !Number.isFinite(
+        currentStockPacks,
+      ) ||
+      currentStockPacks < 0
+    ) {
+      return {
+        success: false,
+        message:
+          "The calculated stock balance is invalid.",
+      };
+    }
+
+    const nextPacks =
+      roundToThreeDecimals(
+        currentStockPacks,
+      );
+
+    const now =
+      new Date().toISOString();
+
+    const updatedChemical =
+      normaliseChemical({
+        ...chemical,
+        currentStock:
+          nextPacks,
+        updatedAt:
+          now,
+      });
+
+    const created:
+      ChemicalStockMovement = {
+        ...movement,
+        balanceAfterPacks:
+          nextPacks,
+        id:
+          createStockMovementId(),
+        createdAt:
+          now,
+      };
+
+    /*
+     * Save the new balance and its audit movement together before
+     * changing browser state. The API commits both in one database
+     * transaction.
+     */
+    try {
+      const response = await fetch(
+        "/api/chemicals/stock-movements",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            movement:
+              created,
+            chemical:
+              updatedChemical,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        let message =
+          "Unable to save stock movement to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        return {
+          success: false,
+          message,
+        };
+      }
+    } catch (saveError) {
+      console.error(
+        "Failed to save GreenFlow stock movement:",
+        saveError,
+      );
+
+      return {
+        success: false,
+        message:
+          "Unable to save stock movement to the GreenFlow database.",
+      };
+    }
+
+    const nextChemicals =
+      chemicalsRef.current.map(
+        (item) =>
+          item.id === chemical.id
+            ? updatedChemical
+            : item,
+      );
+
+    const nextMovements = [
+      created,
+      ...stockMovementsRef.current,
+    ];
+
+    chemicalsRef.current =
+      nextChemicals;
+
+    stockMovementsRef.current =
+      nextMovements;
+
+    setChemicals(
+      nextChemicals,
+    );
+
+    setStockMovements(
+      nextMovements,
+    );
+
+    return {
+      success: true,
+      message:
+        "Stock movement saved.",
+      currentStockPacks:
+        nextPacks,
+    };
+  }
+
   function reconcileChemicalStock(
     chemicalId: string,
     actualPhysicalAmount: number,
@@ -1884,6 +2058,7 @@ export function ChemicalStoreProvider({
         deductChemicalStockBatch,
 
         recordStockMovement,
+        applyStockMovement,
         reconcileChemicalStock,
         setChemicalStockPacks,
         clearStockMovements,
