@@ -42,7 +42,7 @@ type SeasonStoreValue = {
 
   deleteSeason: (
     seasonId: string,
-  ) => void;
+  ) => Promise<void>;
 
   getSeason: (
     year: number,
@@ -117,6 +117,11 @@ export function SeasonStoreProvider({
   const [ready, setReady] =
     useState(false);
 
+  const [
+    databaseLoaded,
+    setDatabaseLoaded,
+  ] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -164,6 +169,9 @@ export function SeasonStoreProvider({
           await fetch("/api/seasons");
 
         if (!response.ok) {
+          if (!cancelled) {
+            setSeasons([]);
+          }
           return;
         }
 
@@ -179,6 +187,9 @@ export function SeasonStoreProvider({
             payload.seasons,
           )
         ) {
+          if (!cancelled) {
+            setSeasons([]);
+          }
           return;
         }
 
@@ -203,11 +214,16 @@ export function SeasonStoreProvider({
         }
 
         setSeasons(databaseSeasons);
+        setDatabaseLoaded(true);
       } catch (error) {
         console.error(
           "Failed to hydrate GreenFlow seasons from PostgreSQL:",
           error,
         );
+
+        if (!cancelled) {
+          setSeasons([]);
+        }
       } finally {
         if (!cancelled) {
           setReady(true);
@@ -222,7 +238,10 @@ export function SeasonStoreProvider({
     };
   }, []);
   useEffect(() => {
-    if (!ready) {
+    if (
+      !ready ||
+      !databaseLoaded
+    ) {
       return;
     }
 
@@ -248,7 +267,7 @@ export function SeasonStoreProvider({
         ...current,
       ].sort(sortSeasons);
     });
-  }, [ready]);
+  }, [ready, databaseLoaded]);
 
   useEffect(() => {
     if (!ready) {
@@ -352,13 +371,56 @@ export function SeasonStoreProvider({
     return season;
   }
 
-  function deleteSeason(
+  async function deleteSeason(
     seasonId: string,
   ) {
+    const season =
+      seasons.find(
+        (item) =>
+          item.id === seasonId,
+      );
+
+    if (!season) {
+      return;
+    }
+
+    const response =
+      await fetch("/api/seasons", {
+        method: "DELETE",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          seasonId: season.id,
+          year: season.year,
+        }),
+      });
+
+    if (!response.ok) {
+      let message =
+        "Unable to delete season from PostgreSQL.";
+
+      try {
+        const payload =
+          await response.json() as {
+            error?: string;
+          };
+
+        if (payload.error) {
+          message = payload.error;
+        }
+      } catch {
+        // Keep the fallback message.
+      }
+
+      throw new Error(message);
+    }
+
     setSeasons((current) =>
       current.filter(
-        (season) =>
-          season.id !== seasonId,
+        (item) =>
+          item.id !== seasonId,
       ),
     );
   }

@@ -47,7 +47,6 @@ async function getCurrentMembership() {
   };
 }
 
-
 function isSeasonPayload(
   value: unknown,
 ): value is Record<string, unknown> & {
@@ -156,6 +155,7 @@ export async function POST(request: Request) {
     );
   }
 }
+
 export async function GET() {
   const { error, membership } =
     await getCurrentMembership();
@@ -187,6 +187,76 @@ export async function GET() {
       {
         error:
           "Unable to load seasons from PostgreSQL.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const { error, membership } =
+    await getCurrentMembership();
+
+  if (error || !membership) {
+    return error;
+  }
+
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON request body." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    typeof body !== "object" ||
+    body === null
+  ) {
+    return NextResponse.json(
+      { error: "Invalid season delete payload." },
+      { status: 400 },
+    );
+  }
+
+  const year =
+    (body as { year?: unknown }).year;
+
+  if (
+    typeof year !== "number" ||
+    !Number.isInteger(year)
+  ) {
+    return NextResponse.json(
+      { error: "A valid season year is required." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    await prisma.season.deleteMany({
+      where: {
+        organisationId:
+          membership.organisationId,
+        year,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+    });
+  } catch (deleteError) {
+    console.error(
+      "Failed to delete GreenFlow season:",
+      deleteError,
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Unable to delete season from PostgreSQL.",
       },
       { status: 500 },
     );
