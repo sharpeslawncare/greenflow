@@ -1,1526 +1,3051 @@
 "use client";
 
+
+
 import Link from "next/link";
+
 import {
+
   type CSSProperties,
+
   type ReactNode,
+
   useEffect,
+
   useMemo,
+
   useState,
+
 } from "react";
 
+
+
 import { AppShell } from "@/components/app-shell";
+
 import {
+
   type StoredCustomer,
+
   useCustomerStore,
+
 } from "@/components/customer-store";
+
 import {
+
   type CustomerProgramme,
+
   type ProgrammeVisit,
+
   useProgrammeStore,
+
 } from "@/components/programme-store";
+
 import {
+
   getSeasonCycleLabel,
+
   isDateInSeasonCycle,
+
   type SeasonCalendar,
+
   useSeasonStore,
+
 } from "@/components/season-store";
+
 import { formatProgrammeTreatmentLabel } from "@/lib/programme-treatment-labels";
 
+
+
 type ProgrammeMessageTone =
+
   | "success"
+
   | "error";
 
+
+
 type VisitDisplayRow = {
+
   visitNumber: number;
+
   treatmentName: string;
+
   groupDate: string;
+
   visit: ProgrammeVisit | null;
+
   included: boolean;
+
   overridden: boolean;
+
 };
+
+
 
 const OVERRIDE_NOTE = "[date override]";
 
+
+
 const inputClass =
+
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
+
+
 export default function ProgrammesPage() {
+
   const {
+
     customers,
+
     ready: customersReady,
+
   } = useCustomerStore();
 
+
+
   const {
+
     seasons,
+
     ready: seasonsReady,
+
   } = useSeasonStore();
 
+
+
   const {
+
     programmes,
+
     ready: programmesReady,
+
     getCurrentProgrammeForCustomer,
+
     getNextProgrammeForCustomer,
+
     customerNeedsNextProgramme,
+
     applySeasonDatesToCustomer,
+
     saveProgramme,
+
   } = useProgrammeStore();
 
+
+
   const currentYear =
+
     new Date().getFullYear();
 
+
+
   const [selectedYear, setSelectedYear] =
+
     useState(currentYear);
 
-  const [
-    selectedCustomerNumber,
-    setSelectedCustomerNumber,
-  ] = useState("");
+
 
   const [
+
+    selectedCustomerNumber,
+
+    setSelectedCustomerNumber,
+
+  ] = useState("");
+
+
+
+  const [
+
     editingVisitNumber,
+
     setEditingVisitNumber,
+
   ] = useState<number | null>(
+
     null,
+
   );
 
+
+
   const [
+
     replacementDate,
+
     setReplacementDate,
+
   ] = useState("");
 
+
+
   const [search, setSearch] =
+
     useState("");
+
+
 
   const [message, setMessage] =
+
     useState("");
 
+
+
   const [messageTone, setMessageTone] =
+
     useState<ProgrammeMessageTone>(
+
       "success",
+
     );
+
+
 
   const activeCustomers =
+
     useMemo(
+
       () =>
+
         customers
+
           .filter(
+
             (customer) =>
+
               customer.status ===
+
               "Active",
+
           )
+
           .sort((first, second) => {
+
             if (
+
               first.groupNumber !==
+
               second.groupNumber
+
             ) {
+
               return (
+
                 first.groupNumber -
+
                 second.groupNumber
+
               );
+
             }
 
+
+
             return first.fullName.localeCompare(
+
               second.fullName,
+
             );
+
           }),
+
       [customers],
+
     );
+
+
 
   const availableYears =
+
     useMemo(() => {
+
       const years =
+
         seasons.map(
+
           (season) =>
+
             season.year,
+
         );
 
+
+
       if (
+
         !years.includes(
+
           currentYear,
+
         )
+
       ) {
+
         years.push(
+
           currentYear,
+
         );
+
       }
+
+
 
       return Array.from(
+
         new Set(years),
+
       ).sort(
+
         (first, second) =>
+
           second - first,
+
       );
+
     }, [
+
       seasons,
+
       currentYear,
+
     ]);
 
+
+
   useEffect(() => {
+
     const params =
+
       new URLSearchParams(
+
         window.location.search,
+
       );
+
+
 
     const requestedYear =
+
       Number(
+
         params.get("year"),
+
       );
 
+
+
     if (
+
       Number.isInteger(
+
         requestedYear,
+
       ) &&
+
       requestedYear >= 2020 &&
+
       requestedYear <= 2100
+
     ) {
+
       setSelectedYear(
+
         requestedYear,
+
       );
+
     }
+
   }, []);
 
+
+
   useEffect(() => {
+
     if (
+
       selectedCustomerNumber ||
+
       activeCustomers.length ===
+
         0
+
     ) {
+
       return;
+
     }
 
+
+
     setSelectedCustomerNumber(
+
       activeCustomers[0]
+
         .customerNumber,
+
     );
+
   }, [
+
     activeCustomers,
+
     selectedCustomerNumber,
+
   ]);
 
+
+
   const selectedCustomer =
+
     activeCustomers.find(
+
       (customer) =>
+
         customer.customerNumber ===
+
         selectedCustomerNumber,
+
     ) ?? null;
+
+
 
   const selectedSeason =
+
     seasons.find(
+
       (season) =>
+
         season.year ===
+
         selectedYear,
+
     ) ?? null;
+
+
 
   const selectedProgramme =
+
     selectedCustomer
+
       ? programmes.find(
+
           (programme) =>
+
             String(
+
               programme.customerNumber,
+
             ).trim() ===
+
               String(
+
                 selectedCustomer.customerNumber,
+
               ).trim() &&
+
             programme.year ===
+
               selectedYear,
+
         )
+
       : undefined;
+
+
 
   const currentProgramme =
+
     selectedCustomer
+
       ? getCurrentProgrammeForCustomer(
+
           selectedCustomer.customerNumber,
+
         )
+
       : undefined;
+
+
 
   const nextProgramme =
+
     selectedCustomer
+
       ? getNextProgrammeForCustomer(
+
           selectedCustomer.customerNumber,
+
         )
+
       : undefined;
 
+
+
   const nextProgrammeRequired =
+
     selectedCustomer
+
       ? customerNeedsNextProgramme(
+
           selectedCustomer.customerNumber,
+
         )
+
       : false;
 
+
+
   const nextProgrammeYear =
+
     (currentProgramme?.year ??
+
       selectedYear) + 1;
 
+
+
   const nextSeason =
+
     seasons.find(
+
       (season) =>
+
         season.year ===
+
         nextProgrammeYear,
+
     ) ?? null;
 
+
+
   const lifecycleAppliesToSelection =
+
     Boolean(
+
       currentProgramme &&
+
         currentProgramme.year ===
+
           selectedYear,
+
     );
 
+
+
   const selectedGroupDates =
+
     selectedCustomer &&
+
     selectedSeason
+
       ? selectedSeason.groupDates.find(
+
           (group) =>
+
             group.groupNumber ===
+
             selectedCustomer.groupNumber,
+
         ) ?? null
+
       : null;
 
+
+
   const visitRows =
+
     useMemo<VisitDisplayRow[]>(() => {
+
       if (
+
         !selectedSeason ||
+
         !selectedGroupDates
+
       ) {
+
         return [];
+
       }
 
+
+
       return selectedSeason.treatmentRounds.map(
+
         (round, index) => {
+
           const visit =
+
             selectedProgramme?.visits.find(
+
               (item) =>
+
                 item.visitNumber ===
+
                 round.visitNumber,
+
             ) ?? null;
 
+
+
           const groupDate =
+
             selectedGroupDates
+
               .treatmentDates[index];
 
+
+
           return {
+
             visitNumber:
+
               round.visitNumber,
 
+
+
             treatmentName:
+
               round.treatmentName,
+
+
 
             groupDate,
 
+
+
             visit,
 
+
+
             included:
+
               Boolean(visit),
 
+
+
             overridden:
+
               Boolean(
+
                 visit &&
+
                   visit.scheduledDate !==
+
                     groupDate,
+
               ),
+
           };
+
         },
+
       );
+
     }, [
+
       selectedSeason,
+
       selectedGroupDates,
+
       selectedProgramme,
+
     ]);
+
+
 
   const filteredCustomers =
+
     useMemo(() => {
+
       const query =
+
         search.trim().toLowerCase();
 
+
+
       if (!query) {
+
         return activeCustomers;
+
       }
 
+
+
       return activeCustomers.filter(
+
         (customer) =>
+
           [
+
             customer.customerNumber,
+
             customer.fullName,
+
             customer.address,
+
             customer.postcode,
+
             String(
+
               customer.groupNumber,
+
             ),
+
           ].some((value) =>
+
             value
+
               .toLowerCase()
+
               .includes(query),
+
           ),
+
       );
+
     }, [
+
       activeCustomers,
+
       search,
+
     ]);
 
+
+
   const groupCustomerCount =
+
     selectedCustomer
+
       ? activeCustomers.filter(
+
           (customer) =>
+
             customer.groupNumber ===
+
             selectedCustomer.groupNumber,
+
         ).length
+
       : 0;
 
+
+
   const includedVisitCount =
+
     visitRows.filter(
+
       (row) =>
+
         row.included,
+
     ).length;
+
+
 
   const overriddenVisitCount =
+
     visitRows.filter(
+
       (row) =>
+
         row.overridden,
+
     ).length;
 
+
+
   function chooseCustomer(
+
     customerNumber: string,
+
   ) {
+
     setSelectedCustomerNumber(
+
       customerNumber,
+
     );
+
+
+
 
 
     setEditingVisitNumber(
+
       null,
+
     );
 
+
+
     setReplacementDate("");
+
   }
+
+
 
   function beginOverride(
+
     row: VisitDisplayRow,
+
   ) {
+
     if (!row.visit) {
+
       showMessage(
+
         "This treatment round is not part of the customer's programme.",
+
         "error",
+
       );
+
       return;
+
     }
+
+
 
     if (
+
       row.visit.status ===
+
         "Completed" ||
+
       row.visit.status ===
+
         "Skipped"
+
     ) {
+
       showMessage(
+
         "Completed or skipped historical visits cannot be moved here.",
+
         "error",
+
       );
+
       return;
+
     }
 
+
+
     setEditingVisitNumber(
+
       row.visitNumber,
+
     );
+
+
 
     setReplacementDate(
+
       row.visit.scheduledDate,
+
     );
+
   }
+
+
 
   function cancelOverride() {
+
     setEditingVisitNumber(
+
       null,
+
     );
 
+
+
     setReplacementDate("");
+
   }
+
+
 
   async function saveOverride(
+
     row: VisitDisplayRow,
+
   ) {
+
     if (
+
       !selectedCustomer ||
+
       !selectedProgramme ||
+
       !selectedSeason ||
+
       !selectedGroupDates ||
+
       !row.visit
+
     ) {
+
       showMessage(
+
         "The customer programme, season or group calendar could not be loaded.",
+
         "error",
+
       );
+
       return;
+
     }
 
+
+
     if (
+
       !isDateValue(
+
         replacementDate,
+
       )
+
     ) {
+
       showMessage(
+
         "Choose a valid replacement date.",
+
         "error",
+
       );
+
       return;
+
     }
 
+
+
     if (
+
       !isDateInSeasonCycle(
+
         replacementDate,
+
         selectedYear,
+
       )
+
     ) {
+
       showMessage(
+
         `Choose a replacement date within the ${getSeasonCycleLabel(
+
           selectedYear,
+
         )} programme cycle.`,
+
         "error",
+
       );
+
       return;
+
     }
+
+
 
     const today =
+
       toDateValue(
+
         new Date(),
+
       );
+
+
 
     if (
+
       replacementDate < today
+
     ) {
+
       showMessage(
+
         "A treatment cannot be scheduled on a date that has already passed.",
+
         "error",
+
       );
+
       return;
+
     }
+
+
 
     const conflictingVisit =
+
       selectedProgramme.visits.find(
+
         (visit) =>
+
           visit.id !==
+
             row.visit?.id &&
+
           visit.status !==
+
             "Skipped" &&
+
           visit.scheduledDate ===
+
             replacementDate,
+
       );
+
+
 
     if (conflictingVisit) {
+
       showMessage(
+
         `This customer already has ${conflictingVisit.treatmentName} scheduled on ${formatDate(
+
           replacementDate,
+
         )}.`,
+
         "error",
+
       );
+
       return;
+
     }
+
+
 
     const updatedProgramme:
+
       CustomerProgramme = {
+
       ...selectedProgramme,
 
+
+
       visits:
+
         selectedProgramme.visits.map(
+
           (visit) => {
+
             if (
+
               visit.id !==
+
               row.visit?.id
+
             ) {
+
               return visit;
+
             }
 
+
+
             const returningToGroupDate =
+
               replacementDate ===
+
               row.groupDate;
 
+
+
             return {
+
               ...visit,
 
+
+
               scheduledDate:
+
                 replacementDate,
 
+
+
               notes:
+
                 returningToGroupDate
+
                   ? removeOverrideNote(
+
                       visit.notes,
+
                     )
+
                   : addOverrideNote(
+
                       visit.notes,
+
                       row.groupDate,
+
                       replacementDate,
+
                     ),
+
             };
+
           },
+
         ),
+
     };
 
+
+
     const result = await saveProgramme(
+
       updatedProgramme,
+
     );
+
     if (!result.success) {
+
       showMessage(
+
         result.message,
+
         "error",
+
       );
+
       return;
+
     }
 
+
+
     setEditingVisitNumber(
+
       null,
+
     );
+
+
 
     setReplacementDate("");
 
+
+
     showMessage(
+
       replacementDate ===
+
         row.groupDate
+
         ? `${formatProgrammeTreatmentLabel(row.treatmentName)} restored to the Group ${selectedCustomer.groupNumber} date.`
+
         : `${formatProgrammeTreatmentLabel(row.treatmentName)} moved to ${formatDate(
+
             replacementDate,
+
           )} for ${selectedCustomer.fullName} only.`,
+
     );
+
   }
 
-  function restoreAllGroupDates() {
+
+
+  async function restoreAllGroupDates() {
+
     if (!selectedCustomer) {
+
       return;
+
     }
+
+
 
     const confirmed =
+
       window.confirm(
+
         `Restore all active ${getSeasonCycleLabel(
+
           selectedYear,
+
         )} visits for ${selectedCustomer.fullName} to the standard Group ${selectedCustomer.groupNumber} dates?`,
+
       );
+
+
 
     if (!confirmed) {
+
       return;
+
     }
+
+
 
     const result =
-      applySeasonDatesToCustomer(
+
+      await applySeasonDatesToCustomer(
+
         selectedCustomer.customerNumber,
+
         selectedYear,
+
       );
+
+
 
     if (!result) {
+
       showMessage(
+
         "The season or group calendar could not be found.",
+
         "error",
+
       );
+
       return;
+
     }
 
+
+
     setEditingVisitNumber(
+
       null,
+
     );
+
+
 
     setReplacementDate("");
 
+
+
     showMessage(
+
       `${selectedCustomer.fullName}'s active visits now use the standard Group ${selectedCustomer.groupNumber} dates.`,
+
     );
+
   }
+
+
 
   function showMessage(
+
     text: string,
+
     tone: ProgrammeMessageTone = "success",
+
   ) {
+
     setMessage(text);
+
     setMessageTone(tone);
 
+
+
     window.setTimeout(() => {
+
       setMessage("");
+
     }, 3800);
+
   }
+
+
 
   const ready =
+
     customersReady &&
+
     seasonsReady &&
+
     programmesReady;
 
+
+
   if (!ready) {
+
     return (
+
       <AppShell>
+
         <main
+
           className="gf-page"
+
           style={
+
             {
+
               "--gf-page-accent": "#475569",
+
             } as CSSProperties
+
           }
+
         >
+
           <div className="gf-page-inner">
+
             <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
+
               Loading annual programmes...
+
             </div>
+
           </div>
+
         </main>
+
       </AppShell>
+
     );
+
   }
 
+
+
   return (
+
     <AppShell>
+
       <main
+
         className="gf-page"
+
         style={
+
           {
+
             "--gf-page-accent": "#475569",
+
           } as CSSProperties
+
         }
+
       >
+
         <div className="gf-page-inner">
+
           <header className="gf-page-header">
+
             <div className="gf-page-header-copy">
+
               <div className="gf-eyebrow">
+
                 Customer programmes
+
               </div>
 
+
+
               <h1 className="gf-h1">
+
                 Annual Programmes
+
               </h1>
 
+
+
               <p className="gf-page-description">
+
                 Review each customer's T1–T5 programme cycle. Standard dates come from their group calendar, with individual date changes kept as clear exceptions.
+
               </p>
+
             </div>
+
+
 
             <div className="flex flex-wrap items-end gap-3">
+
               <Field label="Programme cycle">
+
                 <select
+
                   value={selectedYear}
+
                   onChange={(event) => {
+
                     setSelectedYear(
+
                       Number(event.target.value),
+
                     );
 
+
+
                     setEditingVisitNumber(null);
+
                     setReplacementDate("");
+
                   }}
+
                   className="min-w-40 rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
+
                 >
+
                   {availableYears.map((year) => (
+
                     <option
+
                       key={year}
+
                       value={year}
+
                     >
+
                       {getSeasonCycleLabel(
+
                         year,
+
                       )}
+
                     </option>
+
                   ))}
+
                 </select>
+
               </Field>
 
-              <Link
-                href="/season-planner"
-                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Season Planner
-              </Link>
+
 
               <Link
-                href="/customers"
-                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+
+                href="/season-planner"
+
+                className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+
               >
-                Customer accounts
+
+                Season Planner
+
               </Link>
+
+
+
+              <Link
+
+                href="/customers"
+
+                className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
+
+              >
+
+                Customer accounts
+
+              </Link>
+
             </div>
+
           </header>
 
+
+
           {message && (
+
             <div
+
               role={
+
                 messageTone === "error"
+
                   ? "alert"
+
                   : "status"
+
               }
+
               className={`mb-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+
                 messageTone === "error"
+
                   ? "border-red-200 bg-red-50 text-red-800"
+
                   : "border-green-200 bg-green-50 text-green-800"
+
               }`}
+
             >
+
               {message}
+
             </div>
+
           )}
+
+
 
           {!selectedSeason && (
+
             <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+
               No programme calendar exists for{" "}
+
               {getSeasonCycleLabel(
+
                 selectedYear,
+
               )}. Create it in the{" "}
+
               <Link
+
                 href="/season-planner"
+
                 className="font-bold underline"
+
               >
+
                 Season Planner
+
               </Link>
+
               .
+
             </section>
+
           )}
 
+
+
           <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+
             <ProgrammeOverviewCard
+
               label="Active customers"
+
               value={String(activeCustomers.length)}
+
               detail="Customers eligible for programme scheduling"
+
             />
 
+
+
             <ProgrammeOverviewCard
+
               label="Programme cycle"
+
               value={getSeasonCycleLabel(
+
                 selectedYear,
+
               )}
+
               detail={
+
                 selectedSeason
+
                   ? `${selectedSeason.treatmentRounds.length} standard T1–T5 rounds`
+
                   : "Programme calendar not yet available"
+
               }
+
               warning={!selectedSeason}
+
             />
 
+
+
             <ProgrammeOverviewCard
+
               label="Selected customer"
+
               value={
+
                 selectedCustomer
+
                   ? selectedCustomer.fullName
+
                   : "None"
+
               }
+
               detail={
+
                 selectedCustomer
+
                   ? `Group ${selectedCustomer.groupNumber} · Customer ${selectedCustomer.customerNumber}`
+
                   : "Choose an account below"
+
               }
+
             />
 
+
+
             <ProgrammeOverviewCard
+
               label="Programme status"
+
               value={
+
                 selectedProgramme
+
                   ? `${includedVisitCount} included`
+
                   : "Not available"
+
               }
+
               detail={
+
                 selectedProgramme
+
                   ? overriddenVisitCount > 0
+
                     ? `${overriddenVisitCount} customer-specific date override${
+
                         overriddenVisitCount === 1 ? "" : "s"
+
                       }`
+
                     : "Using standard group dates"
+
                   : "No inherited programme for this selection"
+
               }
+
               warning={Boolean(
+
                 selectedProgramme &&
+
                   overriddenVisitCount > 0,
+
               )}
+
             />
+
           </section>
+
+
 
           <section className="grid gap-4 xl:grid-cols-[390px_1fr]">
+
             <aside className="space-y-4">
+
               <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+
                 <div className="mb-4">
+
                   <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+
                     Customer list
+
                   </div>
+
                   <h2 className="gf-h2 mt-1">
+
                     Find an account
+
                   </h2>
+
                   <p className="mt-1 text-sm leading-5 text-slate-500">
+
                     Select an active customer to review their {getSeasonCycleLabel(
+
                       selectedYear,
+
                     )} programme.
+
                   </p>
+
                 </div>
+
+
 
                 <Field label="Search customers">
+
                   <input
+
                     value={search}
+
                     onChange={(event) =>
+
                       setSearch(
+
                         event.target.value,
+
                       )
+
                     }
+
                     placeholder="Name, customer number, postcode or group"
+
                     className={inputClass}
+
                   />
+
                 </Field>
 
+
+
                 <div className="mt-4 max-h-[70vh] space-y-2 overflow-y-auto pr-1">
+
                   {filteredCustomers.length ===
+
                   0 ? (
+
                     <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+
                       No active customers match the
+
                       search.
+
                     </div>
+
                   ) : (
+
                     filteredCustomers.map(
+
                       (customer) => {
+
                         const selected =
+
                           customer.customerNumber ===
+
                           selectedCustomerNumber;
 
+
+
                         const programme =
+
                           programmes.find(
+
                             (item) =>
+
                               item.customerNumber ===
+
                                 customer.customerNumber &&
+
                               item.year ===
+
                                 selectedYear,
+
                           );
+
+
 
                         return (
+
                           <button
+
                             key={
+
                               customer.customerNumber
+
                             }
+
                             type="button"
+
                             onClick={() =>
+
                               chooseCustomer(
+
                                 customer.customerNumber,
+
                               )
+
                             }
+
                             className={`w-full rounded-xl border p-4 text-left transition ${
+
                               selected
+
                                 ? "border-[#338b45] bg-green-50"
+
                                 : "border-slate-200 hover:bg-slate-50"
+
                             }`}
+
                           >
+
                             <div className="flex items-start justify-between gap-3">
+
                               <div>
+
                                 <div className="font-bold">
+
                                   {
+
                                     customer.fullName
+
                                   }
+
                                 </div>
 
+
+
                                 <div className="mt-1 text-xs text-slate-500">
+
                                   Customer{" "}
+
                                   {
+
                                     customer.customerNumber
+
                                   }
+
                                 </div>
+
                               </div>
+
+
 
                               <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
+
                                 Group{" "}
+
                                 {
+
                                   customer.groupNumber
+
                                 }
+
                               </span>
+
                             </div>
+
+
 
                             <div className="mt-2 text-sm text-slate-600">
+
                               {customer.address},{" "}
+
                               {customer.postcode}
+
                             </div>
+
+
 
                             <div className="mt-3 text-xs font-semibold text-slate-500">
+
                               {programme
+
                                 ? `${programme.visits.length} included treatment${
+
                                     programme.visits.length ===
+
                                     1
+
                                       ? ""
+
                                       : "s"
+
                                   }`
+
                                 : "No inherited programme available"}
+
                             </div>
+
                           </button>
+
                         );
+
                       },
+
                     )
+
                   )}
+
                 </div>
+
               </article>
+
             </aside>
 
+
+
             <section className="min-w-0 space-y-4">
+
               {!selectedCustomer ? (
+
                 <EmptyPanel>
+
                   Select an active customer to review
+
                   their inherited group schedule.
+
                 </EmptyPanel>
+
               ) : (
+
                 <>
+
                   {lifecycleAppliesToSelection &&
+
                     nextProgrammeRequired &&
+
                     !nextSeason && (
+
                       <article className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+
                         <div className="flex flex-wrap items-start justify-between gap-4">
+
                           <div className="max-w-3xl">
+
                             <div className="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">
+
                               Next programme required
+
                             </div>
+
+
 
                             <h2 className="mt-1 text-xl font-bold text-amber-950">
+
                               T4 is complete — create the next T1–T5 programme
+
                             </h2>
 
+
+
                             <p className="mt-2 text-sm leading-6 text-amber-900">
+
                               The {getSeasonCycleLabel(
+
                                 nextProgrammeYear,
+
                               )} programme calendar has not been created yet. Set it up once in Season Planner; the current T5 stays exactly where it is while GreenFlow prepares the following T1–T5 cycle.
+
                             </p>
+
                           </div>
 
+
+
                           <Link
+
                             href={`/season-planner?year=${nextProgrammeYear}&nextCycle=1`}
+
                             className="inline-flex h-11 items-center rounded-xl bg-amber-700 px-5 text-sm font-bold text-white hover:bg-amber-800"
+
                           >
+
                             Set up{" "}
+
                             {getSeasonCycleLabel(
+
                               nextProgrammeYear,
+
                             )}{" "}
+
                             calendar
+
                           </Link>
+
                         </div>
+
                       </article>
+
                     )}
+
+
 
                   {lifecycleAppliesToSelection &&
+
                     nextProgramme && (
+
                       <article className="rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
+
                         <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+
                           Next programme ready
+
                         </div>
+
+
 
                         <h2 className="mt-1 text-lg font-bold text-green-950">
+
                           {getSeasonCycleLabel(
+
                             nextProgramme.year,
+
                           )} T1–T5 is already planned
+
                         </h2>
 
+
+
                         <p className="mt-1 text-sm leading-6 text-green-900">
+
                           The current cycle remains operational until its remaining T5 is completed. The following T1 is already known, so the customer can continue into the next cycle without a scheduling gap.
+
                         </p>
+
                       </article>
+
                     )}
+
+
 
                   <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+
                     <div className="flex flex-wrap items-start justify-between gap-4">
+
                       <div>
+
                         <div className="flex flex-wrap items-center gap-3">
+
                           <h2 className="text-2xl font-bold">
+
                             {
+
                               selectedCustomer.fullName
+
                             }
+
                           </h2>
 
+
+
                           <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800">
+
                             Group{" "}
+
                             {
+
                               selectedCustomer.groupNumber
+
                             }
+
                           </span>
 
+
+
                           {selectedProgramme && (
+
                             <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+
                               {getSeasonCycleLabel(
+
                                 selectedYear,
+
                               )} group schedule
+
                             </span>
+
                           )}
+
                         </div>
 
+
+
                         <p className="mt-2 text-sm text-slate-500">
+
                           Customer{" "}
+
                           {
+
                             selectedCustomer.customerNumber
+
                           }{" "}
+
                           · {selectedCustomer.address},{" "}
+
                           {selectedCustomer.postcode}
+
                         </p>
+
+
 
                         <p className="mt-1 text-sm text-slate-500">
+
                           {selectedCustomer.programmeStartDate
+
                             ? `Programme eligibility begins ${formatDate(
+
                                 selectedCustomer.programmeStartDate,
+
                               )}. Past treatment rounds are excluded automatically.`
+
                             : "Established customer: all standard group rounds remain visible, including historical dates."}
+
                         </p>
+
                       </div>
+
+
 
                       <button
+
                         type="button"
+
                         onClick={
+
                           restoreAllGroupDates
+
                         }
+
                         disabled={
+
                           !selectedProgramme ||
+
                           overriddenVisitCount ===
+
                             0
+
                         }
+
                         className="h-11 rounded-xl border border-[#338b45] bg-white px-4 text-sm font-semibold text-[#176b37] hover:bg-green-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+
                       >
+
                         Restore group dates
+
                       </button>
+
                     </div>
+
+
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+
                       <SummaryCard
+
                         label="Assigned group"
+
                         value={String(
+
                           selectedCustomer.groupNumber,
+
                         )}
+
                         detail={`${groupCustomerCount} active customer${
+
                           groupCustomerCount ===
+
                           1
+
                             ? ""
+
                             : "s"
+
                         } in this group`}
+
                       />
 
+
+
                       <SummaryCard
+
                         label="Included rounds"
+
                         value={`${includedVisitCount}/5`}
+
                         detail="Eligible treatments"
+
                       />
 
+
+
                       <SummaryCard
+
                         label="Date overrides"
+
                         value={String(
+
                           overriddenVisitCount,
+
                         )}
+
                         detail="Customer-specific changes"
+
                       />
 
+
+
                       <SummaryCard
+
                         label="Standard price"
+
                         value={`£${selectedCustomer.treatmentPrice.toFixed(
+
                           2,
+
                         )}`}
+
                         detail="Per treatment visit"
+
                       />
+
                     </div>
+
                   </article>
+
+
 
                   <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+
                     <div className="border-b border-slate-200 p-5">
+
                       <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+
                         Schedule of works
+
                       </div>
+
                       <h2 className="mt-1 text-xl font-bold text-slate-950">
+
                         {getSeasonCycleLabel(
+
                           selectedYear,
+
                         )} T1–T5 programme
+
                       </h2>
+
                       <p className="mt-1 text-sm leading-6 text-slate-500">
+
                         Group dates are the normal schedule. Override a date only when this customer needs to be treated differently.
+
                       </p>
+
                     </div>
+
+
 
                     <div className="grid grid-cols-[75px_1.3fr_170px_170px_150px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+
                       <span>Round</span>
+
                       <span>Treatment</span>
+
                       <span>Group date</span>
+
                       <span>Customer date</span>
+
                       <span>Action</span>
+
                     </div>
 
+
+
                     {visitRows.length === 0 ? (
+
                       <div className="p-12 text-center text-sm text-slate-500">
+
                         The selected group does not
+
                         have dates for this season.
+
                       </div>
+
                     ) : (
+
                       visitRows.map(
+
                         (row) => {
+
                           const editing =
+
                             editingVisitNumber ===
+
                             row.visitNumber;
 
+
+
                           return (
+
                             <div
+
                               key={
+
                                 row.visitNumber
+
                               }
+
                               className="grid grid-cols-[75px_1.3fr_170px_170px_150px] items-center gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-0"
+
                             >
+
                               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#176b37] font-bold text-white">
+
                                 {
+
                                   row.visitNumber
+
                                 }
+
                               </div>
 
+
+
                               <div>
+
                                 <div className="font-bold">
+
                                   {
+
                                     row.treatmentName
+
                                   }
+
                                 </div>
 
+
+
                                 <div className="mt-1 text-xs text-slate-500">
+
                                   {row.visitNumber ===
+
                                   1
+
                                     ? "Season starting round"
+
                                     : `${selectedSeason?.treatmentRounds[
+
                                         row.visitNumber -
+
                                           1
+
                                       ]
+
                                         ?.gapAfterPreviousDays ?? 70} day standard gap`}
+
                                 </div>
+
                               </div>
 
+
+
                               <div>
+
                                 <div className="font-semibold">
+
                                   {formatDate(
+
                                     row.groupDate,
+
                                   )}
+
                                 </div>
+
+
 
                                 <div className="mt-1 text-xs text-slate-500">
+
                                   Group{" "}
+
                                   {
+
                                     selectedCustomer.groupNumber
+
                                   }
+
                                 </div>
+
                               </div>
 
+
+
                               <div>
+
                                 {!row.included ? (
+
                                   <div>
+
                                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+
                                       Not included
+
                                     </span>
 
+
+
                                     <div className="mt-2 text-xs text-slate-500">
+
                                       Date passed before this
+
                                       customer became eligible.
+
                                     </div>
+
                                   </div>
+
                                 ) : editing ? (
+
                                   <input
+
                                     type="date"
+
                                     min={toDateValue(
+
                                       new Date(),
+
                                     )}
+
                                     value={
+
                                       replacementDate
+
                                     }
+
                                     onChange={(
+
                                       event,
+
                                     ) =>
+
                                       setReplacementDate(
+
                                         event.target
+
                                           .value,
+
                                       )
+
                                     }
+
                                     className={
+
                                       inputClass
+
                                     }
+
                                   />
+
                                 ) : (
+
                                   <div>
+
                                     <div className="font-semibold">
+
                                       {formatDate(
+
                                         row.visit
+
                                           ?.scheduledDate ??
+
                                           "",
+
                                       )}
+
                                     </div>
+
+
 
                                     <div className="mt-1">
+
                                       {row.overridden ? (
+
                                         <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
+
                                           Override
+
                                         </span>
+
                                       ) : (
+
                                         <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-800">
+
                                           Group date
+
                                         </span>
+
                                       )}
+
                                     </div>
+
                                   </div>
+
                                 )}
+
                               </div>
+
+
 
                               <div>
+
                                 {!row.visit ? (
+
                                   <span className="text-xs font-semibold text-slate-400">
+
                                     Unavailable
+
                                   </span>
+
                                 ) : editing ? (
+
                                   <div className="flex flex-col gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        saveOverride(
-                                          row,
-                                        )
-                                      }
-                                      className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
-                                    >
-                                      Save date
-                                    </button>
 
                                     <button
+
                                       type="button"
-                                      onClick={
-                                        cancelOverride
+
+                                      onClick={() =>
+
+                                        saveOverride(
+
+                                          row,
+
+                                        )
+
                                       }
-                                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+
+                                      className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+
                                     >
-                                      Cancel
+
+                                      Save date
+
                                     </button>
+
+
+
+                                    <button
+
+                                      type="button"
+
+                                      onClick={
+
+                                        cancelOverride
+
+                                      }
+
+                                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+
+                                    >
+
+                                      Cancel
+
+                                    </button>
+
                                   </div>
+
                                 ) : (
+
                                   <button
+
                                     type="button"
+
                                     onClick={() =>
+
                                       beginOverride(
+
                                         row,
+
                                       )
+
                                     }
+
                                     disabled={
+
                                       row.visit.status ===
+
                                         "Completed" ||
+
                                       row.visit.status ===
+
                                         "Skipped"
+
                                     }
+
                                     className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+
                                   >
+
                                     {row.overridden
+
                                       ? "Change override"
+
                                       : "Override date"}
+
                                   </button>
+
                                 )}
+
                               </div>
+
                             </div>
+
                           );
+
                         },
+
                       )
+
                     )}
+
                   </article>
+
+
 
                   <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-950">
+
                     <h2 className="font-bold">
+
                       How programme dates work
+
                     </h2>
 
+
+
                     <p className="mt-1">
+
                       The Season Planner sets the standard T1–T5 calendar for each group.
+
                       T1 starts in the opening year and later rounds may continue into the
+
                       following year. After T4 is completed, create the next cycle so the
+
                       customer's next T1 is already known before the current T5 is completed.
+
                       Individual date overrides remain customer-specific.
+
                     </p>
+
                   </article>
+
                 </>
+
               )}
+
             </section>
+
           </section>
+
         </div>
+
       </main>
+
     </AppShell>
+
   );
+
 }
+
+
 
 function addOverrideNote(
+
   existingNotes: string,
+
   groupDate: string,
+
   replacementDate: string,
+
 ) {
+
   const cleaned =
+
     removeOverrideNote(
+
       existingNotes,
+
     );
 
+
+
   return [
+
     cleaned,
+
     `${OVERRIDE_NOTE} Standard group date ${formatDate(
+
       groupDate,
+
     )}; customer date ${formatDate(
+
       replacementDate,
+
     )}.`,
+
   ]
+
     .filter(Boolean)
+
     .join("\n");
+
 }
+
+
 
 function removeOverrideNote(
+
   notes: string,
+
 ) {
+
   return notes
+
     .split("\n")
+
     .filter(
+
       (line) =>
+
         !line.includes(
+
           OVERRIDE_NOTE,
+
         ),
+
     )
+
     .join("\n")
+
     .trim();
+
 }
+
+
 
 function parseDate(
+
   value: string,
+
 ) {
+
   const [year, month, day] =
+
     value
+
       .split("-")
+
       .map(Number);
 
+
+
   return new Date(
+
     year,
+
     month - 1,
+
     day,
+
   );
+
 }
+
+
 
 function isDateValue(
+
   value: string,
+
 ) {
+
   if (
+
     !/^\d{4}-\d{2}-\d{2}$/.test(
+
       value,
+
     )
+
   ) {
+
     return false;
+
   }
+
+
 
   const date =
+
     parseDate(value);
 
+
+
   return (
+
     !Number.isNaN(
+
       date.getTime(),
+
     ) &&
+
     toDateValue(date) === value
+
   );
+
 }
+
+
 
 function toDateValue(
+
   date: Date,
+
 ) {
+
   const year =
+
     date.getFullYear();
 
+
+
   const month =
+
     String(
+
       date.getMonth() + 1,
+
     ).padStart(2, "0");
+
+
 
   const day =
+
     String(
+
       date.getDate(),
+
     ).padStart(2, "0");
 
+
+
   return `${year}-${month}-${day}`;
+
 }
+
+
 
 function formatDate(
+
   value: string,
+
 ) {
+
   if (!isDateValue(value)) {
+
     return "No date";
+
   }
 
+
+
   return new Intl.DateTimeFormat(
+
     "en-GB",
+
     {
+
       day: "numeric",
+
       month: "short",
+
       year: "numeric",
+
     },
+
   ).format(parseDate(value));
+
 }
+
+
 
 function Field({
+
   label,
+
   children,
+
 }: {
+
   label: string;
+
   children: ReactNode;
+
 }) {
+
   return (
+
     <label className="block">
+
       <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+
         {label}
+
       </span>
 
+
+
       {children}
+
     </label>
+
   );
+
 }
+
+
 
 function ProgrammeOverviewCard({
+
   label,
+
   value,
+
   detail,
+
   warning = false,
+
 }: {
+
   label: string;
+
   value: string;
+
   detail: string;
+
   warning?: boolean;
+
 }) {
+
   return (
+
     <article
+
       className={`rounded-2xl border p-4 shadow-sm ${
+
         warning
+
           ? "border-amber-200 bg-amber-50"
+
           : "border-slate-200 bg-white"
+
       }`}
+
     >
+
       <div
+
         className={`text-xs font-bold uppercase tracking-[0.12em] ${
+
           warning ? "text-amber-700" : "text-slate-500"
+
         }`}
+
       >
+
         {label}
+
       </div>
+
+
 
       <div className="mt-2 truncate text-lg font-bold text-slate-950">
+
         {value}
+
       </div>
+
+
 
       <div
+
         className={`mt-1 text-xs leading-5 ${
+
           warning ? "text-amber-800" : "text-slate-500"
+
         }`}
+
       >
+
         {detail}
+
       </div>
+
     </article>
+
   );
+
 }
+
+
 
 function SummaryCard({
+
   label,
+
   value,
+
   detail,
+
 }: {
+
   label: string;
+
   value: string;
+
   detail: string;
+
 }) {
+
   return (
+
     <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+
       <div className="text-xs font-semibold text-slate-500">
+
         {label}
+
       </div>
+
+
 
       <div className="mt-1 text-xl font-bold">
+
         {value}
+
       </div>
+
+
 
       <div className="mt-1 text-xs text-slate-500">
+
         {detail}
+
       </div>
+
     </article>
+
   );
+
 }
 
+
+
 function EmptyPanel({
+
   children,
+
 }: {
+
   children: ReactNode;
+
 }) {
+
   return (
+
     <article className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-sm text-slate-500 shadow-sm">
+
       {children}
+
     </article>
+
   );
+
 }
