@@ -69,7 +69,7 @@ type SeasonStoreValue = {
 
   restoreDefaultSeason: (
     year?: number,
-  ) => void;
+  ) => Promise<void>;
 };
 
 const STORAGE_KEY =
@@ -177,12 +177,18 @@ export function SeasonStoreProvider({
         if (
           !Array.isArray(
             payload.seasons,
-          ) ||
-          payload.seasons.length === 0
+          )
         ) {
           return;
         }
 
+        /*
+         * A successful PostgreSQL response is authoritative,
+         * even when there are no saved seasons yet.
+         *
+         * This prevents an old browser-only season from being
+         * treated as Live business data on one particular device.
+         */
         const databaseSeasons =
           deduplicateSeasons(
             payload.seasons.map(
@@ -492,35 +498,20 @@ export function SeasonStoreProvider({
     );
   }
 
-  function restoreDefaultSeason(
+  async function restoreDefaultSeason(
     year =
       new Date().getFullYear(),
   ) {
     const restored =
       createDefaultSeason(year);
 
-    setSeasons((current) => {
-      const exists =
-        current.some(
-          (season) =>
-            season.year === year,
-        );
-
-      if (!exists) {
-        return [
-          restored,
-          ...current,
-        ].sort(sortSeasons);
-      }
-
-      return current
-        .map((season) =>
-          season.year === year
-            ? restored
-            : season,
-        )
-        .sort(sortSeasons);
-    });
+    /*
+     * Restoring defaults is an explicit business change.
+     * Save it centrally first so another device sees the
+     * same season and a failed database write cannot leave
+     * this browser pretending the restore succeeded.
+     */
+    await saveSeason(restored);
   }
 
   const value =

@@ -507,7 +507,7 @@ export default function SeasonPlannerPage() {
       );
     }
   }
-  function restoreDefaults() {
+  async function restoreDefaults() {
     const confirmed =
       window.confirm(
         `Restore the default T1–T5 calendar for ${getSeasonCycleLabel(
@@ -519,15 +519,29 @@ export default function SeasonPlannerPage() {
       return;
     }
 
-    restoreDefaultSeason(
-      selectedYear,
-    );
-
-    showMessage(
-      `${getSeasonCycleLabel(
+    try {
+      await restoreDefaultSeason(
         selectedYear,
-      )} defaults restored.`,
-    );
+      );
+
+      showMessage(
+        `${getSeasonCycleLabel(
+          selectedYear,
+        )} defaults restored and saved.`,
+      );
+    } catch (error) {
+      console.error(
+        "Failed to restore GreenFlow season defaults:",
+        error,
+      );
+
+      showMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to restore the season defaults.",
+        "error",
+      );
+    }
   }
 
   function showMessage(
