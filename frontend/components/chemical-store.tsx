@@ -168,6 +168,12 @@ export type StockReconciliationResult = {
   currentStockPacks?: number;
 };
 
+type ChemicalSaveResult = {
+  success: boolean;
+  message: string;
+  chemical?: ChemicalRecord;
+};
+
 type ChemicalStoreValue = {
   chemicals: ChemicalRecord[];
   stockMovements: ChemicalStockMovement[];
@@ -177,9 +183,17 @@ type ChemicalStoreValue = {
     input?: NewChemicalInput,
   ) => ChemicalRecord;
 
+  addChemicalSafely: (
+    input?: NewChemicalInput,
+  ) => Promise<ChemicalSaveResult>;
+
   updateChemical: (
     chemical: ChemicalRecord,
   ) => void;
+
+  updateChemicalSafely: (
+    chemical: ChemicalRecord,
+  ) => Promise<ChemicalSaveResult>;
 
   deleteChemical: (
     chemicalId: string,
@@ -853,6 +867,144 @@ export function ChemicalStoreProvider({
 
     return newChemical;
   }
+
+  async function addChemicalSafely(
+    input: NewChemicalInput = {},
+  ): Promise<ChemicalSaveResult> {
+    const now =
+      new Date().toISOString();
+
+    const newChemical =
+      normaliseChemical({
+        id: createChemicalId(),
+
+        name: "New chemical",
+        manufacturer: "",
+        type: "Other",
+
+        activeIngredients: "",
+        registrationNumber: "",
+
+        productInformationUrl: "",
+        productLabelUrl: "",
+        safetyDataSheetUrl: "",
+
+        packSize: 1,
+        packUnit: "L",
+        costPerPack: 0,
+
+        currentStock: 0,
+        reorderLevel: 0,
+
+        applicationRate: 0,
+        applicationRateUnit: "L/ha",
+
+        waterVolumePerHectare: 0,
+        minimumWaterVolumePerHectare: 0,
+        maximumWaterVolumePerHectare: 0,
+
+        maximumAnnualApplications: 0,
+        maximumAnnualDose: 0,
+
+        targetUse: "",
+
+        ...DEFAULT_EQUIPMENT,
+
+        ppeRequirements: "",
+        coshhNotes: "",
+        environmentalWarnings: "",
+
+        active: true,
+
+        ...input,
+
+        createdAt: now,
+        updatedAt: now,
+      });
+
+    try {
+      const response = await fetch(
+        "/api/chemicals",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chemical: newChemical,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        let message =
+          "Unable to save new chemical to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        return {
+          success: false,
+          message,
+        };
+      }
+    } catch (saveError) {
+      console.error(
+        "Failed to save new GreenFlow chemical:",
+        saveError,
+      );
+
+      return {
+        success: false,
+        message:
+          "Unable to save new chemical to the GreenFlow database.",
+      };
+    }
+
+    const next = [
+      newChemical,
+      ...chemicalsRef.current,
+    ];
+
+    chemicalsRef.current =
+      next;
+
+    setChemicals(next);
+
+    return {
+      success: true,
+      message:
+        "New chemical record created.",
+      chemical:
+        newChemical,
+    };
+  }
+
   function updateChemical(
     chemical: ChemicalRecord,
   ) {
@@ -934,6 +1086,105 @@ export function ChemicalStoreProvider({
       );
     });
   }
+
+  async function updateChemicalSafely(
+    chemical: ChemicalRecord,
+  ): Promise<ChemicalSaveResult> {
+    const updatedChemical =
+      normaliseChemical({
+        ...chemical,
+
+        updatedAt:
+          new Date().toISOString(),
+      });
+
+    try {
+      const response = await fetch(
+        "/api/chemicals",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chemical: updatedChemical,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        let message =
+          "Unable to save chemical to the GreenFlow database.";
+
+        try {
+          const payload =
+            (await response.json()) as unknown;
+
+          if (
+            typeof payload === "object" &&
+            payload !== null
+          ) {
+            const errorValue =
+              (
+                payload as Record<
+                  string,
+                  unknown
+                >
+              ).error;
+
+            if (
+              typeof errorValue ===
+              "string"
+            ) {
+              message =
+                errorValue;
+            }
+          }
+        } catch {
+          // Keep the default error message.
+        }
+
+        return {
+          success: false,
+          message,
+        };
+      }
+    } catch (saveError) {
+      console.error(
+        "Failed to save GreenFlow chemical:",
+        saveError,
+      );
+
+      return {
+        success: false,
+        message:
+          "Unable to save chemical to the GreenFlow database.",
+      };
+    }
+
+    const next =
+      chemicalsRef.current.map(
+        (item) =>
+          item.id ===
+          updatedChemical.id
+            ? updatedChemical
+            : item,
+      );
+
+    chemicalsRef.current =
+      next;
+
+    setChemicals(next);
+
+    return {
+      success: true,
+      message:
+        "Chemical saved.",
+      chemical:
+        updatedChemical,
+    };
+  }
+
   function deleteChemical(
     chemicalId: string,
   ) {
@@ -2049,7 +2300,9 @@ export function ChemicalStoreProvider({
         ready,
 
         addChemical,
+        addChemicalSafely,
         updateChemical,
+        updateChemicalSafely,
         deleteChemical,
 
         getChemicalById,

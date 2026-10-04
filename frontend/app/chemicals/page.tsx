@@ -79,8 +79,8 @@ export default function ChemicalsPage() {
     chemicals,
     stockMovements,
     ready,
-    addChemical,
-    updateChemical,
+    addChemicalSafely,
+    updateChemicalSafely,
     deleteChemical,
     restoreDemoChemicals,
     reconcileChemicalStock,
@@ -556,16 +556,31 @@ export default function ChemicalsPage() {
     setEditingStockPacks(String(chemical.currentStock));
   }
 
-  function createChemical() {
-    const chemical = addChemical({
-      name: "New chemical",
-      type: "Other",
-      packSize: 1,
-      packUnit: "L",
-      applicationRateUnit:
-        "L/ha",
-      active: true,
-    });
+  async function createChemical() {
+    const result =
+      await addChemicalSafely({
+        name: "New chemical",
+        type: "Other",
+        packSize: 1,
+        packUnit: "L",
+        applicationRateUnit:
+          "L/ha",
+        active: true,
+      });
+
+    if (
+      !result.success ||
+      !result.chemical
+    ) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
+
+    const chemical =
+      result.chemical;
 
     setSelectedChemicalId(
       chemical.id,
@@ -629,7 +644,7 @@ export default function ChemicalsPage() {
       };
     });
   }
-  function saveChemical(
+  async function saveChemical(
     event?: FormEvent<HTMLFormElement>,
   ) {
     event?.preventDefault();
@@ -857,16 +872,30 @@ export default function ChemicalsPage() {
           draft.environmentalWarnings.trim(),
       };
 
-    updateChemical(savedChemical);
+    const result =
+      await updateChemicalSafely(
+        savedChemical,
+      );
 
-    setDraft(savedChemical);
+    if (
+      !result.success ||
+      !result.chemical
+    ) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
+
+    setDraft(result.chemical);
 
     showMessage(
-      `${savedChemical.name} saved.`,
+      `${result.chemical.name} saved.`,
     );
   }
 
-  function archiveChemical() {
+  async function archiveChemical() {
     if (!draft) {
       return;
     }
@@ -877,13 +906,28 @@ export default function ChemicalsPage() {
         active: !draft.active,
       };
 
-    updateChemical(updated);
-    setDraft(updated);
+    const result =
+      await updateChemicalSafely(
+        updated,
+      );
+
+    if (
+      !result.success ||
+      !result.chemical
+    ) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
+
+    setDraft(result.chemical);
 
     showMessage(
-      updated.active
-        ? `${updated.name} restored.`
-        : `${updated.name} archived.`,
+      result.chemical.active
+        ? `${result.chemical.name} restored.`
+        : `${result.chemical.name} archived.`,
     );
   }
 
