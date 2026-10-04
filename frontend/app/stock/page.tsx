@@ -65,7 +65,6 @@ export default function StockPage() {
     addChemicalSafely,
     updateChemicalSafely,
     applyStockMovement,
-    clearStockMovements,
   } = useChemicalStore();
 
   const [selectedChemicalId, setSelectedChemicalId] =
@@ -1078,26 +1077,6 @@ export default function StockPage() {
                     className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     Clear old stock data
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const confirmed = window.confirm(
-                        "Clear the shared stock movement history? Live stock balances will not change.",
-                      );
-
-                      if (!confirmed) {
-                        return;
-                      }
-
-                      clearStockMovements();
-                      showMessage(
-                        "Stock movement history cleared. Live stock balances were not changed.",
-                      );
-                    }}
-                    className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50"
-                  >
-                    Clear movement history
                   </button>
                 </div>
               </details>
