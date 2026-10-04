@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
@@ -80,7 +80,8 @@ function hasRecordedOutcome(
       ),
   );
 }
-export default function TodayPage() {
+
+function TodayPageContent() {
   const {
     customers,
     ready: customersReady,
@@ -294,5 +295,27 @@ export default function TodayPage() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+export default function TodayPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <main className="gf-page">
+            <div className="gf-page-inner">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-sm text-slate-600">
+                  Loading today's route...
+                </p>
+              </div>
+            </div>
+          </main>
+        </AppShell>
+      }
+    >
+      <TodayPageContent />
+    </Suspense>
   );
 }
