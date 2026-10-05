@@ -24,6 +24,7 @@ model Organisation {
   chemicals              Chemical[]
   chemicalStockMovements ChemicalStockMovement[]
   workingDays            WorkingDay[]
+  communications         Communication[]
   settings               OrganisationSettings?
   invoiceSequence        InvoiceSequence?
 }
@@ -313,6 +314,33 @@ model WorkingDay {
   @@unique([organisationId, date])
   @@index([organisationId])
   @@index([organisationId, date])
+}
+
+
+model Communication {
+  id             String @id
+  organisationId String
+
+  customerNumber String
+  customerName   String @default("")
+  channel        String
+  status         String
+  subject        String @default("")
+  message        String @default("")
+  scheduledDate  String
+  treatmentName  String @default("")
+  jobType        String
+  sentAt         String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([organisationId, scheduledDate])
+  @@index([organisationId, customerNumber])
+  @@index([organisationId, status])
 }
 
 model OrganisationSettings {

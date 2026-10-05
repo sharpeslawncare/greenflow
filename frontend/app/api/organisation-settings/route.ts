@@ -113,6 +113,7 @@ export async function GET() {
         customChemicalTypes: Array.isArray(data.customChemicalTypes)
           ? data.customChemicalTypes
           : [],
+        communications: getStoredObject(data, "communications"),
       },
       updatedAt: organisationSettings.updatedAt,
     });
@@ -162,12 +163,13 @@ export async function PUT(request: Request) {
     !isRecord(body.invoices) ||
     !isSettingsArray(body.treatmentLibrary) ||
     !isSettingsArray(body.advisories) ||
-    !isSettingsArray(body.customChemicalTypes)
+    !isSettingsArray(body.customChemicalTypes) ||
+    !isRecord(body.communications)
   ) {
     return NextResponse.json(
       {
         error:
-          "Business Settings, Invoice Settings, Treatment Library, Advisories and Custom Chemical Types must all be provided.",
+          "Business Settings, Invoice Settings, Treatment Library, Advisories, Custom Chemical Types and Communications Settings must all be provided.",
       },
       { status: 400 },
     );
@@ -211,6 +213,8 @@ export async function PUT(request: Request) {
       toInputJsonArray(body.advisories),
     customChemicalTypes:
       toInputJsonArray(body.customChemicalTypes),
+    communications:
+      toInputJsonObject(body.communications),
   };
 
   try {
@@ -242,6 +246,7 @@ export async function PUT(request: Request) {
         treatmentLibrary: body.treatmentLibrary,
         advisories: body.advisories,
         customChemicalTypes: body.customChemicalTypes,
+        communications: body.communications,
       },
       updatedAt: saved.updatedAt,
       created: !existing,

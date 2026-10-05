@@ -194,6 +194,8 @@ export type CommunicationSettings = {
 
   visitReminderTemplate: string;
 
+  dayMessageTemplate: string;
+
 };
 
 
@@ -575,6 +577,10 @@ export const defaultSettings: GreenFlowSettings = {
     visitReminderTemplate:
 
       "Hi {firstName}, just a reminder that Sharpes Lawn Care is due to visit on {date} for {treatment}. Please make sure we can access the lawn. Many thanks, Rob - Sharpes Lawn Care",
+
+    dayMessageTemplate:
+
+      "Hi {firstName}, unfortunately due to conditions we need to rearrange your lawn treatment scheduled for {date}. I’ll be in touch with a new date. Many thanks, Rob - Sharpes Lawn Care",
 
   },
 
@@ -959,6 +965,7 @@ export function SettingsStoreProvider({
             advisories?: unknown;
 
             customChemicalTypes?: unknown;
+            communications?: unknown;
 
           } | null;
 
@@ -1030,6 +1037,20 @@ export function SettingsStoreProvider({
 
                 : browserSettings.customChemicalTypes,
 
+            communications:
+
+              isBrowserRecord(payload.settings.communications)
+
+                ? {
+
+                    ...browserSettings.communications,
+
+                    ...payload.settings.communications,
+
+                  }
+
+                : browserSettings.communications,
+
             advisories:
 
               Array.isArray(payload.settings.advisories)
@@ -1085,6 +1106,10 @@ export function SettingsStoreProvider({
                 customChemicalTypes:
 
                   browserSettings.customChemicalTypes,
+
+                communications:
+
+                  browserSettings.communications,
 
               }),
 
@@ -1291,6 +1316,8 @@ export function SettingsStoreProvider({
 
         settings.customChemicalTypes,
 
+        settings.communications,
+
       );
 
     }, 600);
@@ -1314,6 +1341,8 @@ export function SettingsStoreProvider({
     settings.advisories,
 
     settings.customChemicalTypes,
+
+    settings.communications,
 
     ready,
 
@@ -2564,6 +2593,8 @@ async function saveCentralOrganisationSettings(
 
   customChemicalTypes: string[],
 
+  communications: CommunicationSettings,
+
 ) {
 
   try {
@@ -2605,6 +2636,8 @@ async function saveCentralOrganisationSettings(
               customChemicalTypes,
 
             ),
+
+          communications,
 
         }),
 

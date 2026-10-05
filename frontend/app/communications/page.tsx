@@ -88,6 +88,7 @@ export default function CommunicationsPage() {
   const {
     settings,
     ready: settingsReady,
+    updateCommunicationSettings,
   } = useSettingsStore();
 
   const [records, setRecords] =
@@ -95,6 +96,9 @@ export default function CommunicationsPage() {
 
   const [recordsReady, setRecordsReady] =
     useState(false);
+
+  const [recordsLoadError, setRecordsLoadError] =
+    useState("");
 
   const [search, setSearch] =
     useState("");
@@ -125,45 +129,10 @@ export default function CommunicationsPage() {
   const [showAllAccessCustomers, setShowAllAccessCustomers] =
     useState(false);
 
-  const [dayMessageTemplate, setDayMessageTemplate] =
-    useState(
-      "Hi {firstName}, unfortunately due to conditions we need to rearrange your lawn treatment scheduled for {date}. I’ll be in touch with a new date. Many thanks, Rob - Sharpes Lawn Care",
-    );
+  const dayMessageTemplate =
+    settings.communications.dayMessageTemplate;
 
   useEffect(() => {
-    try {
-      const saved =
-        window.localStorage.getItem(
-          STORAGE_KEY,
-        );
-
-      if (saved) {
-        const parsed =
-          JSON.parse(
-            saved,
-          ) as Partial<CommunicationsData>;
-
-        if (
-          Array.isArray(
-            parsed.records,
-          )
-        ) {
-          setRecords(
-            parsed.records
-              .map(normaliseRecord)
-              .filter(
-                (
-                  record,
-                ): record is CommunicationRecord =>
-                  Boolean(record),
-              ),
-          );
-        }
-      }
-    } catch {
-      setRecords([]);
-    }
-
     const params =
       new URLSearchParams(
         window.location.search,
@@ -197,21 +166,58 @@ export default function CommunicationsPage() {
       requestedWorkflow === "prepare",
     );
 
-    setRecordsReady(true);
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    if (!recordsReady) {
-      return;
+    async function initialiseRecords() {
+      try {
+        const legacyRecords =
+          readLegacyCommunicationRecords();
+
+        let centralRecords: CommunicationRecord[];
+
+        if (legacyRecords.length > 0) {
+          centralRecords =
+            await saveCommunicationRecords(
+              legacyRecords,
+            );
+
+          window.localStorage.removeItem(
+            STORAGE_KEY,
+          );
+        } else {
+          centralRecords =
+            await loadCommunicationRecords();
+        }
+
+        if (cancelled) return;
+
+        setRecords(centralRecords);
+        setRecordsLoadError("");
+      } catch (loadError) {
+        console.error(
+          "Failed to initialise central GreenFlow communications:",
+          loadError,
+        );
+
+        if (!cancelled) {
+          setRecords([]);
+          setRecordsLoadError(
+            "GreenFlow could not load the central communication history. Contact actions are disabled so customers are not accidentally contacted twice.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setRecordsReady(true);
+        }
+      }
     }
 
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        records,
-      } satisfies CommunicationsData),
-    );
-  }, [records, recordsReady]);
+    void initialiseRecords();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const upcomingWork =
     useMemo(() => {
@@ -610,6 +616,7 @@ export default function CommunicationsPage() {
     customersReady &&
     programmesReady &&
     treatmentsReady &&
+    settingsReady &&
     recordsReady;
 
   function toggleSelected(
@@ -636,7 +643,7 @@ export default function CommunicationsPage() {
     setSelectedKeys([]);
   }
 
-  function queueSelectedReminders() {
+  async function queueSelectedReminders() {
     if (
       selectedDateCandidates.length ===
       0
@@ -679,25 +686,36 @@ export default function CommunicationsPage() {
         }),
       );
 
-    setRecords((current) => [
-      ...newRecords,
-      ...current,
-    ]);
+    try {
+      const savedRecords =
+        await saveCommunicationRecords(
+          newRecords,
+        );
 
-    setSelectedKeys([]);
+      setRecords(savedRecords);
+      setSelectedKeys([]);
 
-    showMessage(
-      `${newRecords.length} reminder${
-        newRecords.length === 1
-          ? ""
-          : "s"
-      } queued for ${formatDateWithDay(
-        workingDate,
-      )}.`,
-    );
+      showMessage(
+        `${newRecords.length} reminder${
+          newRecords.length === 1
+            ? ""
+            : "s"
+        } queued for ${formatDateWithDay(
+          workingDate,
+        )}.`,
+      );
+    } catch (saveError) {
+      console.error(
+        "Failed to queue GreenFlow reminders:",
+        saveError,
+      );
+      showMessage(
+        "The reminders were not queued because GreenFlow could not save them centrally.",
+      );
+    }
   }
 
-  function queueReminder(
+  async function queueReminder(
     item: UpcomingWork,
   ) {
     const alreadyQueued =
@@ -713,67 +731,85 @@ export default function CommunicationsPage() {
       return;
     }
 
-    const channel =
-      item.preferredContact;
+    const record: CommunicationRecord = {
+      id: createId(),
+      customerNumber: item.customerNumber,
+      customerName: item.customerName,
+      channel: item.preferredContact,
+      status: "Queued",
+      subject: "Upcoming lawn treatment",
+      message: createReminderMessage(
+        item,
+        settings.communications
+          .visitReminderTemplate,
+      ),
+      scheduledDate: item.scheduledDate,
+      treatmentName: item.treatmentName,
+      jobType: item.jobType,
+      createdAt: new Date().toISOString(),
+      sentAt: "",
+    };
 
-    const record: CommunicationRecord =
-      {
-        id: createId(),
-        customerNumber:
-          item.customerNumber,
-        customerName:
-          item.customerName,
-        channel,
-        status: "Queued",
-        subject:
-          "Upcoming lawn treatment",
-        message:
-          createReminderMessage(
-                                  item,
-                                  settings.communications
-                                    .visitReminderTemplate,
-                                ),
-        scheduledDate:
-          item.scheduledDate,
-        treatmentName:
-          item.treatmentName,
-        jobType: item.jobType,
-        createdAt:
-          new Date().toISOString(),
-        sentAt: "",
-      };
-
-    setRecords((current) => [
-      record,
-      ...current,
-    ]);
-
-    showMessage(
-      `Reminder queued for ${item.customerName}.`,
-    );
+    try {
+      const savedRecords =
+        await saveCommunicationRecords([record]);
+      setRecords(savedRecords);
+      showMessage(
+        `Reminder queued for ${item.customerName}.`,
+      );
+    } catch (saveError) {
+      console.error(
+        "Failed to queue GreenFlow reminder:",
+        saveError,
+      );
+      showMessage(
+        "The reminder was not queued because GreenFlow could not save it centrally.",
+      );
+    }
   }
 
-  function updateStatus(
+  async function updateStatus(
     id: string,
     status: CommunicationStatus,
   ) {
-    setRecords((current) =>
-      current.map((record) =>
-        record.id === id
-          ? {
-              ...record,
-              status,
-              sentAt:
-                status === "Sent"
-                  ? new Date().toISOString()
-                  : record.sentAt,
-            }
-          : record,
-      ),
+    const existing = records.find(
+      (record) => record.id === id,
     );
+
+    if (!existing) return;
+
+    const sentAt =
+      status === "Sent"
+        ? new Date().toISOString()
+        : existing.sentAt;
+
+    try {
+      const saved =
+        await updateCommunicationStatus(
+          id,
+          status,
+          sentAt,
+        );
+
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === id
+            ? saved
+            : record,
+        ),
+      );
+    } catch (saveError) {
+      console.error(
+        "Failed to update GreenFlow communication status:",
+        saveError,
+      );
+      showMessage(
+        "The status was not changed because GreenFlow could not save it centrally.",
+      );
+    }
   }
 
-  function markManualContactSent(
+  async function markManualContactSent(
     item: UpcomingWork,
     channel: "SMS" | "Telephone",
   ) {
@@ -784,77 +820,80 @@ export default function CommunicationsPage() {
       return;
     }
 
+    const now = new Date().toISOString();
     const record: CommunicationRecord = {
       id: createId(),
-      customerNumber:
-        item.customerNumber,
-      customerName:
-        item.customerName,
+      customerNumber: item.customerNumber,
+      customerName: item.customerName,
       channel,
       status: "Sent",
-      subject:
-        "Upcoming lawn treatment",
-      message:
-        createReminderMessage(
-          item,
-          settings.communications
-            .visitReminderTemplate,
-        ),
-      scheduledDate:
-        item.scheduledDate,
-      treatmentName:
-        item.treatmentName,
+      subject: "Upcoming lawn treatment",
+      message: createReminderMessage(
+        item,
+        settings.communications
+          .visitReminderTemplate,
+      ),
+      scheduledDate: item.scheduledDate,
+      treatmentName: item.treatmentName,
       jobType: item.jobType,
-      createdAt:
-        new Date().toISOString(),
-      sentAt:
-        new Date().toISOString(),
+      createdAt: now,
+      sentAt: now,
     };
 
-    setRecords((current) => [
-      record,
-      ...current,
-    ]);
-
-    showMessage(
-      `${item.customerName} marked contacted.`,
-    );
+    try {
+      const savedRecords =
+        await saveCommunicationRecords([record]);
+      setRecords(savedRecords);
+      showMessage(
+        `${item.customerName} marked contacted.`,
+      );
+    } catch (saveError) {
+      console.error(
+        "Failed to mark GreenFlow contact:",
+        saveError,
+      );
+      showMessage(
+        "The customer was not marked contacted because GreenFlow could not save the record centrally.",
+      );
+    }
   }
 
-  function markDayMessageSent(
+  async function markDayMessageSent(
     item: UpcomingWork,
     sentMessage: string,
   ) {
+    const now = new Date().toISOString();
     const record: CommunicationRecord = {
       id: createId(),
-      customerNumber:
-        item.customerNumber,
-      customerName:
-        item.customerName,
+      customerNumber: item.customerNumber,
+      customerName: item.customerName,
       channel: "SMS",
       status: "Sent",
-      subject:
-        "Working day update",
+      subject: "Working day update",
       message: sentMessage,
-      scheduledDate:
-        item.scheduledDate,
-      treatmentName:
-        item.treatmentName,
+      scheduledDate: item.scheduledDate,
+      treatmentName: item.treatmentName,
       jobType: item.jobType,
-      createdAt:
-        new Date().toISOString(),
-      sentAt:
-        new Date().toISOString(),
+      createdAt: now,
+      sentAt: now,
     };
 
-    setRecords((current) => [
-      record,
-      ...current,
-    ]);
-
-    showMessage(
-      `${item.customerName} marked contacted for this working day.`,
-    );
+    try {
+      const savedRecords =
+        await saveCommunicationRecords([record]);
+      setRecords(savedRecords);
+      showMessage(
+        `${item.customerName} marked contacted for this working day.`,
+      );
+    } catch (saveError) {
+      console.error(
+        "Failed to save GreenFlow working day contact:",
+        saveError,
+      );
+      showMessage(
+        "The customer was not marked contacted because GreenFlow could not save the record centrally.",
+      );
+    }
   }
 
   async function copyMessage(
@@ -899,6 +938,39 @@ export default function CommunicationsPage() {
           <div className="gf-page-inner">
             <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
               Loading communications...
+            </div>
+          </div>
+        </main>
+      </AppShell>
+    );
+  }
+
+  if (recordsLoadError) {
+    return (
+      <AppShell>
+        <main
+          className="gf-page"
+          style={
+            {
+              "--gf-page-accent": "#475569",
+            } as CSSProperties
+          }
+        >
+          <div className="gf-page-inner">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-900 shadow-sm">
+              <h1 className="text-lg font-black">
+                Communications unavailable
+              </h1>
+              <p className="mt-2 text-sm leading-6">
+                {recordsLoadError}
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-4 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-800 hover:bg-red-100"
+              >
+                Try again
+              </button>
             </div>
           </div>
         </main>
@@ -1286,9 +1358,10 @@ export default function CommunicationsPage() {
                       rows={4}
                       value={dayMessageTemplate}
                       onChange={(event) =>
-                        setDayMessageTemplate(
-                          event.target.value,
-                        )
+                        updateCommunicationSettings({
+                          dayMessageTemplate:
+                            event.target.value,
+                        })
                       }
                       className={`${inputClass} mt-2 bg-white`}
                     />
@@ -1595,6 +1668,138 @@ export default function CommunicationsPage() {
       </main>
     </AppShell>
   );
+}
+
+function readLegacyCommunicationRecords(): CommunicationRecord[] {
+  try {
+    const saved = window.localStorage.getItem(
+      STORAGE_KEY,
+    );
+
+    if (!saved) return [];
+
+    const parsed = JSON.parse(saved) as unknown;
+    const rawRecords = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === "object" &&
+          Array.isArray((parsed as Partial<CommunicationsData>).records)
+        ? (parsed as Partial<CommunicationsData>).records ?? []
+        : [];
+
+    return rawRecords
+      .map(normaliseRecord)
+      .filter(
+        (record): record is CommunicationRecord =>
+          Boolean(record),
+      );
+  } catch {
+    return [];
+  }
+}
+
+async function loadCommunicationRecords(): Promise<CommunicationRecord[]> {
+  const response = await fetch(
+    "/api/communications",
+    { cache: "no-store" },
+  );
+
+  const payload = await response.json() as {
+    records?: unknown[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      payload.error ??
+        "Unable to load communications from PostgreSQL.",
+    );
+  }
+
+  return (payload.records ?? [])
+    .map(normaliseRecord)
+    .filter(
+      (record): record is CommunicationRecord =>
+        Boolean(record),
+    );
+}
+
+async function saveCommunicationRecords(
+  records: CommunicationRecord[],
+): Promise<CommunicationRecord[]> {
+  const response = await fetch(
+    "/api/communications",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ records }),
+    },
+  );
+
+  const payload = await response.json() as {
+    records?: unknown[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      payload.error ??
+        "Unable to save communications to PostgreSQL.",
+    );
+  }
+
+  return (payload.records ?? [])
+    .map(normaliseRecord)
+    .filter(
+      (record): record is CommunicationRecord =>
+        Boolean(record),
+    );
+}
+
+async function updateCommunicationStatus(
+  id: string,
+  status: CommunicationStatus,
+  sentAt: string,
+): Promise<CommunicationRecord> {
+  const response = await fetch(
+    "/api/communications",
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id,
+        status,
+        sentAt,
+      }),
+    },
+  );
+
+  const payload = await response.json() as {
+    record?: unknown;
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      payload.error ??
+        "Unable to update communication in PostgreSQL.",
+    );
+  }
+
+  const record = normaliseRecord(
+    payload.record,
+  );
+
+  if (!record) {
+    throw new Error(
+      "GreenFlow received an invalid communication record from PostgreSQL.",
+    );
+  }
+
+  return record;
 }
 
 function hasExistingReminder(
