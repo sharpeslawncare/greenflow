@@ -860,7 +860,7 @@ export function SettingsStoreProvider({
 
 
 
-  const [centralTreatmentSettingsReady, setCentralTreatmentSettingsReady] =
+  const [centralOrganisationSettingsReady, setCentralOrganisationSettingsReady] =
 
     useState(false);
 
@@ -936,6 +936,10 @@ export function SettingsStoreProvider({
 
           settings?: {
 
+            business?: unknown;
+
+            invoices?: unknown;
+
             treatmentLibrary?: unknown;
 
             advisories?: unknown;
@@ -951,6 +955,38 @@ export function SettingsStoreProvider({
           resolvedSettings = {
 
             ...browserSettings,
+
+            business:
+
+              isBrowserRecord(payload.settings.business)
+
+                ? normaliseBusinessSettings({
+
+                    ...browserSettings.business,
+
+                    ...payload.settings.business,
+
+                  } as BusinessSettings)
+
+                : browserSettings.business,
+
+            invoices:
+
+              isBrowserRecord(payload.settings.invoices)
+
+                ? normaliseInvoiceSettings({
+
+                    ...browserSettings.invoices,
+
+                    ...payload.settings.invoices,
+
+                    nextInvoiceNumber:
+
+                      browserSettings.invoices.nextInvoiceNumber,
+
+                  } as InvoiceSettings)
+
+                : browserSettings.invoices,
 
             treatmentLibrary:
 
@@ -996,6 +1032,18 @@ export function SettingsStoreProvider({
 
               body: JSON.stringify({
 
+                business:
+
+                  browserSettings.business,
+
+                invoices:
+
+                  getCentralInvoicePresentationSettings(
+
+                    browserSettings.invoices,
+
+                  ),
+
                 treatmentLibrary:
 
                   browserSettings.treatmentLibrary,
@@ -1028,7 +1076,7 @@ export function SettingsStoreProvider({
 
         if (!cancelled) {
 
-          setCentralTreatmentSettingsReady(true);
+          setCentralOrganisationSettingsReady(true);
 
         }
 
@@ -1036,7 +1084,7 @@ export function SettingsStoreProvider({
 
         console.error(
 
-          "Failed to initialise central GreenFlow Treatment Codes and Advisories:",
+          "Failed to initialise central GreenFlow organisation settings:",
 
           loadError,
 
@@ -1191,13 +1239,17 @@ export function SettingsStoreProvider({
 
   useEffect(() => {
 
-    if (!ready || !centralTreatmentSettingsReady) return;
+    if (!ready || !centralOrganisationSettingsReady) return;
 
 
 
     const saveTimer = window.setTimeout(() => {
 
-      void saveCentralTreatmentSettings(
+      void saveCentralOrganisationSettings(
+
+        settings.business,
+
+        settings.invoices,
 
         settings.treatmentLibrary,
 
@@ -1217,13 +1269,17 @@ export function SettingsStoreProvider({
 
   }, [
 
+    settings.business,
+
+    settings.invoices,
+
     settings.treatmentLibrary,
 
     settings.advisories,
 
     ready,
 
-    centralTreatmentSettingsReady,
+    centralOrganisationSettingsReady,
 
   ]);
 
@@ -2384,7 +2440,11 @@ function readBrowserSettings(): GreenFlowSettings {
 
 
 
-async function saveCentralTreatmentSettings(
+async function saveCentralOrganisationSettings(
+
+  business: BusinessSettings,
+
+  invoices: InvoiceSettings,
 
   treatmentLibrary: TreatmentLibraryItem[],
 
@@ -2409,6 +2469,16 @@ async function saveCentralTreatmentSettings(
         },
 
         body: JSON.stringify({
+
+          business,
+
+          invoices:
+
+            getCentralInvoicePresentationSettings(
+
+              invoices,
+
+            ),
 
           treatmentLibrary,
 
@@ -2436,7 +2506,7 @@ async function saveCentralTreatmentSettings(
 
     console.error(
 
-      "Failed to save central GreenFlow Treatment Codes and Advisories:",
+      "Failed to save central GreenFlow organisation settings:",
 
       saveError,
 
@@ -2446,6 +2516,53 @@ async function saveCentralTreatmentSettings(
 
 }
 
+
+
+function isBrowserRecord(
+
+  value: unknown,
+
+): value is Record<string, unknown> {
+
+  return typeof value === "object" && value !== null;
+
+}
+
+
+
+function getCentralInvoicePresentationSettings(
+
+  invoices: InvoiceSettings,
+
+) {
+
+  return {
+
+    invoicePrefix: invoices.invoicePrefix,
+
+    invoiceNumberPadding:
+
+      invoices.invoiceNumberPadding,
+
+    paymentInstructions:
+
+      invoices.paymentInstructions,
+
+    vatWording: invoices.vatWording,
+
+    footerMessage: invoices.footerMessage,
+
+    emailCopyMessage:
+
+      invoices.emailCopyMessage,
+
+    showAmountIncludingVat:
+
+      invoices.showAmountIncludingVat,
+
+  };
+
+}
 
 
 function readBusinessDetailsBackup():

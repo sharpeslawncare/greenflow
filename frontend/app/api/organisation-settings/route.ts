@@ -54,6 +54,27 @@ function isSettingsArray(value: unknown) {
   return Array.isArray(value);
 }
 
+function getStoredObject(
+  data: Record<string, unknown>,
+  key: string,
+) {
+  return isRecord(data[key])
+    ? data[key]
+    : null;
+}
+
+function toInputJsonObject(
+  value: Record<string, unknown>,
+): Prisma.InputJsonObject {
+  return value as Prisma.InputJsonObject;
+}
+
+function toInputJsonArray(
+  value: unknown[],
+): Prisma.InputJsonArray {
+  return value as Prisma.InputJsonArray;
+}
+
 export async function GET() {
   const { error, membership } = await getCurrentMembership();
 
@@ -81,6 +102,8 @@ export async function GET() {
 
     return NextResponse.json({
       settings: {
+        business: getStoredObject(data, "business"),
+        invoices: getStoredObject(data, "invoices"),
         treatmentLibrary: Array.isArray(data.treatmentLibrary)
           ? data.treatmentLibrary
           : [],
@@ -132,22 +155,57 @@ export async function PUT(request: Request) {
   }
 
   if (
+    !isRecord(body.business) ||
+    !isRecord(body.invoices) ||
     !isSettingsArray(body.treatmentLibrary) ||
     !isSettingsArray(body.advisories)
   ) {
     return NextResponse.json(
       {
         error:
-          "Treatment Library and Advisories must both be provided.",
+          "Business Settings, Invoice Settings, Treatment Library and Advisories must all be provided.",
       },
       { status: 400 },
     );
   }
 
-  const data = {
-    treatmentLibrary: body.treatmentLibrary,
-    advisories: body.advisories,
-  } satisfies Prisma.InputJsonObject;
+  const invoiceSettings: Prisma.InputJsonObject = {
+    invoicePrefix:
+      typeof body.invoices.invoicePrefix === "string"
+        ? body.invoices.invoicePrefix
+        : "",
+    invoiceNumberPadding:
+      typeof body.invoices.invoiceNumberPadding === "number"
+        ? body.invoices.invoiceNumberPadding
+        : 1,
+    paymentInstructions:
+      typeof body.invoices.paymentInstructions === "string"
+        ? body.invoices.paymentInstructions
+        : "",
+    vatWording:
+      typeof body.invoices.vatWording === "string"
+        ? body.invoices.vatWording
+        : "",
+    footerMessage:
+      typeof body.invoices.footerMessage === "string"
+        ? body.invoices.footerMessage
+        : "",
+    emailCopyMessage:
+      typeof body.invoices.emailCopyMessage === "string"
+        ? body.invoices.emailCopyMessage
+        : "",
+    showAmountIncludingVat:
+      body.invoices.showAmountIncludingVat !== false,
+  };
+
+  const data: Prisma.InputJsonObject = {
+    business: toInputJsonObject(body.business),
+    invoices: invoiceSettings,
+    treatmentLibrary:
+      toInputJsonArray(body.treatmentLibrary),
+    advisories:
+      toInputJsonArray(body.advisories),
+  };
 
   try {
     const existing =
@@ -173,6 +231,8 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({
       settings: {
+        business: body.business,
+        invoices: invoiceSettings,
         treatmentLibrary: body.treatmentLibrary,
         advisories: body.advisories,
       },
