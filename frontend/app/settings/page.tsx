@@ -947,17 +947,20 @@ export default function SettingsPage() {
     window.location.reload();
   }
 
-  function testInvoiceNumber() {
+  async function testInvoiceNumber() {
     const confirmed = window.confirm(
       `The next invoice number is ${getNextInvoiceNumber()}. Increase it to the following number?`,
     );
 
     if (!confirmed) return;
 
-    incrementInvoiceNumber();
+    const increased =
+      await incrementInvoiceNumber();
 
     showMessage(
-      "The next invoice number was increased.",
+      increased
+        ? "The central next invoice number was increased."
+        : "The invoice number could not be increased. No number was changed.",
     );
   }
 
@@ -3243,10 +3246,9 @@ function InvoicesTab({
             </div>
 
             <p className="mt-3 text-sm leading-6 text-green-800">
-              This is a preview only. GreenFlow is
-              not yet reserving or permanently
-              assigning invoice numbers to individual
-              documents.
+              GreenFlow reserves invoice numbers centrally
+              in PostgreSQL before completed visits are
+              recorded. Reserved numbers are never reused.
             </p>
 
             <button
@@ -3254,7 +3256,7 @@ function InvoicesTab({
               onClick={onIncreaseInvoiceNumber}
               className="mt-4 w-full rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
             >
-              Test next number
+              Increase next number
             </button>
           </div>
 

@@ -25,6 +25,7 @@ model Organisation {
   chemicalStockMovements ChemicalStockMovement[]
   workingDays            WorkingDay[]
   settings               OrganisationSettings?
+  invoiceSequence        InvoiceSequence?
 }
 
 model Season {
@@ -318,6 +319,20 @@ model OrganisationSettings {
   id             String @id
   organisationId String @unique
   data           Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+}
+
+
+model InvoiceSequence {
+  id             String @id
+  organisationId String @unique
+  nextNumber     Int    @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

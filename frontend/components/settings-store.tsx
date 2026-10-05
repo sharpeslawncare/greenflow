@@ -10,6 +10,8 @@ import {
 
   useContext,
 
+  useCallback,
+
   useEffect,
 
   useMemo,
@@ -338,7 +340,7 @@ type SettingsStoreValue = {
 
 
 
-  incrementInvoiceNumber: () => void;
+  incrementInvoiceNumber: () => Promise<boolean>;
 
 
 
@@ -346,7 +348,7 @@ type SettingsStoreValue = {
 
     quantity: number,
 
-  ) => string[];
+  ) => Promise<string[]>;
 
 
 
@@ -354,7 +356,7 @@ type SettingsStoreValue = {
 
     issuedInvoiceNumbers: string[],
 
-  ) => void;
+  ) => Promise<void>;
 
 
 
@@ -1044,6 +1046,50 @@ export function SettingsStoreProvider({
 
 
 
+      try {
+
+        const centralInvoiceSequence =
+
+          await requestCentralInvoiceMinimum(
+
+            resolvedSettings.invoices
+
+              .nextInvoiceNumber,
+
+          );
+
+
+
+        resolvedSettings = {
+
+          ...resolvedSettings,
+
+          invoices: {
+
+            ...resolvedSettings.invoices,
+
+            nextInvoiceNumber:
+
+              centralInvoiceSequence,
+
+          },
+
+        };
+
+      } catch (invoiceSequenceError) {
+
+        console.error(
+
+          "Failed to initialise the central GreenFlow invoice sequence:",
+
+          invoiceSequenceError,
+
+        );
+
+      }
+
+
+
       if (cancelled) return;
 
 
@@ -1214,6 +1260,30 @@ export function SettingsStoreProvider({
 
   ) {
 
+    const requestedNextInvoiceNumber =
+
+      updates.nextInvoiceNumber ===
+
+      undefined
+
+        ? null
+
+        : Math.max(
+
+            invoiceSequenceRef.current,
+
+            normaliseInvoiceSettings({
+
+              ...invoiceSettingsRef.current,
+
+              ...updates,
+
+            }).nextInvoiceNumber,
+
+          );
+
+
+
     setSettings((current) => {
 
       const normalisedUpdates =
@@ -1281,6 +1351,40 @@ export function SettingsStoreProvider({
       };
 
     });
+
+
+
+    if (requestedNextInvoiceNumber !== null) {
+
+      void requestCentralInvoiceMinimum(
+
+        requestedNextInvoiceNumber,
+
+      )
+
+        .then((centralNextInvoiceNumber) => {
+
+          applyCentralInvoiceSequence(
+
+            centralNextInvoiceNumber,
+
+          );
+
+        })
+
+        .catch((saveError) => {
+
+          console.error(
+
+            "Failed to save the central GreenFlow invoice sequence:",
+
+            saveError,
+
+          );
+
+        });
+
+    }
 
   }
 
@@ -1562,6 +1666,86 @@ export function SettingsStoreProvider({
 
 
 
+  function applyCentralInvoiceSequence(
+
+    nextInvoiceNumber: number,
+
+  ) {
+
+    const safeNextInvoiceNumber =
+
+      Math.max(
+
+        1,
+
+        Math.floor(
+
+          nextInvoiceNumber,
+
+        ),
+
+      );
+
+
+
+    invoiceSequenceRef.current =
+
+      safeNextInvoiceNumber;
+
+
+
+    invoiceSettingsRef.current = {
+
+      ...invoiceSettingsRef.current,
+
+      nextInvoiceNumber:
+
+        safeNextInvoiceNumber,
+
+    };
+
+
+
+    setSettings((current) => {
+
+      if (
+
+        current.invoices
+
+          .nextInvoiceNumber ===
+
+        safeNextInvoiceNumber
+
+      ) {
+
+        return current;
+
+      }
+
+
+
+      return {
+
+        ...current,
+
+        invoices: {
+
+          ...current.invoices,
+
+          nextInvoiceNumber:
+
+            safeNextInvoiceNumber,
+
+        },
+
+      };
+
+    });
+
+  }
+
+
+
   function getNextInvoiceNumber() {
 
     const {
@@ -1598,69 +1782,53 @@ export function SettingsStoreProvider({
 
 
 
-  function incrementInvoiceNumber() {
+  async function incrementInvoiceNumber() {
 
-    const nextNumber =
+    try {
 
-      Math.max(
+      const reservation =
 
-        1,
+        await requestCentralInvoiceReservation(
 
-        Math.floor(
+          1,
 
           invoiceSequenceRef.current,
 
-        ),
-
-      ) + 1;
+        );
 
 
 
-    const nextInvoiceSettings = {
+      applyCentralInvoiceSequence(
 
-      ...invoiceSettingsRef.current,
+        reservation.nextInvoiceNumber,
 
-      nextInvoiceNumber:
-
-        nextNumber,
-
-    };
+      );
 
 
 
-    invoiceSequenceRef.current =
+      return true;
 
-      nextNumber;
+    } catch (reservationError) {
+
+      console.error(
+
+        "Failed to increase the central GreenFlow invoice sequence:",
+
+        reservationError,
+
+      );
 
 
 
-    invoiceSettingsRef.current = {
+      return false;
 
-      ...nextInvoiceSettings,
-
-    };
-
-
-
-    setSettings((current) => ({
-
-      ...current,
-
-      invoices: {
-
-        ...current.invoices,
-
-        ...nextInvoiceSettings,
-
-      },
-
-    }));
+    }
 
   }
 
 
 
-  function reserveInvoiceNumbers(
+  async function reserveInvoiceNumbers(
 
     quantity: number,
 
@@ -1694,291 +1862,225 @@ export function SettingsStoreProvider({
 
 
 
-    const {
+    try {
 
-      invoicePrefix,
+      const reservation =
 
-      invoiceNumberPadding,
+        await requestCentralInvoiceReservation(
 
-    } =
+          safeQuantity,
 
-      currentInvoiceSettings;
+          Math.max(
 
+            currentInvoiceSettings
 
+              .nextInvoiceNumber,
 
-    const startNumber =
-
-      Math.max(
-
-        1,
-
-        Math.floor(
-
-          invoiceSequenceRef.current,
-
-        ),
-
-      );
-
-
-
-    const invoiceNumbers =
-
-      Array.from(
-
-        {
-
-          length: safeQuantity,
-
-        },
-
-        (_, index) =>
-
-          formatInvoiceNumber(
-
-            invoicePrefix,
-
-            startNumber + index,
-
-            invoiceNumberPadding,
+            invoiceSequenceRef.current,
 
           ),
 
-      );
+        );
 
 
 
-    const nextNumber =
+      const invoiceNumbers =
 
-      startNumber +
+        Array.from(
 
-      safeQuantity;
+          {
 
+            length: safeQuantity,
 
+          },
 
-    const nextInvoiceSettings = {
+          (_, index) =>
 
-      ...currentInvoiceSettings,
-
-      nextInvoiceNumber:
-
-        nextNumber,
-
-    };
-
-
-
-    /*
-
-     * Reservations permanently consume sequence numbers.
-
-     * If a later workflow step fails, GreenFlow keeps the
-
-     * resulting gap rather than reusing an allocated number.
-
-     */
-
-    invoiceSequenceRef.current =
-
-      nextNumber;
-
-
-
-    invoiceSettingsRef.current = {
-
-      ...nextInvoiceSettings,
-
-    };
-
-
-
-    setSettings((current) => ({
-
-      ...current,
-
-      invoices: {
-
-        ...current.invoices,
-
-        ...nextInvoiceSettings,
-
-      },
-
-    }));
-
-
-
-    return invoiceNumbers;
-
-  }
-
-
-
-  function reconcileInvoiceSequence(
-
-    issuedInvoiceNumbers: string[],
-
-  ) {
-
-    const currentInvoiceSettings =
-
-      normaliseInvoiceSettings(
-
-        invoiceSettingsRef.current,
-
-      );
-
-
-
-    const highestIssued =
-
-      issuedInvoiceNumbers.reduce(
-
-        (
-
-          highest,
-
-          invoiceNumber,
-
-        ) => {
-
-          const numericSequence =
-
-            parseCompatibleInvoiceSequence(
-
-              invoiceNumber,
+            formatInvoiceNumber(
 
               currentInvoiceSettings
 
                 .invoicePrefix,
 
+              reservation.startNumber +
+
+                index,
+
+              currentInvoiceSettings
+
+                .invoiceNumberPadding,
+
+            ),
+
+        );
+
+
+
+      /*
+
+       * Reservations permanently consume sequence numbers.
+
+       * If a later workflow step fails, GreenFlow keeps the
+
+       * resulting gap rather than reusing an allocated number.
+
+       */
+
+      applyCentralInvoiceSequence(
+
+        reservation.nextInvoiceNumber,
+
+      );
+
+
+
+      return invoiceNumbers;
+
+    } catch (reservationError) {
+
+      console.error(
+
+        "Failed to reserve central GreenFlow invoice numbers:",
+
+        reservationError,
+
+      );
+
+
+
+      return [];
+
+    }
+
+  }
+
+
+
+  const reconcileInvoiceSequence =
+
+    useCallback(
+
+      async (
+
+        issuedInvoiceNumbers: string[],
+
+      ) => {
+
+        const currentInvoiceSettings =
+
+          normaliseInvoiceSettings(
+
+            invoiceSettingsRef.current,
+
+          );
+
+
+
+        const highestIssued =
+
+          issuedInvoiceNumbers.reduce(
+
+            (
+
+              highest,
+
+              invoiceNumber,
+
+            ) => {
+
+              const numericSequence =
+
+                parseCompatibleInvoiceSequence(
+
+                  invoiceNumber,
+
+                  currentInvoiceSettings
+
+                    .invoicePrefix,
+
+                );
+
+
+
+              return numericSequence ===
+
+                null
+
+                ? highest
+
+                : Math.max(
+
+                    highest,
+
+                    numericSequence,
+
+                  );
+
+            },
+
+            0,
+
+          );
+
+
+
+        const minimumNextInvoiceNumber =
+
+          Math.max(
+
+            1,
+
+            invoiceSequenceRef.current,
+
+            currentInvoiceSettings
+
+              .nextInvoiceNumber,
+
+            highestIssued > 0
+
+              ? highestIssued + 1
+
+              : 1,
+
+          );
+
+
+
+        try {
+
+          const centralNextInvoiceNumber =
+
+            await requestCentralInvoiceMinimum(
+
+              minimumNextInvoiceNumber,
+
             );
 
 
 
-          return numericSequence ===
+          applyCentralInvoiceSequence(
 
-            null
+            centralNextInvoiceNumber,
 
-            ? highest
+          );
 
-            : Math.max(
+        } catch (reconciliationError) {
 
-                highest,
+          console.error(
 
-                numericSequence,
+            "Failed to reconcile the central GreenFlow invoice sequence:",
 
-              );
+            reconciliationError,
 
-        },
+          );
 
-        0,
+        }
 
-      );
+      },
 
+      [],
 
-
-    if (highestIssued <= 0) {
-
-      return;
-
-    }
-
-
-
-    const reconciledNextNumber =
-
-      Math.max(
-
-        invoiceSequenceRef.current,
-
-        currentInvoiceSettings
-
-          .nextInvoiceNumber,
-
-        highestIssued + 1,
-
-      );
-
-
-
-    if (
-
-      reconciledNextNumber <=
-
-      invoiceSequenceRef.current
-
-    ) {
-
-      return;
-
-    }
-
-
-
-    const nextInvoiceSettings = {
-
-      ...currentInvoiceSettings,
-
-      nextInvoiceNumber:
-
-        reconciledNextNumber,
-
-    };
-
-
-
-    invoiceSequenceRef.current =
-
-      reconciledNextNumber;
-
-
-
-    invoiceSettingsRef.current = {
-
-      ...nextInvoiceSettings,
-
-    };
-
-
-
-    setSettings((current) => {
-
-      if (
-
-        current.invoices
-
-          .nextInvoiceNumber >=
-
-        reconciledNextNumber
-
-      ) {
-
-        return current;
-
-      }
-
-
-
-      return {
-
-        ...current,
-
-        invoices: {
-
-          ...current.invoices,
-
-          nextInvoiceNumber:
-
-            reconciledNextNumber,
-
-        },
-
-      };
-
-    });
-
-  }
+    );
 
 
 
@@ -2697,6 +2799,232 @@ function normaliseBusinessSettings(
     companyNumber:
 
       settings.companyNumber.trim(),
+
+  };
+
+}
+
+
+
+type CentralInvoiceReservation = {
+
+  startNumber: number;
+
+  nextInvoiceNumber: number;
+
+};
+
+
+
+async function requestCentralInvoiceMinimum(
+
+  minimumNextInvoiceNumber: number,
+
+) {
+
+  const response = await fetch(
+
+    "/api/invoice-sequence",
+
+    {
+
+      method: "PUT",
+
+      headers: {
+
+        "Content-Type": "application/json",
+
+      },
+
+      body: JSON.stringify({
+
+        minimumNextInvoiceNumber:
+
+          Math.max(
+
+            1,
+
+            Math.floor(
+
+              minimumNextInvoiceNumber,
+
+            ),
+
+          ),
+
+      }),
+
+    },
+
+  );
+
+
+
+  if (!response.ok) {
+
+    throw new Error(
+
+      `Invoice sequence reconciliation failed with status ${response.status}.`,
+
+    );
+
+  }
+
+
+
+  const payload = await response.json() as {
+
+    nextInvoiceNumber?: unknown;
+
+  };
+
+
+
+  const nextInvoiceNumber =
+
+    Number(
+
+      payload.nextInvoiceNumber,
+
+    );
+
+
+
+  if (
+
+    !Number.isSafeInteger(
+
+      nextInvoiceNumber,
+
+    ) ||
+
+    nextInvoiceNumber < 1
+
+  ) {
+
+    throw new Error(
+
+      "GreenFlow received an invalid central invoice sequence.",
+
+    );
+
+  }
+
+
+
+  return nextInvoiceNumber;
+
+}
+
+
+
+async function requestCentralInvoiceReservation(
+
+  quantity: number,
+
+  minimumNextInvoiceNumber: number,
+
+): Promise<CentralInvoiceReservation> {
+
+  const response = await fetch(
+
+    "/api/invoice-sequence",
+
+    {
+
+      method: "POST",
+
+      headers: {
+
+        "Content-Type": "application/json",
+
+      },
+
+      body: JSON.stringify({
+
+        quantity,
+
+        minimumNextInvoiceNumber,
+
+      }),
+
+    },
+
+  );
+
+
+
+  if (!response.ok) {
+
+    throw new Error(
+
+      `Invoice number reservation failed with status ${response.status}.`,
+
+    );
+
+  }
+
+
+
+  const payload = await response.json() as {
+
+    startNumber?: unknown;
+
+    nextInvoiceNumber?: unknown;
+
+  };
+
+
+
+  const startNumber =
+
+    Number(payload.startNumber);
+
+
+
+  const nextInvoiceNumber =
+
+    Number(
+
+      payload.nextInvoiceNumber,
+
+    );
+
+
+
+  if (
+
+    !Number.isSafeInteger(startNumber) ||
+
+    startNumber < 1 ||
+
+    !Number.isSafeInteger(
+
+      nextInvoiceNumber,
+
+    ) ||
+
+    nextInvoiceNumber !==
+
+      startNumber + quantity
+
+  ) {
+
+    throw new Error(
+
+      "GreenFlow received an invalid invoice number reservation.",
+
+    );
+
+  }
+
+
+
+  return {
+
+    startNumber,
+
+    nextInvoiceNumber,
 
   };
 

@@ -343,7 +343,7 @@ function VisitCentrePageContent() {
       return;
     }
 
-    reconcileInvoiceSequence(
+    void reconcileInvoiceSequence(
       treatments
         .map(
           (treatment) =>
@@ -1867,7 +1867,7 @@ function VisitCentrePageContent() {
 
     if (outcome === "Completed") {
       reservedInvoiceNumbers =
-        reserveInvoiceNumbers(
+        await reserveInvoiceNumbers(
           selectedJobs.length,
         );
 
