@@ -19,6 +19,7 @@ import {
   useChemicalStore,
 } from "@/components/chemical-store";
 import { useTreatmentStore } from "@/components/treatment-store";
+import { useSettingsStore } from "@/components/settings-store";
 
 type ChemicalFilter = string;
 
@@ -53,8 +54,6 @@ const standardChemicalTypes: ChemicalType[] = [
   "Other",
 ];
 
-const CUSTOM_CHEMICAL_TYPES_STORAGE_KEY =
-  "greenflow-custom-chemical-types-v1";
 
 const ADD_PRODUCT_TYPE_VALUE =
   "__greenflow_add_product_type__";
@@ -115,8 +114,13 @@ export default function ChemicalsPage() {
     setCalculatorArea,
   ] = useState(250);
 
-  const [customChemicalTypes, setCustomChemicalTypes] =
-    useState<string[]>([]);
+  const {
+    settings,
+    updateCustomChemicalTypes,
+  } = useSettingsStore();
+
+  const customChemicalTypes =
+    settings.customChemicalTypes;
 
   const [addingProductType, setAddingProductType] =
     useState(false);
@@ -140,32 +144,6 @@ export default function ChemicalsPage() {
     useState<ChemicalMessageTone>(
       "success",
     );
-
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(
-        CUSTOM_CHEMICAL_TYPES_STORAGE_KEY,
-      );
-
-      const parsed = saved
-        ? (JSON.parse(saved) as unknown)
-        : [];
-
-      if (Array.isArray(parsed)) {
-        setCustomChemicalTypes(
-          parsed
-            .filter(
-              (value): value is string =>
-                typeof value === "string" &&
-                value.trim().length > 0,
-            )
-            .map((value) => value.trim()),
-        );
-      }
-    } catch {
-      setCustomChemicalTypes([]);
-    }
-  }, []);
 
   const availableChemicalTypes = useMemo(() => {
     const usedTypes = chemicals
@@ -218,12 +196,7 @@ export default function ChemicalsPage() {
       trimmed,
     ];
 
-    setCustomChemicalTypes(nextTypes);
-
-    window.localStorage.setItem(
-      CUSTOM_CHEMICAL_TYPES_STORAGE_KEY,
-      JSON.stringify(nextTypes),
-    );
+    updateCustomChemicalTypes(nextTypes);
 
     if (draft) {
       updateDraft(

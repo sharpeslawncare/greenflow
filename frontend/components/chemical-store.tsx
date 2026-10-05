@@ -51,6 +51,8 @@ export type ChemicalRecord = {
 
   currentStock: number;
   reorderLevel: number;
+  supplier: string;
+  preferredOrderQuantity: number;
 
   applicationRate: number;
   applicationRateUnit: ApplicationRateUnit;
@@ -400,6 +402,8 @@ const demoChemicals: ChemicalRecord[] = [
     packSize: 25,
     packUnit: "kg",
     costPerPack: 42,
+    supplier: "",
+    preferredOrderQuantity: 0,
 
     // Pack-equivalents: 23 x 25 kg = 575 kg available.
     currentStock: 23,
@@ -458,6 +462,8 @@ const demoChemicals: ChemicalRecord[] = [
     packSize: 2,
     packUnit: "L",
     costPerPack: 128,
+    supplier: "",
+    preferredOrderQuantity: 0,
 
     // Pack-equivalents: 4 x 2 L = 8 L available.
     currentStock: 4,
@@ -515,6 +521,8 @@ const demoChemicals: ChemicalRecord[] = [
     packSize: 10,
     packUnit: "L",
     costPerPack: 36,
+    supplier: "",
+    preferredOrderQuantity: 0,
 
     // Pack-equivalents: 6 x 10 L = 60 L available.
     currentStock: 6,
@@ -2263,6 +2271,14 @@ function normaliseChemical(
     reorderLevel:
       toSafeNumber(
         chemical.reorderLevel,
+      ),
+
+    supplier:
+      chemical.supplier ?? "",
+
+    preferredOrderQuantity:
+      toSafeNumber(
+        chemical.preferredOrderQuantity,
       ),
 
     applicationRate:

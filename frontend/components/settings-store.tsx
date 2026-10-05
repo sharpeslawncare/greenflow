@@ -226,6 +226,8 @@ export type GreenFlowSettings = {
 
   communications: CommunicationSettings;
 
+  customChemicalTypes: string[];
+
   advisories: AdvisorySetting[];
 
   branding: BrandingSettings;
@@ -269,6 +271,14 @@ type SettingsStoreValue = {
   updateCommunicationSettings: (
 
     updates: Partial<CommunicationSettings>,
+
+  ) => void;
+
+
+
+  updateCustomChemicalTypes: (
+
+    types: string[],
 
   ) => void;
 
@@ -567,6 +577,10 @@ export const defaultSettings: GreenFlowSettings = {
       "Hi {firstName}, just a reminder that Sharpes Lawn Care is due to visit on {date} for {treatment}. Please make sure we can access the lawn. Many thanks, Rob - Sharpes Lawn Care",
 
   },
+
+
+
+  customChemicalTypes: [],
 
 
 
@@ -944,6 +958,8 @@ export function SettingsStoreProvider({
 
             advisories?: unknown;
 
+            customChemicalTypes?: unknown;
+
           } | null;
 
         };
@@ -1000,6 +1016,20 @@ export function SettingsStoreProvider({
 
                 : browserSettings.treatmentLibrary,
 
+            customChemicalTypes:
+
+              Array.isArray(payload.settings.customChemicalTypes)
+
+                ? normaliseCustomChemicalTypes([
+
+                    ...payload.settings.customChemicalTypes,
+
+                    ...browserSettings.customChemicalTypes,
+
+                  ])
+
+                : browserSettings.customChemicalTypes,
+
             advisories:
 
               Array.isArray(payload.settings.advisories)
@@ -1051,6 +1081,10 @@ export function SettingsStoreProvider({
                 advisories:
 
                   browserSettings.advisories,
+
+                customChemicalTypes:
+
+                  browserSettings.customChemicalTypes,
 
               }),
 
@@ -1255,6 +1289,8 @@ export function SettingsStoreProvider({
 
         settings.advisories,
 
+        settings.customChemicalTypes,
+
       );
 
     }, 600);
@@ -1276,6 +1312,8 @@ export function SettingsStoreProvider({
     settings.treatmentLibrary,
 
     settings.advisories,
+
+    settings.customChemicalTypes,
 
     ready,
 
@@ -1489,6 +1527,26 @@ export function SettingsStoreProvider({
         ...updates,
 
       },
+
+    }));
+
+  }
+
+
+
+  function updateCustomChemicalTypes(
+
+    types: string[],
+
+  ) {
+
+    setSettings((current) => ({
+
+      ...current,
+
+      customChemicalTypes:
+
+        normaliseCustomChemicalTypes(types),
 
     }));
 
@@ -2252,6 +2310,8 @@ export function SettingsStoreProvider({
 
         updateCommunicationSettings,
 
+        updateCustomChemicalTypes,
+
         addTreatmentLibraryItem,
 
         updateTreatmentLibraryItem,
@@ -2352,6 +2412,8 @@ function readBrowserSettings(): GreenFlowSettings {
 
     communications: { ...defaultSettings.communications },
 
+    customChemicalTypes: [...defaultSettings.customChemicalTypes],
+
     advisories: defaultSettings.advisories.map((item) => ({ ...item })),
 
     branding: { ...defaultSettings.branding },
@@ -2406,6 +2468,56 @@ function readBrowserSettings(): GreenFlowSettings {
 
 
 
+  try {
+
+    const legacyChemicalTypes =
+
+      window.localStorage.getItem(
+
+        "greenflow-custom-chemical-types-v1",
+
+      );
+
+
+
+    if (legacyChemicalTypes) {
+
+      const parsed =
+
+        JSON.parse(legacyChemicalTypes) as unknown;
+
+
+
+      if (Array.isArray(parsed)) {
+
+        browserSettings = {
+
+          ...browserSettings,
+
+          customChemicalTypes:
+
+            normaliseCustomChemicalTypes([
+
+              ...browserSettings.customChemicalTypes,
+
+              ...parsed,
+
+            ]),
+
+        };
+
+      }
+
+    }
+
+  } catch {
+
+    // Keep the browser settings already loaded above.
+
+  }
+
+
+
   const businessBackup =
 
     readBusinessDetailsBackup();
@@ -2450,6 +2562,8 @@ async function saveCentralOrganisationSettings(
 
   advisories: AdvisorySetting[],
 
+  customChemicalTypes: string[],
+
 ) {
 
   try {
@@ -2483,6 +2597,14 @@ async function saveCentralOrganisationSettings(
           treatmentLibrary,
 
           advisories,
+
+          customChemicalTypes:
+
+            normaliseCustomChemicalTypes(
+
+              customChemicalTypes,
+
+            ),
 
         }),
 
@@ -2771,6 +2893,20 @@ function mergeSettingsWithDefaults(
 
 
 
+    customChemicalTypes:
+
+      normaliseCustomChemicalTypes(
+
+        Array.isArray(savedSettings.customChemicalTypes)
+
+          ? savedSettings.customChemicalTypes
+
+          : defaultSettings.customChemicalTypes,
+
+      ),
+
+
+
     communications: {
 
       ...defaultSettings.communications,
@@ -2842,6 +2978,38 @@ function mergeSettingsWithDefaults(
     },
 
   };
+
+}
+
+
+
+function normaliseCustomChemicalTypes(
+
+  values: unknown[],
+
+) {
+
+  return Array.from(
+
+    new Set(
+
+      values
+
+        .filter(
+
+          (value): value is string =>
+
+            typeof value === "string" &&
+
+            value.trim().length > 0,
+
+        )
+
+        .map((value) => value.trim()),
+
+    ),
+
+  );
 
 }
 

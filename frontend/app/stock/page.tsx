@@ -51,8 +51,6 @@ type StockMessageTone =
   | "success"
   | "error";
 
-const METADATA_STORAGE_KEY =
-  "greenflow-stock-metadata-v2";
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-[#dc6b62] focus:ring-4 focus:ring-red-100";
@@ -122,39 +120,103 @@ export default function StockPage() {
     });
 
   useEffect(() => {
-    const savedMetadata =
-      window.localStorage.getItem(
-        METADATA_STORAGE_KEY,
+    const centralMetadata: StockMetadata =
+      Object.fromEntries(
+        chemicals.map((chemical) => [
+          chemical.id,
+          {
+            supplier: chemical.supplier,
+            preferredOrderQuantity:
+              chemical.preferredOrderQuantity,
+          },
+        ]),
       );
 
-    if (savedMetadata) {
-      try {
-        const parsed =
-          JSON.parse(
-            savedMetadata,
-          ) as StockMetadata;
-
-        if (
-          parsed &&
-          typeof parsed ===
-            "object"
-        ) {
-          setMetadata(parsed);
-        }
-      } catch {
-        window.localStorage.removeItem(
-          METADATA_STORAGE_KEY,
-        );
-      }
-    }
-  }, []);
+    setMetadata(centralMetadata);
+  }, [chemicals]);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      METADATA_STORAGE_KEY,
-      JSON.stringify(metadata),
-    );
-  }, [metadata]);
+    if (!ready || chemicals.length === 0) return;
+
+    const legacyKey =
+      "greenflow-stock-metadata-v2";
+
+    const savedMetadata =
+      window.localStorage.getItem(legacyKey);
+
+    if (!savedMetadata) return;
+
+    const legacyMetadataJson = savedMetadata;
+    let cancelled = false;
+
+    async function migrateLegacyMetadata() {
+      try {
+        const parsed =
+          JSON.parse(legacyMetadataJson) as StockMetadata;
+
+        if (!parsed || typeof parsed !== "object") {
+          window.localStorage.removeItem(legacyKey);
+          return;
+        }
+
+        const migrations = chemicals
+          .map((chemical) => {
+            const legacy = parsed[chemical.id];
+
+            if (!legacy) return null;
+
+            const supplier =
+              chemical.supplier.trim()
+                ? chemical.supplier
+                : String(legacy.supplier ?? "").trim();
+
+            const preferredOrderQuantity =
+              chemical.preferredOrderQuantity > 0
+                ? chemical.preferredOrderQuantity
+                : Math.max(
+                    0,
+                    Number(legacy.preferredOrderQuantity) || 0,
+                  );
+
+            if (
+              supplier === chemical.supplier &&
+              preferredOrderQuantity ===
+                chemical.preferredOrderQuantity
+            ) {
+              return null;
+            }
+
+            return updateChemicalSafely({
+              ...chemical,
+              supplier,
+              preferredOrderQuantity,
+            });
+          })
+          .filter(
+            (migration): migration is ReturnType<
+              typeof updateChemicalSafely
+            > => migration !== null,
+          );
+
+        const results = await Promise.all(migrations);
+
+        if (
+          !cancelled &&
+          results.every((result) => result.success)
+        ) {
+          window.localStorage.removeItem(legacyKey);
+        }
+      } catch {
+        // Keep the legacy browser copy if migration cannot be completed safely.
+      }
+    }
+
+    void migrateLegacyMetadata();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
 
   const activeChemicals =
     useMemo(
@@ -734,6 +796,8 @@ export default function StockPage() {
         packUnit: productForm.packUnit,
         currentStock: 0,
         reorderLevel,
+        supplier: productForm.supplier.trim(),
+        preferredOrderQuantity,
         active: true,
       });
 
@@ -750,15 +814,6 @@ export default function StockPage() {
 
     const chemical =
       createResult.chemical;
-
-    setMetadata((current) => ({
-      ...current,
-      [chemical.id]: {
-        supplier:
-          productForm.supplier.trim(),
-        preferredOrderQuantity,
-      },
-    }));
 
     setSelectedChemicalId(chemical.id);
     setProductForm(createEmptyProductForm());
@@ -850,6 +905,13 @@ export default function StockPage() {
         packSize,
         packUnit:
           stockSettingsDraft.packUnit,
+        supplier:
+          selectedMetadata.supplier.trim(),
+        preferredOrderQuantity:
+          Math.max(
+            0,
+            selectedMetadata.preferredOrderQuantity,
+          ),
       });
 
     if (!saveResult.success) {
