@@ -24,6 +24,7 @@ model Organisation {
   chemicals              Chemical[]
   chemicalStockMovements ChemicalStockMovement[]
   workingDays            WorkingDay[]
+  settings               OrganisationSettings?
 }
 
 model Season {
@@ -311,4 +312,17 @@ model WorkingDay {
   @@unique([organisationId, date])
   @@index([organisationId])
   @@index([organisationId, date])
+}
+
+model OrganisationSettings {
+  id             String @id
+  organisationId String @unique
+  data           Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
 }

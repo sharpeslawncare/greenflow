@@ -858,6 +858,12 @@ export function SettingsStoreProvider({
 
 
 
+  const [centralTreatmentSettingsReady, setCentralTreatmentSettingsReady] =
+
+    useState(false);
+
+
+
   const invoiceSequenceRef =
 
     useRef(
@@ -882,164 +888,207 @@ export function SettingsStoreProvider({
 
   useEffect(() => {
 
-    const savedSettings =
-
-      window.localStorage.getItem(
-
-        STORAGE_KEY,
-
-      );
+    let cancelled = false;
 
 
 
-    if (savedSettings) {
+    async function initialiseSettings() {
+
+      const browserSettings =
+
+        readBrowserSettings();
+
+
+
+      let resolvedSettings =
+
+        browserSettings;
+
+
 
       try {
 
-        const parsedSettings =
+        const response = await fetch(
 
-          JSON.parse(
+          "/api/organisation-settings",
 
-            savedSettings,
+          { cache: "no-store" },
 
-          ) as Partial<GreenFlowSettings>;
+        );
 
 
 
-        let mergedSettings =
+        if (!response.ok) {
 
-          mergeSettingsWithDefaults(
+          throw new Error(
 
-            parsedSettings,
+            `Organisation settings load failed with status ${response.status}.`,
 
           );
-
-
-
-        const businessBackup =
-
-          readBusinessDetailsBackup();
-
-
-
-        if (businessBackup) {
-
-          mergedSettings = {
-
-            ...mergedSettings,
-
-            business:
-
-              mergeBusinessWithRecovery(
-
-                mergedSettings.business,
-
-                businessBackup,
-
-              ),
-
-          };
 
         }
 
 
 
-        invoiceSequenceRef.current =
+        const payload = await response.json() as {
 
-          mergedSettings.invoices
+          settings?: {
 
-            .nextInvoiceNumber;
+            treatmentLibrary?: unknown;
 
+            advisories?: unknown;
 
-
-        invoiceSettingsRef.current = {
-
-          ...mergedSettings.invoices,
+          } | null;
 
         };
 
 
 
-        setSettings(
+        if (payload.settings) {
 
-          mergedSettings,
+          resolvedSettings = {
 
-        );
+            ...browserSettings,
 
-      } catch {
+            treatmentLibrary:
 
-        window.localStorage.removeItem(
+              Array.isArray(payload.settings.treatmentLibrary)
 
-          STORAGE_KEY,
+                ? mergeTreatmentLibrary(
 
-        );
+                    payload.settings.treatmentLibrary,
 
+                  )
 
+                : browserSettings.treatmentLibrary,
 
-        const businessBackup =
+            advisories:
 
-          readBusinessDetailsBackup();
+              Array.isArray(payload.settings.advisories)
 
+                ? normaliseAdvisories(
 
+                    payload.settings.advisories as Array<Partial<AdvisorySetting>>,
 
-        if (businessBackup) {
+                  )
 
-          setSettings({
+                : browserSettings.advisories,
 
-            ...defaultSettings,
+          };
 
-            business:
+        } else {
 
-              normaliseBusinessSettings({
+          const migrationResponse = await fetch(
 
-                ...defaultSettings.business,
+            "/api/organisation-settings",
 
-                ...businessBackup,
+            {
+
+              method: "PUT",
+
+              headers: {
+
+                "Content-Type": "application/json",
+
+              },
+
+              body: JSON.stringify({
+
+                treatmentLibrary:
+
+                  browserSettings.treatmentLibrary,
+
+                advisories:
+
+                  browserSettings.advisories,
 
               }),
 
-          });
+            },
+
+          );
+
+
+
+          if (!migrationResponse.ok) {
+
+            throw new Error(
+
+              `Organisation settings migration failed with status ${migrationResponse.status}.`,
+
+            );
+
+          }
 
         }
 
-      }
-
-    } else {
-
-      const businessBackup =
-
-        readBusinessDetailsBackup();
 
 
+        if (!cancelled) {
 
-      if (businessBackup) {
+          setCentralTreatmentSettingsReady(true);
 
-        setSettings({
+        }
 
-          ...defaultSettings,
+      } catch (loadError) {
 
-          business:
+        console.error(
 
-            normaliseBusinessSettings({
+          "Failed to initialise central GreenFlow Treatment Codes and Advisories:",
 
-              ...defaultSettings.business,
+          loadError,
 
-              ...businessBackup,
-
-            }),
-
-        });
+        );
 
       }
+
+
+
+      if (cancelled) return;
+
+
+
+      invoiceSequenceRef.current =
+
+        resolvedSettings.invoices
+
+          .nextInvoiceNumber;
+
+
+
+      invoiceSettingsRef.current = {
+
+        ...resolvedSettings.invoices,
+
+      };
+
+
+
+      setSettings(
+
+        resolvedSettings,
+
+      );
+
+
+
+      setReady(true);
 
     }
 
 
 
-    setReady(true);
+    void initialiseSettings();
+
+
+
+    return () => {
+
+      cancelled = true;
+
+    };
 
   }, []);
-
 
 
   useEffect(() => {
@@ -1092,6 +1141,45 @@ export function SettingsStoreProvider({
 
   }, [settings, ready]);
 
+
+
+  useEffect(() => {
+
+    if (!ready || !centralTreatmentSettingsReady) return;
+
+
+
+    const saveTimer = window.setTimeout(() => {
+
+      void saveCentralTreatmentSettings(
+
+        settings.treatmentLibrary,
+
+        settings.advisories,
+
+      );
+
+    }, 600);
+
+
+
+    return () => {
+
+      window.clearTimeout(saveTimer);
+
+    };
+
+  }, [
+
+    settings.treatmentLibrary,
+
+    settings.advisories,
+
+    ready,
+
+    centralTreatmentSettingsReady,
+
+  ]);
 
 
   function updateBusinessSettings(
@@ -2079,6 +2167,180 @@ export function useSettingsStore() {
 
 
   return context;
+
+}
+
+
+
+function readBrowserSettings(): GreenFlowSettings {
+
+  let browserSettings: GreenFlowSettings = {
+
+    ...defaultSettings,
+
+    business: { ...defaultSettings.business },
+
+    invoices: { ...defaultSettings.invoices },
+
+    treatmentWording: { ...defaultSettings.treatmentWording },
+
+    treatmentLibrary: defaultSettings.treatmentLibrary.map((item) => ({
+
+      ...item,
+
+      advisoryIds: [...item.advisoryIds],
+
+    })),
+
+    communications: { ...defaultSettings.communications },
+
+    advisories: defaultSettings.advisories.map((item) => ({ ...item })),
+
+    branding: { ...defaultSettings.branding },
+
+  };
+
+
+
+  const savedSettings =
+
+    window.localStorage.getItem(
+
+      STORAGE_KEY,
+
+    );
+
+
+
+  if (savedSettings) {
+
+    try {
+
+      const parsedSettings =
+
+        JSON.parse(
+
+          savedSettings,
+
+        ) as Partial<GreenFlowSettings>;
+
+
+
+      browserSettings =
+
+        mergeSettingsWithDefaults(
+
+          parsedSettings,
+
+        );
+
+    } catch {
+
+      window.localStorage.removeItem(
+
+        STORAGE_KEY,
+
+      );
+
+    }
+
+  }
+
+
+
+  const businessBackup =
+
+    readBusinessDetailsBackup();
+
+
+
+  if (businessBackup) {
+
+    browserSettings = {
+
+      ...browserSettings,
+
+      business:
+
+        mergeBusinessWithRecovery(
+
+          browserSettings.business,
+
+          businessBackup,
+
+        ),
+
+    };
+
+  }
+
+
+
+  return browserSettings;
+
+}
+
+
+
+async function saveCentralTreatmentSettings(
+
+  treatmentLibrary: TreatmentLibraryItem[],
+
+  advisories: AdvisorySetting[],
+
+) {
+
+  try {
+
+    const response = await fetch(
+
+      "/api/organisation-settings",
+
+      {
+
+        method: "PUT",
+
+        headers: {
+
+          "Content-Type": "application/json",
+
+        },
+
+        body: JSON.stringify({
+
+          treatmentLibrary,
+
+          advisories,
+
+        }),
+
+      },
+
+    );
+
+
+
+    if (!response.ok) {
+
+      throw new Error(
+
+        `Organisation settings save failed with status ${response.status}.`,
+
+      );
+
+    }
+
+  } catch (saveError) {
+
+    console.error(
+
+      "Failed to save central GreenFlow Treatment Codes and Advisories:",
+
+      saveError,
+
+    );
+
+  }
 
 }
 
