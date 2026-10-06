@@ -370,10 +370,6 @@ type SettingsStoreValue = {
 
   ) => Promise<void>;
 
-
-
-  restoreDefaultSettings: () => void;
-
 };
 
 
@@ -966,6 +962,8 @@ export function SettingsStoreProvider({
 
             customChemicalTypes?: unknown;
             communications?: unknown;
+            treatmentWording?: unknown;
+            branding?: unknown;
 
           } | null;
 
@@ -1062,6 +1060,20 @@ export function SettingsStoreProvider({
                   )
 
                 : browserSettings.advisories,
+            treatmentWording:
+              isBrowserRecord(payload.settings.treatmentWording)
+                ? {
+                    ...defaultSettings.treatmentWording,
+                    ...payload.settings.treatmentWording,
+                  } as TreatmentWordingSettings
+                : browserSettings.treatmentWording,
+            branding:
+              isBrowserRecord(payload.settings.branding)
+                ? {
+                    ...defaultSettings.branding,
+                    ...payload.settings.branding,
+                  } as BrandingSettings
+                : browserSettings.branding,
 
           };
 
@@ -1110,6 +1122,10 @@ export function SettingsStoreProvider({
                 communications:
 
                   browserSettings.communications,
+                treatmentWording:
+                  browserSettings.treatmentWording,
+                branding:
+                  browserSettings.branding,
 
               }),
 
@@ -1317,6 +1333,8 @@ export function SettingsStoreProvider({
         settings.customChemicalTypes,
 
         settings.communications,
+        settings.treatmentWording,
+        settings.branding,
 
       );
 
@@ -1343,6 +1361,8 @@ export function SettingsStoreProvider({
     settings.customChemicalTypes,
 
     settings.communications,
+    settings.treatmentWording,
+    settings.branding,
 
     ready,
 
@@ -2227,100 +2247,6 @@ export function SettingsStoreProvider({
 
 
 
-  function restoreDefaultSettings() {
-
-    setSettings((current) => {
-
-      const nextInvoiceNumber =
-
-        Math.max(
-
-          current.invoices
-
-            .nextInvoiceNumber,
-
-          invoiceSequenceRef.current,
-
-          1,
-
-        );
-
-
-
-      const nextInvoiceSettings = {
-
-        ...defaultSettings.invoices,
-
-        nextInvoiceNumber,
-
-      };
-
-
-
-      invoiceSequenceRef.current =
-
-        nextInvoiceNumber;
-
-
-
-      invoiceSettingsRef.current = {
-
-        ...nextInvoiceSettings,
-
-      };
-
-
-
-      return {
-
-        ...defaultSettings,
-
-
-
-        /*
-
-         * "Restore defaults" must never silently erase the
-
-         * company's invoice identity or the operational
-
-         * Treatment Library.
-
-         */
-
-        business: {
-
-          ...current.business,
-
-        },
-
-
-
-        treatmentLibrary:
-
-          current.treatmentLibrary.map(
-
-            (item) => ({
-
-              ...item,
-
-            }),
-
-          ),
-
-
-
-        invoices:
-
-          nextInvoiceSettings,
-
-      };
-
-    });
-
-  }
-
-
-
   const value =
 
     useMemo<SettingsStoreValue>(
@@ -2362,8 +2288,6 @@ export function SettingsStoreProvider({
         reserveInvoiceNumbers,
 
         reconcileInvoiceSequence,
-
-        restoreDefaultSettings,
 
       }),
 
@@ -2594,6 +2518,8 @@ async function saveCentralOrganisationSettings(
   customChemicalTypes: string[],
 
   communications: CommunicationSettings,
+  treatmentWording: TreatmentWordingSettings,
+  branding: BrandingSettings,
 
 ) {
 
@@ -2638,6 +2564,8 @@ async function saveCentralOrganisationSettings(
             ),
 
           communications,
+          treatmentWording,
+          branding,
 
         }),
 

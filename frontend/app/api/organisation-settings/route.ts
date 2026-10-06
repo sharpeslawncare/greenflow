@@ -114,6 +114,8 @@ export async function GET() {
           ? data.customChemicalTypes
           : [],
         communications: getStoredObject(data, "communications"),
+        treatmentWording: getStoredObject(data, "treatmentWording"),
+        branding: getStoredObject(data, "branding"),
       },
       updatedAt: organisationSettings.updatedAt,
     });
@@ -164,12 +166,14 @@ export async function PUT(request: Request) {
     !isSettingsArray(body.treatmentLibrary) ||
     !isSettingsArray(body.advisories) ||
     !isSettingsArray(body.customChemicalTypes) ||
-    !isRecord(body.communications)
+    !isRecord(body.communications) ||
+    !isRecord(body.treatmentWording) ||
+    !isRecord(body.branding)
   ) {
     return NextResponse.json(
       {
         error:
-          "Business Settings, Invoice Settings, Treatment Library, Advisories, Custom Chemical Types and Communications Settings must all be provided.",
+          "Business Settings, Invoice Settings, Treatment Library, Advisories, Custom Chemical Types, Communications Settings, Treatment Wording and Branding Settings must all be provided.",
       },
       { status: 400 },
     );
@@ -215,6 +219,10 @@ export async function PUT(request: Request) {
       toInputJsonArray(body.customChemicalTypes),
     communications:
       toInputJsonObject(body.communications),
+    treatmentWording:
+      toInputJsonObject(body.treatmentWording),
+    branding:
+      toInputJsonObject(body.branding),
   };
 
   try {
@@ -247,6 +255,8 @@ export async function PUT(request: Request) {
         advisories: body.advisories,
         customChemicalTypes: body.customChemicalTypes,
         communications: body.communications,
+        treatmentWording: body.treatmentWording,
+        branding: body.branding,
       },
       updatedAt: saved.updatedAt,
       created: !existing,
