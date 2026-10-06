@@ -25,6 +25,7 @@ model Organisation {
   chemicalStockMovements ChemicalStockMovement[]
   workingDays            WorkingDay[]
   communications         Communication[]
+  customerActions        CustomerAction[]
   settings               OrganisationSettings?
   invoiceSequence        InvoiceSequence?
 }
@@ -341,6 +342,31 @@ model Communication {
   @@index([organisationId, scheduledDate])
   @@index([organisationId, customerNumber])
   @@index([organisationId, status])
+}
+
+
+model CustomerAction {
+  id             String @id
+  organisationId String
+
+  customerNumber String
+  customerName   String @default("")
+  type           String
+  priority       String
+  status         String
+  dueDate        String @default("")
+  note           String @default("")
+  completedAt    String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([organisationId, customerNumber])
+  @@index([organisationId, status])
+  @@index([organisationId, dueDate])
 }
 
 model OrganisationSettings {

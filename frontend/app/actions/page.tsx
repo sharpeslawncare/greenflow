@@ -33,6 +33,7 @@ export default function ActionsPage() {
   const {
     actions,
     ready,
+    loadError,
     addAction,
     completeAction,
     cancelAction,
@@ -68,6 +69,10 @@ export default function ActionsPage() {
     useState(today);
   const [note, setNote] =
     useState("");
+  const [operationError, setOperationError] =
+    useState("");
+  const [saving, setSaving] =
+    useState(false);
 
   const openActions = actions.filter(
     (action) =>
@@ -158,7 +163,7 @@ export default function ActionsPage() {
     typeFilter,
   ]);
 
-  function saveAction() {
+  async function saveAction() {
     const customer =
       customers.find(
         (item) =>
@@ -169,24 +174,50 @@ export default function ActionsPage() {
     if (!customer) return;
     if (!note.trim()) return;
 
-    addAction({
-      customerNumber:
-        customer.customerNumber,
-      customerName:
-        customer.fullName,
-      type,
-      priority,
-      status: "Open",
-      dueDate,
-      note: note.trim(),
-    });
+    setSaving(true);
+    setOperationError("");
 
-    setCustomerNumber("");
-    setType("Call back");
-    setPriority("Normal");
-    setDueDate(today);
-    setNote("");
-    setShowNew(false);
+    try {
+      await addAction({
+        customerNumber:
+          customer.customerNumber,
+        customerName:
+          customer.fullName,
+        type,
+        priority,
+        status: "Open",
+        dueDate,
+        note: note.trim(),
+      });
+
+      setCustomerNumber("");
+      setType("Call back");
+      setPriority("Normal");
+      setDueDate(today);
+      setNote("");
+      setShowNew(false);
+    } catch (error) {
+      setOperationError(
+        error instanceof Error
+          ? error.message
+          : "GreenFlow could not save this action to PostgreSQL.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runActionChange(operation: () => Promise<void>) {
+    setOperationError("");
+    try {
+      await operation();
+    } catch (error) {
+      setOperationError(
+        error instanceof Error
+          ? error.message
+          : "GreenFlow could not update this action in PostgreSQL.",
+      );
+    }
   }
 
   if (!ready || !customersReady) {
@@ -231,12 +262,19 @@ export default function ActionsPage() {
               <button
                 type="button"
                 onClick={() => setShowNew(true)}
-                className="inline-flex h-11 items-center rounded-xl bg-[#6d28d9] px-5 text-sm font-bold text-white hover:bg-[#5b21b6]"
+                disabled={Boolean(loadError)}
+                className="inline-flex h-11 items-center rounded-xl bg-[#6d28d9] px-5 text-sm font-bold text-white hover:bg-[#5b21b6] disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 + New action
               </button>
             </div>
           </header>
+
+          {(loadError || operationError) && (
+            <div className="mb-4 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm font-semibold text-red-800">
+              {loadError || operationError}
+            </div>
+          )}
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
@@ -428,8 +466,8 @@ export default function ActionsPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                completeAction(
-                                  action.id,
+                                void runActionChange(() =>
+                                  completeAction(action.id),
                                 )
                               }
                               className="rounded-xl bg-[#6d28d9] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#5b21b6]"
@@ -439,8 +477,8 @@ export default function ActionsPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                cancelAction(
-                                  action.id,
+                                void runActionChange(() =>
+                                  cancelAction(action.id),
                                 )
                               }
                               className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
@@ -455,8 +493,8 @@ export default function ActionsPage() {
                           <button
                             type="button"
                             onClick={() =>
-                              deleteAction(
-                                action.id,
+                              void runActionChange(() =>
+                                deleteAction(action.id),
                               )
                             }
                             className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-bold text-red-700 hover:bg-red-50"
@@ -647,14 +685,15 @@ export default function ActionsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={saveAction}
+                  onClick={() => void saveAction()}
                   disabled={
+                    saving ||
                     !customerNumber ||
                     !note.trim()
                   }
                   className="rounded-xl bg-[#6d28d9] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  Save action
+                  {saving ? "Saving..." : "Save action"}
                 </button>
               </div>
             </div>
