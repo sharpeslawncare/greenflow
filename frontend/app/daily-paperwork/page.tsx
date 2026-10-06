@@ -18,10 +18,6 @@ import {
 } from "@/components/programme-store";
 import { useRouteOrderStore } from "@/components/route-order-store";
 import { useSettingsStore } from "@/components/settings-store";
-import {
-  getTreatmentDocumentWordingKey,
-  useTreatmentDocumentWording,
-} from "@/components/treatment-document-wording-store";
 import { useTreatmentStore } from "@/components/treatment-store";
 import {
   formatDateWithDay,
@@ -37,6 +33,8 @@ type DailyPaperworkItem = {
   scheduledDate: string;
   programmeId: string;
   programmeVisitId: string;
+  programmeVisitNumber: number | null;
+  treatmentLibraryId: string;
   completed: boolean;
 };
 
@@ -90,11 +88,6 @@ function DailyPaperworkPageContent() {
     settings,
     ready: settingsReady,
   } = useSettingsStore();
-
-  const {
-    wording: documentWording,
-    ready: documentWordingReady,
-  } = useTreatmentDocumentWording();
 
   const {
     ready: routeOrderReady,
@@ -181,6 +174,9 @@ function DailyPaperworkPageContent() {
                     programme.id,
                   programmeVisitId:
                     visit.id,
+                  programmeVisitNumber:
+                    visit.visitNumber,
+                  treatmentLibraryId: "",
                   completed,
                 };
               });
@@ -217,6 +213,10 @@ function DailyPaperworkPageContent() {
                   `additional-jobs-${customer.customerNumber}`,
                 programmeVisitId:
                   job.id,
+                programmeVisitNumber:
+                  null,
+                treatmentLibraryId:
+                  job.treatmentLibraryId,
                 completed:
                   job.status ===
                   "Completed",
@@ -251,7 +251,6 @@ function DailyPaperworkPageContent() {
     programmesReady &&
     treatmentsReady &&
     settingsReady &&
-    documentWordingReady &&
     routeOrderReady;
 
   if (!ready) {
@@ -486,15 +485,29 @@ function DailyPaperworkPageContent() {
         <div className="daily-paperwork-print-stack mx-auto w-[190mm] space-y-5 print:space-y-0">
           {paperworkItems.map(
             (item, index) => {
-              const wordingKey =
-                getTreatmentDocumentWordingKey(
+              const treatmentDefinition =
+                findTreatmentLibraryItem(
+                  settings.treatmentLibrary,
                   item.treatmentName,
+                  item.programmeVisitNumber,
+                  item.treatmentLibraryId,
                 );
 
-              const treatmentWording =
-                documentWording[
-                  wordingKey
-                ];
+              const treatmentTitle =
+                treatmentDefinition?.name.trim() ||
+                item.treatmentName;
+
+              const treatmentDescription =
+                treatmentDefinition?.wording.trim() ||
+                "";
+
+              const treatmentAdvisories =
+                treatmentDefinition
+                  ? getTreatmentAdvisories(
+                      treatmentDefinition,
+                      settings.advisories,
+                    )
+                  : [];
 
               const nextVisit =
                 findNextPlannedVisit({
@@ -553,11 +566,7 @@ function DailyPaperworkPageContent() {
                       item.scheduledDate,
                     )}
                     treatmentTitle={
-                      item.source ===
-                      "additional"
-                        ? item.treatmentName
-                        : treatmentWording
-                            .title
+                      treatmentTitle
                     }
                     invoiceLabel="Customer reference"
                     invoiceReference={
@@ -565,20 +574,10 @@ function DailyPaperworkPageContent() {
                         .customerNumber
                     }
                     treatmentDescription={
-                      treatmentWording
-                        .description
+                      treatmentDescription
                     }
-                    mowingAdvice={
-                      treatmentWording
-                        .mowingAdvice
-                    }
-                    wateringAdvice={
-                      treatmentWording
-                        .wateringAdvice
-                    }
-                    safetyAdvice={
-                      treatmentWording
-                        .safetyAdvice
+                    advisories={
+                      treatmentAdvisories
                     }
                     treatmentPrice={
                       item.price
@@ -621,6 +620,179 @@ function DailyPaperworkPageContent() {
       )}
     </main>
   );
+}
+
+type PaperworkTreatmentLibraryItem = {
+  id: string;
+  code: string;
+  name: string;
+  wording: string;
+  advisoryId: string;
+  advisoryIds: string[];
+  active: boolean;
+};
+
+type PaperworkAdvisory = {
+  id: string;
+  title: string;
+  wording: string;
+  type: string;
+  active: boolean;
+};
+
+function findTreatmentLibraryItem(
+  treatmentLibrary: PaperworkTreatmentLibraryItem[],
+  treatmentName: string,
+  programmeVisitNumber: number | null,
+  treatmentLibraryId: string,
+) {
+  if (
+    programmeVisitNumber !== null &&
+    programmeVisitNumber >= 1 &&
+    programmeVisitNumber <= 5
+  ) {
+    const programmeCode =
+      `t${programmeVisitNumber}`;
+
+    const programmeMatch =
+      treatmentLibrary.find(
+        (treatment) =>
+          treatment.active &&
+          normaliseTreatmentLookupValue(
+            treatment.code,
+          ) === programmeCode,
+      );
+
+    if (programmeMatch) {
+      return programmeMatch;
+    }
+  }
+
+  const stableTreatmentLibraryId =
+    treatmentLibraryId.trim();
+
+  if (stableTreatmentLibraryId) {
+    const stableIdMatch =
+      treatmentLibrary.find(
+        (treatment) =>
+          treatment.active &&
+          treatment.id ===
+            stableTreatmentLibraryId,
+      );
+
+    if (stableIdMatch) {
+      return stableIdMatch;
+    }
+  }
+
+  const normalisedTreatmentName =
+    normaliseTreatmentLookupValue(
+      treatmentName,
+    );
+
+  if (!normalisedTreatmentName) {
+    return null;
+  }
+
+  const exactNameMatch =
+    treatmentLibrary.find(
+      (treatment) =>
+        treatment.active &&
+        normaliseTreatmentLookupValue(
+          treatment.name,
+        ) === normalisedTreatmentName,
+    );
+
+  if (exactNameMatch) {
+    return exactNameMatch;
+  }
+
+  const codeMatch =
+    treatmentLibrary.find(
+      (treatment) =>
+        treatment.active &&
+        normaliseTreatmentLookupValue(
+          treatment.code,
+        ) === normalisedTreatmentName,
+    );
+
+  if (codeMatch) {
+    return codeMatch;
+  }
+
+  const embeddedCode =
+    treatmentName.match(
+      /\bT\s*(\d{1,3})\b/i,
+    );
+
+  if (!embeddedCode) {
+    return null;
+  }
+
+  const normalisedCode =
+    `t${Number(
+      embeddedCode[1],
+    )}`;
+
+  return (
+    treatmentLibrary.find(
+      (treatment) =>
+        treatment.active &&
+        normaliseTreatmentLookupValue(
+          treatment.code,
+        ) === normalisedCode,
+    ) ?? null
+  );
+}
+
+function getTreatmentAdvisories(
+  treatment: PaperworkTreatmentLibraryItem,
+  advisories: PaperworkAdvisory[],
+) {
+  const advisoryIds = [
+    ...(Array.isArray(
+      treatment.advisoryIds,
+    )
+      ? treatment.advisoryIds
+      : []),
+    treatment.advisoryId,
+  ]
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  const uniqueAdvisoryIds =
+    [...new Set(advisoryIds)];
+
+  return uniqueAdvisoryIds
+    .map((advisoryId) =>
+      advisories.find(
+        (advisory) =>
+          advisory.id === advisoryId &&
+          advisory.active,
+      ),
+    )
+    .filter(
+      (
+        advisory,
+      ): advisory is PaperworkAdvisory =>
+        Boolean(advisory),
+    )
+    .map((advisory) => ({
+      id: advisory.id,
+      title: advisory.title,
+      wording: advisory.wording,
+      type: advisory.type,
+    }));
+}
+
+function normaliseTreatmentLookupValue(
+  value: string,
+) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function createRouteStops(

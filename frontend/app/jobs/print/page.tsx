@@ -19,10 +19,6 @@ import {
   useSettingsStore,
 } from "@/components/settings-store";
 import {
-  getTreatmentDocumentWordingKey,
-  useTreatmentDocumentWording,
-} from "@/components/treatment-document-wording-store";
-import {
   formatDateWithDay,
   getTodayDateValue,
 } from "@/lib/date-utils";
@@ -35,6 +31,8 @@ type PrintJob = {
   id: string;
   source: "programme" | "additional";
   treatmentName: string;
+  programmeVisitNumber: number | null;
+  treatmentLibraryId: string;
   price: number;
   customer: ReturnType<
     typeof useCustomerStore
@@ -80,11 +78,6 @@ function DailyCustomerSheetsPageContent() {
     settings,
     ready: settingsReady,
   } = useSettingsStore();
-
-  const {
-    wording: documentWording,
-    ready: documentWordingReady,
-  } = useTreatmentDocumentWording();
 
   const {
     ready: routeOrderReady,
@@ -149,6 +142,9 @@ function DailyCustomerSheetsPageContent() {
                 "programme" as const,
               treatmentName:
                 visit.treatmentName,
+              programmeVisitNumber:
+                visit.visitNumber,
+              treatmentLibraryId: "",
               price:
                 customer.treatmentPrice,
               customer,
@@ -178,6 +174,9 @@ function DailyCustomerSheetsPageContent() {
                 "additional" as const,
               treatmentName:
                 job.treatmentName,
+              programmeVisitNumber: null,
+              treatmentLibraryId:
+                job.treatmentLibraryId,
               price: job.price,
               customer,
             }));
@@ -213,7 +212,6 @@ function DailyCustomerSheetsPageContent() {
     customersReady &&
     programmesReady &&
     settingsReady &&
-    documentWordingReady &&
     routeOrderReady;
 
   if (!ready) {
@@ -251,7 +249,7 @@ function DailyCustomerSheetsPageContent() {
       <style jsx global>{`
         @page {
           size: A4 portrait;
-          margin: 10mm;
+          margin: 0;
         }
 
         .customer-sheet-print {
@@ -275,8 +273,8 @@ function DailyCustomerSheetsPageContent() {
 
           .customer-sheet-print {
             display: block !important;
-            width: 188mm !important;
-            margin: 0 auto !important;
+            width: 210mm !important;
+            margin: 0 !important;
             padding: 0 !important;
             background: white !important;
           }
@@ -284,12 +282,12 @@ function DailyCustomerSheetsPageContent() {
           .customer-sheet-page {
             display: block !important;
             box-sizing: border-box !important;
-            width: 188mm !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: 276mm !important;
+            width: 210mm !important;
+            height: 285mm !important;
+            min-height: 285mm !important;
+            max-height: 285mm !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 10mm 11mm !important;
             overflow: hidden !important;
             color: #0f172a !important;
             background: white !important;
@@ -299,13 +297,13 @@ function DailyCustomerSheetsPageContent() {
               sans-serif !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            break-after: page !important;
-            page-break-after: always !important;
-          }
-
-          .customer-sheet-page:last-child {
             break-after: auto !important;
             page-break-after: auto !important;
+          }
+
+          .customer-sheet-page + .customer-sheet-page {
+            break-before: page !important;
+            page-break-before: always !important;
           }
 
           .customer-sheet-page * {
@@ -563,12 +561,29 @@ function DailyCustomerSheetsPageContent() {
               job.customer.postcode,
             ]);
 
-          const treatmentWording =
-            documentWording[
-              getTreatmentDocumentWordingKey(
-                job.treatmentName,
-              )
-            ];
+          const treatmentDefinition =
+            findTreatmentLibraryItem(
+              settings.treatmentLibrary,
+              job.treatmentName,
+              job.programmeVisitNumber,
+              job.treatmentLibraryId,
+            );
+
+          const treatmentTitle =
+            treatmentDefinition?.name.trim() ||
+            job.treatmentName;
+
+          const treatmentDescription =
+            treatmentDefinition?.wording.trim() ||
+            "";
+
+          const treatmentAdvisories =
+            treatmentDefinition
+              ? getTreatmentAdvisories(
+                  treatmentDefinition,
+                  settings.advisories,
+                )
+              : [];
 
           return (
             <article
@@ -711,7 +726,7 @@ function DailyCustomerSheetsPageContent() {
                     <DocumentMetaRow
                       label="Treatment"
                       value={
-                        treatmentWording.title
+                        treatmentTitle
                       }
                     />
 
@@ -738,15 +753,13 @@ function DailyCustomerSheetsPageContent() {
 
                   <div className="mt-[2mm] text-[15pt] font-bold text-slate-950">
                     {
-                      treatmentWording
-                        .title
+                      treatmentTitle
                     }
                   </div>
 
                   <div className="mt-[2.5mm] whitespace-pre-line text-[8.8pt] leading-[1.52] text-slate-700">
                     {
-                      treatmentWording
-                        .description
+                      treatmentDescription
                     }
                   </div>
 
@@ -791,41 +804,25 @@ function DailyCustomerSheetsPageContent() {
                   </div>
 
                   <div className="divide-y divide-slate-200">
-                    <AdvicePanel
-                      title="Mowing"
-                      detail={
-                        treatmentWording
-                          .mowingAdvice
-                      }
-                      colour={
-                        primaryColour
-                      }
-                      tone="mowing"
-                    />
-
-                    <AdvicePanel
-                      title="Watering"
-                      detail={
-                        treatmentWording
-                          .wateringAdvice
-                      }
-                      colour={
-                        primaryColour
-                      }
-                      tone="watering"
-                    />
-
-                    <AdvicePanel
-                      title="Safety"
-                      detail={
-                        treatmentWording
-                          .safetyAdvice
-                      }
-                      colour={
-                        primaryColour
-                      }
-                      tone="safety"
-                    />
+                    {treatmentAdvisories.map(
+                      (advisory) => (
+                        <AdvicePanel
+                          key={advisory.id}
+                          title={
+                            advisory.title
+                          }
+                          detail={
+                            advisory.wording
+                          }
+                          colour={
+                            primaryColour
+                          }
+                          tone={normaliseAdviceTone(
+                            advisory.type,
+                          )}
+                        />
+                      ),
+                    )}
                   </div>
                 </div>
               </section>
@@ -840,19 +837,59 @@ function DailyCustomerSheetsPageContent() {
                     Invoice / payment details
                   </PrintHeading>
 
-                  <div className="mt-[2mm] text-[8.5pt] leading-[1.45] text-slate-700">
-                    Please use customer reference{" "}
-                    <span className="font-bold text-slate-950">
-                      {
-                        job.customer
-                          .customerNumber
-                      }
-                    </span>{" "}
-                    with any payment or correspondence.
-                  </div>
+                  <div className="mt-[1mm] text-[7pt] leading-[1.45]">
+                    <div className="grid grid-cols-[18mm_1fr] gap-x-[2mm]">
+                      <span
+                        className="font-bold"
+                        style={{
+                          color: primaryColour,
+                        }}
+                      >
+                        Bank:
+                      </span>
+                      <span className="font-bold text-slate-950">
+                        Barclays
+                      </span>
 
-                  <div className="mt-[1mm] text-[7pt] text-slate-500">
-                    QuickBooks remains the official invoice and VAT record.
+                      <span
+                        className="font-bold"
+                        style={{
+                          color: primaryColour,
+                        }}
+                      >
+                        Sort Code:
+                      </span>
+                      <span className="font-bold text-slate-950">
+                        00-00-00
+                      </span>
+
+                      <span
+                        className="font-bold"
+                        style={{
+                          color: primaryColour,
+                        }}
+                      >
+                        Account:
+                      </span>
+                      <span className="font-bold text-slate-950">
+                        12345678
+                      </span>
+                    </div>
+
+                    <div className="mt-[1mm] text-slate-600">
+                      Please use customer reference{" "}
+                      <span className="font-bold text-slate-950">
+                        {
+                          job.customer
+                            .customerNumber
+                        }
+                      </span>{" "}
+                      with any payment or correspondence.
+                    </div>
+
+                    <div className="mt-[0.5mm] text-slate-500">
+                      QuickBooks remains the official invoice and VAT record.
+                    </div>
                   </div>
                 </div>
 
@@ -1021,6 +1058,223 @@ function ContactIconItem({
   );
 }
 
+type PrintTreatmentLibraryItem = {
+  id: string;
+  code: string;
+  name: string;
+  wording: string;
+  advisoryId: string;
+  advisoryIds: string[];
+  active: boolean;
+};
+
+type PrintAdvisory = {
+  id: string;
+  title: string;
+  wording: string;
+  type: string;
+  active: boolean;
+};
+
+function findTreatmentLibraryItem(
+  treatmentLibrary: PrintTreatmentLibraryItem[],
+  treatmentName: string,
+  programmeVisitNumber: number | null,
+  treatmentLibraryId: string,
+) {
+  if (
+    programmeVisitNumber !== null &&
+    programmeVisitNumber >= 1 &&
+    programmeVisitNumber <= 5
+  ) {
+    const programmeCode =
+      `t${programmeVisitNumber}`;
+
+    const programmeMatch =
+      treatmentLibrary.find(
+        (treatment) =>
+          treatment.active &&
+          normaliseTreatmentLookupValue(
+            treatment.code,
+          ) === programmeCode,
+      );
+
+    if (programmeMatch) {
+      return programmeMatch;
+    }
+  }
+
+  const stableTreatmentLibraryId =
+    treatmentLibraryId.trim();
+
+  if (stableTreatmentLibraryId) {
+    const stableIdMatch =
+      treatmentLibrary.find(
+        (treatment) =>
+          treatment.active &&
+          treatment.id ===
+            stableTreatmentLibraryId,
+      );
+
+    if (stableIdMatch) {
+      return stableIdMatch;
+    }
+  }
+
+  const normalisedTreatmentName =
+    normaliseTreatmentLookupValue(
+      treatmentName,
+    );
+
+  if (!normalisedTreatmentName) {
+    return null;
+  }
+
+  const exactNameMatch =
+    treatmentLibrary.find(
+      (treatment) =>
+        treatment.active &&
+        normaliseTreatmentLookupValue(
+          treatment.name,
+        ) === normalisedTreatmentName,
+    );
+
+  if (exactNameMatch) {
+    return exactNameMatch;
+  }
+
+  const codeMatch =
+    treatmentLibrary.find(
+      (treatment) =>
+        treatment.active &&
+        normaliseTreatmentLookupValue(
+          treatment.code,
+        ) === normalisedTreatmentName,
+    );
+
+  if (codeMatch) {
+    return codeMatch;
+  }
+
+  const embeddedCode =
+    treatmentName.match(
+      /\bT\s*(\d{1,3})\b/i,
+    );
+
+  if (!embeddedCode) {
+    return null;
+  }
+
+  const normalisedCode =
+    `t${Number(
+      embeddedCode[1],
+    )}`;
+
+  return (
+    treatmentLibrary.find(
+      (treatment) =>
+        treatment.active &&
+        normaliseTreatmentLookupValue(
+          treatment.code,
+        ) === normalisedCode,
+    ) ?? null
+  );
+}
+
+function getTreatmentAdvisories(
+  treatment: PrintTreatmentLibraryItem,
+  advisories: PrintAdvisory[],
+) {
+  const advisoryIds = [
+    ...(Array.isArray(
+      treatment.advisoryIds,
+    )
+      ? treatment.advisoryIds
+      : []),
+    treatment.advisoryId,
+  ]
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  const uniqueAdvisoryIds =
+    [...new Set(advisoryIds)];
+
+  return uniqueAdvisoryIds
+    .map((advisoryId) =>
+      advisories.find(
+        (advisory) =>
+          advisory.id === advisoryId &&
+          advisory.active,
+      ),
+    )
+    .filter(
+      (
+        advisory,
+      ): advisory is PrintAdvisory =>
+        Boolean(advisory),
+    );
+}
+
+function normaliseTreatmentLookupValue(
+  value: string,
+) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+type AdviceTone =
+  | "mowing"
+  | "watering"
+  | "safety"
+  | "slate"
+  | "orange"
+  | "purple";
+
+function normaliseAdviceTone(
+  type: string,
+): AdviceTone {
+  const value = type
+    .trim()
+    .toLowerCase();
+
+  if (
+    value === "danger" ||
+    value === "red" ||
+    value === "safety"
+  ) {
+    return "safety";
+  }
+
+  if (
+    value === "warning" ||
+    value === "amber" ||
+    value === "mowing"
+  ) {
+    return "mowing";
+  }
+
+  if (
+    value === "information" ||
+    value === "blue" ||
+    value === "watering"
+  ) {
+    return "watering";
+  }
+
+  if (value === "orange") {
+    return "orange";
+  }
+
+  if (value === "purple") {
+    return "purple";
+  }
+
+  return "slate";
+}
+
 function AdvicePanel({
   title,
   detail,
@@ -1030,24 +1284,33 @@ function AdvicePanel({
   title: string;
   detail: string;
   colour: string;
-  tone:
-    | "mowing"
-    | "watering"
-    | "safety";
+  tone: AdviceTone;
 }) {
   const toneClass =
     tone === "mowing"
       ? "bg-amber-50/70"
       : tone === "watering"
         ? "bg-sky-50/70"
-        : "bg-red-50/60";
+        : tone === "safety"
+          ? "bg-red-50/60"
+          : tone === "orange"
+            ? "bg-orange-50/70"
+            : tone === "purple"
+              ? "bg-purple-50/70"
+              : "bg-slate-50/80";
 
   const headingClass =
     tone === "mowing"
       ? "text-amber-800"
       : tone === "watering"
         ? "text-sky-800"
-        : "text-red-800";
+        : tone === "safety"
+          ? "text-red-800"
+          : tone === "orange"
+            ? "text-orange-800"
+            : tone === "purple"
+              ? "text-purple-800"
+              : "text-slate-700";
 
   return (
     <div className={`p-[3.5mm] ${toneClass}`}>
