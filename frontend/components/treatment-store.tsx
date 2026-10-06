@@ -206,15 +206,6 @@ type TreatmentStoreValue = {
   restoreDemoTreatments: () => void;
 };
 
-const STORAGE_KEY = "greenflow-treatments-v3";
-const LEGACY_STORAGE_KEYS = [
-  "greenflow-treatments-v2",
-  "greenflow-treatments-v1",
-];
-
-const DEMO_AUTOSEED_CLEANUP_KEY =
-  "greenflow-treatment-demo-autoseed-cleanup-v1";
-
 const TreatmentStoreContext =
   createContext<TreatmentStoreValue | null>(null);
 
@@ -407,8 +398,6 @@ export function TreatmentStoreProvider({
     let cancelled = false;
 
     const hydrateTreatments = async () => {
-      markDemoAutoseedCleanupComplete();
-
       try {
         const databaseTreatments =
           deduplicateTreatmentRecords(
@@ -463,19 +452,6 @@ export function TreatmentStoreProvider({
     treatmentsRef.current =
       treatments;
   }, [treatments]);
-
-  useEffect(() => {
-    if (!ready) return;
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(treatments),
-    );
-
-    LEGACY_STORAGE_KEYS.forEach((key) =>
-      window.localStorage.removeItem(key),
-    );
-  }, [treatments, ready]);
 
   async function addTreatment(
     treatment: TreatmentRecord,
@@ -1536,13 +1512,6 @@ function isFinalTreatmentStatus(
   return (
     status === "Completed" ||
     status === "Cancelled"
-  );
-}
-
-function markDemoAutoseedCleanupComplete() {
-  window.localStorage.setItem(
-    DEMO_AUTOSEED_CLEANUP_KEY,
-    "1",
   );
 }
 
