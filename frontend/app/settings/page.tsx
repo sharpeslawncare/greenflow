@@ -36,7 +36,6 @@ import {
   loadCentralAuditTrail,
 } from "@/components/audit-store";
 type SettingsTab =
-  | "maintenance"
   | "health"
   | "backups"
   | "audit"
@@ -85,10 +84,6 @@ const tabs: Array<{
     label: "System Health",
   },
   {
-    id: "maintenance",
-    label: "Maintenance",
-  },
-  {
     id: "fleet",
     label: "Fleet",
   },
@@ -111,7 +106,6 @@ export default function SettingsPage() {
     deleteAdvisory,
     getNextInvoiceNumber,
     incrementInvoiceNumber,
-    restoreDefaultSettings,
   } = useSettingsStore();
 
   const {
@@ -260,396 +254,6 @@ export default function SettingsPage() {
     }
   }
 
-  function restoreDefaults() {
-    const confirmed = window.confirm(
-      "Restore all GreenFlow business settings to their original demonstration values?",
-    );
-
-    if (!confirmed) return;
-
-    restoreDefaultSettings();
-    showMessage(
-      "Default GreenFlow settings restored.",
-    );
-  }
-
-  function startNewTestDay() {
-    const confirmed = window.confirm(
-      "Start a new test day? Completed treatment records, visit outcomes, documents, route order and the saved daily working mix will be cleared. Customers, programme schedules, chemicals, LIVE STOCK QUANTITIES and STOCK MOVEMENT HISTORY will be preserved.",
-    );
-
-    if (!confirmed) return;
-
-    const treatmentKeys = [
-      "greenflow-treatments-v3",
-      "greenflow-treatments-v2",
-      "greenflow-treatments-v1",
-    ];
-
-    treatmentKeys.forEach((key) =>
-      window.localStorage.removeItem(key),
-    );
-
-    const programmeStorageKey =
-      "greenflow-customer-programmes-v1";
-
-    const savedProgrammes =
-      window.localStorage.getItem(
-        programmeStorageKey,
-      );
-
-    if (savedProgrammes) {
-      try {
-        const savedProgrammeRecords =
-          JSON.parse(
-            savedProgrammes,
-          ) as Array<{
-            visits?: Array<{
-              status?: string;
-              notes?: string;
-              [key: string]: unknown;
-            }>;
-            [key: string]: unknown;
-          }>;
-
-        const resetProgrammes =
-          Array.isArray(
-            savedProgrammeRecords,
-          )
-            ? savedProgrammeRecords.map(
-                (programme) => ({
-                  ...programme,
-                  visits: Array.isArray(
-                    programme.visits,
-                  )
-                    ? programme.visits.map(
-                        (visit) => ({
-                          ...visit,
-                          status:
-                            visit.status ===
-                            "Planned"
-                              ? "Planned"
-                              : "Scheduled",
-                          notes:
-                            removeOutcomeNotes(
-                              typeof visit.notes ===
-                                "string"
-                                ? visit.notes
-                                : "",
-                            ),
-                        }),
-                      )
-                    : programme.visits,
-                }),
-              )
-            : savedProgrammeRecords;
-
-        window.localStorage.setItem(
-          programmeStorageKey,
-          JSON.stringify(
-            resetProgrammes,
-          ),
-        );
-      } catch {
-        // Leave unreadable programme data untouched rather than risking data loss.
-      }
-    }
-
-    /*
-     * Clean up old incorrect programme-reset keys.
-     * The live Programme Store uses greenflow-customer-programmes-v1.
-     */
-    [
-      "greenflow-programmes-v3",
-      "greenflow-programmes-v2",
-      "greenflow-programmes-v1",
-    ].forEach((key) =>
-      window.localStorage.removeItem(key),
-    );
-
-    window.localStorage.removeItem(
-      "greenflow-route-orders-v1",
-    );
-
-    window.localStorage.removeItem(
-      "greenflow-visit-centre-standard-mixes-v1",
-    );
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "greenflow:route-orders-updated",
-      ),
-    );
-
-    window.alert(
-      "New test day prepared. Treatment outcomes were cleared, but live stock and stock movement history were preserved. GreenFlow will now reload.",
-    );
-
-    window.location.reload();
-  }
-
-  function resetDemoInventory() {
-    const confirmed = window.confirm(
-      "Reset demo inventory? Chemical products will return to the current demo seed values and the shared stock movement history will be cleared. Customers, programmes, treatments, fleet and business settings will not be changed.",
-    );
-
-    if (!confirmed) return;
-
-    restoreDemoChemicals();
-
-    /*
-     * Remove obsolete Stock-page stores and optional purchasing
-     * metadata so the inventory demo restarts cleanly.
-     */
-    [
-      "greenflow-stock-v1",
-      "greenflow-stock-movements-v2",
-      "greenflow-stock-metadata-v2",
-    ].forEach((key) =>
-      window.localStorage.removeItem(key),
-    );
-
-    showMessage(
-      "Demo inventory restored and stock movement history cleared.",
-    );
-  }
-
-  function fullDemoReset() {
-    const phrase =
-      window.prompt(
-        'This resets GreenFlow operational/demo data to the demonstration defaults. Your business identity, business settings and invoice numbering are preserved. Create a backup first if needed. Type RESET DEMO to continue.',
-      );
-
-    if (phrase !== "RESET DEMO") {
-      if (phrase !== null) {
-        showMessage(
-          'Full demo reset cancelled. The phrase must be exactly "RESET DEMO".',
-        );
-      }
-      return;
-    }
-
-    /*
-     * Business/settings data is real configuration, not demo data.
-     * Preserve the complete Settings Store plus its dedicated
-     * business-details backup before clearing operational stores.
-     */
-    const preservedKeys = new Set([
-      "greenflow-business-settings-v1",
-      "greenflow-business-details-backup-v1",
-      "greenflow-customer-sequence-v1",
-      "greenflow-last-backup-at",
-    ]);
-
-    const preservedValues =
-      new Map<string, string>();
-
-    preservedKeys.forEach((key) => {
-      const value =
-        window.localStorage.getItem(key);
-
-      if (value !== null) {
-        preservedValues.set(
-          key,
-          value,
-        );
-      }
-    });
-
-    const greenFlowKeys: string[] = [];
-
-    for (
-      let index = 0;
-      index < window.localStorage.length;
-      index += 1
-    ) {
-      const key =
-        window.localStorage.key(index);
-
-      if (
-        key?.startsWith(
-          "greenflow-",
-        ) &&
-        !preservedKeys.has(key)
-      ) {
-        greenFlowKeys.push(key);
-      }
-    }
-
-    greenFlowKeys.forEach(
-      (key) =>
-        window.localStorage.removeItem(
-          key,
-        ),
-    );
-
-    /*
-     * Re-write preserved values as an extra safeguard in case
-     * browser/storage behaviour changes while the reset is running.
-     */
-    preservedValues.forEach(
-      (value, key) => {
-        window.localStorage.setItem(
-          key,
-          value,
-        );
-      },
-    );
-
-    window.alert(
-      "Full GreenFlow demo reset complete. Operational/demo data will reload from its current defaults. Business details, GreenFlow settings, invoice numbering and the customer-number watermark were preserved.",
-    );
-
-    window.location.reload();
-  }
-
-  function startGreenFlowFresh() {
-    const phrase =
-      window.prompt(
-        'Start GreenFlow fresh? This permanently clears customer and operational test data while keeping your real setup. Create a backup first. Type START FRESH to continue.',
-      );
-
-    if (phrase !== "START FRESH") {
-      if (phrase !== null) {
-        showMessage(
-          'Fresh start cancelled. The phrase must be exactly "START FRESH".',
-        );
-      }
-      return;
-    }
-
-    /*
-     * Preserve real GreenFlow configuration and setup.
-     *
-     * Settings Store includes:
-     * - business identity/details
-     * - invoice configuration/numbering
-     * - treatment wording/library
-     * - communication templates
-     * - advisories and branding
-     *
-     * Fleet and Season Calendars are also setup, not customer history.
-     *
-     * Chemical Store is preserved in full so the product catalogue,
-     * live stock quantities and stock movement audit trail are not
-     * silently altered by a customer-data reset.
-     *
-     * Customer sequence is deliberately preserved so old customer
-     * numbers are never re-used after the fresh start.
-     */
-    const preservedKeys = new Set([
-      "greenflow-business-settings-v1",
-      "greenflow-business-details-backup-v1",
-      "greenflow-customer-sequence-v1",
-      "greenflow-fleet-v1",
-      "greenflow-season-calendars-v1",
-      "greenflow-chemicals-v1",
-      "greenflow-chemicals-v2",
-      "greenflow-chemicals-v3",
-      "greenflow-stock-v1",
-      "greenflow-stock-movements-v1",
-      "greenflow-stock-movements-v2",
-      "greenflow-stock-metadata-v2",
-      "greenflow-last-backup-at",
-    ]);
-
-    const preservedValues =
-      new Map<string, string>();
-
-    preservedKeys.forEach((key) => {
-      const value =
-        window.localStorage.getItem(key);
-
-      if (value !== null) {
-        preservedValues.set(
-          key,
-          value,
-        );
-      }
-    });
-
-    const greenFlowKeys: string[] = [];
-
-    for (
-      let index = 0;
-      index < window.localStorage.length;
-      index += 1
-    ) {
-      const key =
-        window.localStorage.key(index);
-
-      if (
-        key?.startsWith(
-          "greenflow-",
-        ) &&
-        !preservedKeys.has(key)
-      ) {
-        greenFlowKeys.push(key);
-      }
-    }
-
-    greenFlowKeys.forEach(
-      (key) =>
-        window.localStorage.removeItem(
-          key,
-        ),
-    );
-
-    preservedValues.forEach(
-      (value, key) => {
-        window.localStorage.setItem(
-          key,
-          value,
-        );
-      },
-    );
-
-    /*
-     * Explicitly initialise customer-linked stores to empty arrays.
-     * This prevents any store that has demonstration seed data from
-     * repopulating customers/history after reload.
-     */
-    const emptyArrayStores = [
-      "greenflow-customers-v1",
-      "greenflow-customer-programmes-v1",
-      "greenflow-treatments-v1",
-      "greenflow-treatments-v2",
-      "greenflow-treatments-v3",
-      "greenflow-enquiries-v1",
-      "greenflow-actions-v1",
-      "greenflow-communications-v1",
-      "greenflow-route-orders-v1",
-    ];
-
-    emptyArrayStores.forEach((key) => {
-      window.localStorage.setItem(
-        key,
-        JSON.stringify([]),
-      );
-    });
-
-    /*
-     * Close-day and temporary working data use object-shaped stores.
-     */
-    const emptyObjectStores = [
-      "greenflow-close-day-v1",
-      "greenflow-visit-centre-standard-mixes-v1",
-    ];
-
-    emptyObjectStores.forEach((key) => {
-      window.localStorage.setItem(
-        key,
-        JSON.stringify({}),
-      );
-    });
-
-    window.alert(
-      "GreenFlow fresh start complete. Customers, programmes, treatment history, routes, actions, communications and other operational test data were cleared. Business settings, invoice numbering, customer-number watermark, fleet, T1-T5 programme calendars, chemical catalogue and live stock were preserved.",
-    );
-
-    window.location.reload();
-  }
-
   async function testInvoiceNumber() {
     const confirmed = window.confirm(
       `The next invoice number is ${getNextInvoiceNumber()}. Increase it to the following number?`,
@@ -715,7 +319,7 @@ export default function SettingsPage() {
                 Settings
               </h1>
               <p className="gf-page-description">
-                Manage the business details and wording used every day. Backup, diagnostics and reset tools are available when you need them, without getting in the way of normal setup.
+                Manage the business details and wording used every day. Central backup and diagnostics are available alongside normal setup.
               </p>
             </div>
 
@@ -744,7 +348,7 @@ export default function SettingsPage() {
               detail={
                 lastBackupAt
                   ? `Last backup ${formatBackupDate(lastBackupAt)}`
-                  : "Create a backup before major changes or resets"
+                  : "Create a backup before major changes"
               }
               warning={!lastBackupAt}
             />
@@ -765,7 +369,7 @@ export default function SettingsPage() {
                 Choose what you want to change
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Everyday business settings come first. Backup, health and maintenance tools are grouped later in the navigation.
+                Everyday business settings come first. Central backup, audit and system health tools are grouped later in the navigation.
               </p>
             </div>
 
@@ -789,29 +393,6 @@ export default function SettingsPage() {
             </nav>
 
             <div className="p-5 md:p-6">
-              {activeTab === "maintenance" && (
-                <OperationalMaintenanceTab
-                  onStartNewTestDay={
-                    startNewTestDay
-                  }
-                  onResetDemoInventory={
-                    resetDemoInventory
-                  }
-                  onFullDemoReset={
-                    fullDemoReset
-                  }
-                  onStartGreenFlowFresh={
-                    startGreenFlowFresh
-                  }
-                  chemicalCount={
-                    chemicals.length
-                  }
-                  stockMovementCount={
-                    stockMovements.length
-                  }
-                  onRestoreDefaults={restoreDefaults}
-                />
-              )}
 
               {activeTab === "audit" && (
                 <AuditTrailTab />
@@ -958,7 +539,7 @@ export default function SettingsPage() {
 
             <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm">
               <span className="text-slate-500">
-                Changes are saved automatically in this browser.
+                Centralised settings are saved automatically.
               </span>
 
               <span className="font-semibold text-green-700">
@@ -1423,7 +1004,7 @@ function AuditTrailTab() {
 
       <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
         <strong>Audit trail:</strong>{" "}
-        this view records metadata about changes rather than displaying old and new sensitive field values. Downloadable GreenFlow backups include the audit storage because it uses a GreenFlow storage key.
+        this view records metadata about changes rather than displaying old and new sensitive field values. Downloadable central GreenFlow backups include the organisation audit trail.
       </div>
     </div>
   );
@@ -1769,301 +1350,6 @@ function SystemHealthTab({
       )}
     </div>
   );
-}
-
-function OperationalMaintenanceTab({
-  onStartNewTestDay,
-  onResetDemoInventory,
-  onFullDemoReset,
-  onStartGreenFlowFresh,
-  chemicalCount,
-  stockMovementCount,
-  onRestoreDefaults,
-}: {
-  onStartNewTestDay: () => void;
-  onResetDemoInventory: () => void;
-  onFullDemoReset: () => void;
-  onStartGreenFlowFresh: () => void;
-  chemicalCount: number;
-  stockMovementCount: number;
-  onRestoreDefaults: () => void;
-}) {
-  return (
-    <div>
-      <SectionHeading
-        title="Operational resets"
-        description="Choose the smallest reset that matches what you are trying to test. Inventory is now protected separately from treatment results."
-      />
-
-      <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-        <strong>Stock protection is active.</strong>{" "}
-        A normal New Test Day does not restore or reverse stock. Current chemical stock and the shared stock movement history remain untouched.
-      </div>
-
-      <div className="mt-6 grid gap-5 xl:grid-cols-2">
-        <section className="rounded-2xl border border-green-200 bg-green-50 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-            Level 1 · Operational
-          </div>
-
-          <h3 className="mt-2 text-2xl font-bold text-green-950">
-            Start New Test Day
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-green-800">
-            Clear operational treatment results so Visit Centre can be tested again without changing the inventory position you have built up.
-          </p>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <ResetDetail
-              label="Cleared"
-              items={[
-                "Treatment records and recorded outcomes",
-                "Treatment documents and invoice references derived from those records",
-                "Visit Centre progress, revenue and observation totals",
-                "Saved route order",
-                "Saved daily working mix",
-              ]}
-            />
-
-            <ResetDetail
-              label="Preserved"
-              items={[
-                "Customers and programme structure / scheduled dates",
-                "Chemical products",
-                "Live stock quantities",
-                "Shared stock movement history",
-                "Fleet and business settings",
-              ]}
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={onStartNewTestDay}
-            className="mt-6 rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
-          >
-            Start New Test Day
-          </button>
-        </section>
-
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
-            Level 2 · Inventory only
-          </div>
-
-          <h3 className="mt-2 text-2xl font-bold text-amber-950">
-            Reset Demo Inventory
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-amber-900">
-            Restore only the chemical inventory to the current demo seed values. This is useful when you want to repeat stock testing from a known starting point.
-          </p>
-
-          <div className="mt-5 rounded-xl border border-amber-200 bg-white p-4 text-sm leading-6 text-amber-950">
-            <div>
-              <strong>{chemicalCount}</strong>{" "}
-              chemical products currently loaded.
-            </div>
-
-            <div className="mt-1">
-              <strong>{stockMovementCount}</strong>{" "}
-              stock movement records currently in the shared audit trail.
-            </div>
-          </div>
-
-          <div className="mt-4 text-sm leading-6 text-amber-900">
-            This reset restores demo chemical quantities and clears the stock movement history. It does not touch customers, programmes or completed treatment records.
-          </div>
-
-          <button
-            type="button"
-            onClick={onResetDemoInventory}
-            className="mt-6 rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800"
-          >
-            Reset Demo Inventory
-          </button>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">
-            Level 3 · Season
-          </div>
-
-          <h3 className="mt-2 text-2xl font-bold text-slate-950">
-            Start New Season
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-slate-700">
-            Keep this as a separate season-management operation. Programme visits and treatment history can be reset for a new season while real stock quantities and the inventory audit trail remain preserved.
-          </p>
-
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">
-            GreenFlow already has separate Season Management logic. Do not use the inventory reset for a normal season change.
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-            Fresh start · Recommended now
-          </div>
-
-          <h3 className="mt-2 text-2xl font-bold text-blue-950">
-            Start GreenFlow Fresh
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-blue-900">
-            Clear the accumulated customer and operational test data so you can start using GreenFlow from a genuinely empty customer base, while keeping the real system setup you have already configured.
-          </p>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <ResetDetail
-              label="Cleared"
-              items={[
-                "Customers and customer programmes",
-                "Enquiries and Additional Jobs",
-                "Completed treatment records and invoice-linked history",
-                "Saved routes and working-day progress",
-                "Actions and follow-up records",
-                "Communication queue and history",
-                "Close Day and other customer-linked operational data",
-              ]}
-            />
-
-            <ResetDetail
-              label="Preserved"
-              items={[
-                "Sharpes Lawn Care business details and GreenFlow settings",
-                "Invoice settings and current invoice-number sequence",
-                "Customer-number watermark",
-                "Treatment wording and treatment library",
-                "Fleet setup",
-                "T1-T5 programme calendars",
-                "Chemical product catalogue, live stock and stock movement history",
-              ]}
-            />
-          </div>
-
-          <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm leading-6 text-blue-900">
-            <strong>Create a backup first.</strong>{" "}
-            You will be required to type <strong>START FRESH</strong> exactly before GreenFlow clears the operational data.
-          </div>
-
-          <button
-            type="button"
-            onClick={onStartGreenFlowFresh}
-            className="mt-6 rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800"
-          >
-            Start GreenFlow Fresh
-          </button>
-        </section>
-
-        <section className="rounded-2xl border border-red-200 bg-red-50 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">
-            Level 4 · Everything
-          </div>
-
-          <h3 className="mt-2 text-2xl font-bold text-red-950">
-            Full Demo Reset
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-red-900">
-            Clear GreenFlow operational/demo data and reload those stores from their current demonstration defaults. Real business configuration is protected and is not treated as demo data.
-          </p>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-red-200 bg-white p-4 text-sm leading-6 text-red-900">
-              <strong>Reset:</strong>{" "}
-              customers, programmes, treatments, chemicals, stock history, routes, communications, actions and other operational/demo records.
-            </div>
-
-            <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-900">
-              <strong>Preserved:</strong>{" "}
-              business details, GreenFlow settings, treatment wording/library, communication template, invoice settings/numbering and the customer-number watermark.
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-red-200 bg-white p-4 text-sm leading-6 text-red-900">
-            <strong>A backup is still recommended before a full reset.</strong>{" "}
-            You will be required to type <strong>RESET DEMO</strong> exactly before this runs.
-          </div>
-
-          <button
-            type="button"
-            onClick={onFullDemoReset}
-            className="mt-6 rounded-xl bg-red-700 px-5 py-3 text-sm font-bold text-white hover:bg-red-800"
-          >
-            Full Demo Reset
-          </button>
-        </section>
-      </div>
-
-      <section className="mt-5 rounded-2xl border border-red-200 bg-white p-5">
-        <div className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">
-          Settings reset
-        </div>
-        <h3 className="mt-2 text-xl font-bold text-slate-950">
-          Restore default settings
-        </h3>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-          Restore GreenFlow business settings to the original demonstration values. This is separate from the operational and inventory resets above.
-        </p>
-        <button
-          type="button"
-          onClick={onRestoreDefaults}
-          className="mt-4 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-        >
-          Restore default settings
-        </button>
-      </section>
-    </div>
-  );
-}
-
-function ResetDetail({
-  label,
-  items,
-}: {
-  label: string;
-  items: string[];
-}) {
-  return (
-    <div className="rounded-xl border border-green-200 bg-white p-4">
-      <div className="font-bold text-slate-900">
-        {label}
-      </div>
-
-      <div className="mt-3 space-y-2 text-sm text-slate-600">
-        {items.map((item) => (
-          <div
-            key={item}
-            className="flex items-start gap-2"
-          >
-            <span className="mt-0.5 font-bold text-[#176b37]">
-              ✓
-            </span>
-
-            <span>{item}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function removeOutcomeNotes(
-  notes: string,
-) {
-  return notes
-    .split("\n")
-    .filter(
-      (line) =>
-        !/^(Outcome:|Replacement date:)/i.test(
-          line.trim(),
-        ),
-    )
-    .join("\n")
-    .trim();
 }
 
 function BusinessTab({
