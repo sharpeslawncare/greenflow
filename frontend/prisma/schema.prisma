@@ -26,6 +26,7 @@ model Organisation {
   workingDays            WorkingDay[]
   communications         Communication[]
   customerActions        CustomerAction[]
+  auditEntries           AuditEntry[]
   settings               OrganisationSettings?
   invoiceSequence        InvoiceSequence?
 }
@@ -317,7 +318,6 @@ model WorkingDay {
   @@index([organisationId, date])
 }
 
-
 model Communication {
   id             String @id
   organisationId String
@@ -344,7 +344,6 @@ model Communication {
   @@index([organisationId, status])
 }
 
-
 model CustomerAction {
   id             String @id
   organisationId String
@@ -369,6 +368,27 @@ model CustomerAction {
   @@index([organisationId, dueDate])
 }
 
+model AuditEntry {
+  id             String @id
+  organisationId String
+
+  user          String
+  area          String
+  action        String
+  reference     String
+  description   String
+  changedFields Json
+
+  createdAt DateTime @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+  @@index([organisationId, createdAt])
+  @@index([organisationId, area])
+  @@index([organisationId, action])
+}
+
 model OrganisationSettings {
   id             String @id
   organisationId String @unique
@@ -381,7 +401,6 @@ model OrganisationSettings {
 
   @@index([organisationId])
 }
-
 
 model InvoiceSequence {
   id             String @id

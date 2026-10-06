@@ -45,6 +45,7 @@ type AuditInput = Omit<
 const STORAGE_KEY = "greenflow-audit-trail-v1";
 const DEFAULT_USER = "Rob Sharpe";
 const MAX_ENTRIES = 5000;
+const AUDIT_UPDATED_EVENT = "greenflow-audit-updated";
 
 export function recordAuditEvent(
   input: AuditInput,
@@ -73,14 +74,14 @@ export function recordAuditEvent(
   );
 
   try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(next),
-    );
+    writeBrowserAuditTrail(next);
+    dispatchAuditUpdated();
 
-    window.dispatchEvent(
-      new CustomEvent("greenflow-audit-updated"),
-    );
+    void saveAuditEntries([entry]).then((savedIds) => {
+      if (savedIds.has(entry.id)) {
+        removeBrowserAuditEntries(savedIds);
+      }
+    });
 
     return entry;
   } catch (error) {
@@ -114,14 +115,60 @@ export function readAuditTrail(): AuditEntry[] {
 
     return parsed
       .filter(isAuditEntry)
-      .sort(
-        (first, second) =>
-          second.createdAt.localeCompare(
-            first.createdAt,
-          ),
-      );
+      .sort(compareNewestFirst);
   } catch {
     return [];
+  }
+}
+
+export async function loadCentralAuditTrail(): Promise<
+  AuditEntry[]
+> {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const browserEntries = readAuditTrail();
+
+  if (browserEntries.length > 0) {
+    const savedIds =
+      await saveAuditEntries(browserEntries);
+
+    if (savedIds.size > 0) {
+      removeBrowserAuditEntries(savedIds);
+    }
+  }
+
+  try {
+    const response = await fetch("/api/audit", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Audit trail request failed with status ${response.status}.`,
+      );
+    }
+
+    const payload = (await response.json()) as unknown;
+
+    if (!isAuditResponse(payload)) {
+      throw new Error(
+        "Audit trail response was not in the expected format.",
+      );
+    }
+
+    return payload.records
+      .filter(isAuditEntry)
+      .sort(compareNewestFirst);
+  } catch (error) {
+    console.error(
+      "GreenFlow central audit trail could not be loaded.",
+      error,
+    );
+
+    return readAuditTrail();
   }
 }
 
@@ -131,14 +178,138 @@ export function clearAuditTrail() {
   }
 
   window.localStorage.removeItem(STORAGE_KEY);
-
-  window.dispatchEvent(
-    new CustomEvent("greenflow-audit-updated"),
-  );
+  dispatchAuditUpdated();
 }
 
 export function getAuditStorageKey() {
   return STORAGE_KEY;
+}
+
+async function saveAuditEntries(
+  entries: AuditEntry[],
+): Promise<Set<string>> {
+  if (
+    typeof window === "undefined" ||
+    entries.length === 0
+  ) {
+    return new Set();
+  }
+
+  try {
+    const response = await fetch("/api/audit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ records: entries }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Audit trail save failed with status ${response.status}.`,
+      );
+    }
+
+    const payload = (await response.json()) as unknown;
+
+    if (!isAuditResponse(payload)) {
+      throw new Error(
+        "Audit trail save response was not in the expected format.",
+      );
+    }
+
+    return new Set(
+      payload.records
+        .filter(isAuditEntry)
+        .map((entry) => entry.id),
+    );
+  } catch (error) {
+    console.error(
+      "GreenFlow audit event could not be saved to PostgreSQL.",
+      error,
+    );
+
+    return new Set();
+  }
+}
+
+function removeBrowserAuditEntries(
+  savedIds: Set<string>,
+) {
+  if (
+    typeof window === "undefined" ||
+    savedIds.size === 0
+  ) {
+    return;
+  }
+
+  const existing = readAuditTrail();
+  const remaining = existing.filter(
+    (entry) => !savedIds.has(entry.id),
+  );
+
+  if (remaining.length === existing.length) {
+    return;
+  }
+
+  writeBrowserAuditTrail(remaining);
+  dispatchAuditUpdated();
+}
+
+function writeBrowserAuditTrail(
+  entries: AuditEntry[],
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (entries.length === 0) {
+    window.localStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(
+      entries.slice(0, MAX_ENTRIES),
+    ),
+  );
+}
+
+function dispatchAuditUpdated() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(AUDIT_UPDATED_EVENT),
+  );
+}
+
+function isAuditResponse(
+  value: unknown,
+): value is { records: unknown[] } {
+  if (
+    !value ||
+    typeof value !== "object"
+  ) {
+    return false;
+  }
+
+  const candidate = value as {
+    records?: unknown;
+  };
+
+  return Array.isArray(candidate.records);
+}
+
+function compareNewestFirst(
+  first: AuditEntry,
+  second: AuditEntry,
+) {
+  return second.createdAt.localeCompare(
+    first.createdAt,
+  );
 }
 
 function normaliseChangedFields(

@@ -34,7 +34,7 @@ import {
   type AuditAction,
   type AuditArea,
   type AuditEntry,
-  readAuditTrail,
+  loadCentralAuditTrail,
 } from "@/components/audit-store";
 import {
   createAutomaticRecoveryPointIfDue,
@@ -1927,29 +1927,42 @@ function AuditTrailTab() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    function refreshAuditTrail() {
-      setEntries(readAuditTrail());
+    let cancelled = false;
+
+    async function refreshAuditTrail() {
+      const centralEntries =
+        await loadCentralAuditTrail();
+
+      if (!cancelled) {
+        setEntries(centralEntries);
+      }
     }
 
-    refreshAuditTrail();
+    void refreshAuditTrail();
+
+    function handleAuditUpdated() {
+      void refreshAuditTrail();
+    }
 
     window.addEventListener(
       "greenflow-audit-updated",
-      refreshAuditTrail,
+      handleAuditUpdated,
     );
     window.addEventListener(
       "storage",
-      refreshAuditTrail,
+      handleAuditUpdated,
     );
 
     return () => {
+      cancelled = true;
+
       window.removeEventListener(
         "greenflow-audit-updated",
-        refreshAuditTrail,
+        handleAuditUpdated,
       );
       window.removeEventListener(
         "storage",
-        refreshAuditTrail,
+        handleAuditUpdated,
       );
     };
   }, []);
@@ -2020,7 +2033,7 @@ function AuditTrailTab() {
     <div>
       <SectionHeading
         title="Audit trail"
-        description="Review important GreenFlow changes recorded in this browser. The audit trail is read-only here and records who made a change, what area was affected and which fields changed."
+        description="Review important GreenFlow changes recorded centrally for your organisation. The audit trail is read-only here and records who made a change, what area was affected and which fields changed."
       />
 
       <section className="mt-6 grid gap-3 md:grid-cols-3">
@@ -2032,7 +2045,7 @@ function AuditTrailTab() {
             {entries.length}
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Stored audit entries in this browser
+            Stored audit entries for this organisation
           </div>
         </div>
 
