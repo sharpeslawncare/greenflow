@@ -181,17 +181,9 @@ type ChemicalStoreValue = {
   stockMovements: ChemicalStockMovement[];
   ready: boolean;
 
-  addChemical: (
-    input?: NewChemicalInput,
-  ) => ChemicalRecord;
-
   addChemicalSafely: (
     input?: NewChemicalInput,
   ) => Promise<ChemicalSaveResult>;
-
-  updateChemical: (
-    chemical: ChemicalRecord,
-  ) => void;
 
   updateChemicalSafely: (
     chemical: ChemicalRecord,
@@ -199,7 +191,10 @@ type ChemicalStoreValue = {
 
   deleteChemical: (
     chemicalId: string,
-  ) => void;
+  ) => Promise<{
+    success: boolean;
+    message: string;
+  }>;
 
   getChemicalById: (
     chemicalId: string,
@@ -222,10 +217,6 @@ type ChemicalStoreValue = {
     context?: StockDeductionContext,
   ) => Promise<StockBatchDeductionResult>;
 
-  recordStockMovement: (
-    movement: NewChemicalStockMovement,
-  ) => ChemicalStockMovement;
-
   applyStockMovement: (
     movement: NewChemicalStockMovement,
     currentStockPacks: number,
@@ -243,16 +234,7 @@ type ChemicalStoreValue = {
     note?: string,
   ) => Promise<StockReconciliationResult>;
 
-  clearStockMovements: () => void;
-
-  restoreDemoChemicals: () => void;
 };
-
-const STORAGE_KEY =
-  "greenflow-chemicals-v1";
-
-const STOCK_MOVEMENT_STORAGE_KEY =
-  "greenflow-chemical-stock-movements-v1";
 
 type ChemicalDatabaseResponse = {
   chemicals: Partial<ChemicalRecord>[];
@@ -310,48 +292,6 @@ async function loadChemicalsFromDatabase(): Promise<
   }
 }
 
-async function bootstrapChemicalsToDatabase(
-  chemicals: ChemicalRecord[],
-  stockMovements: ChemicalStockMovement[],
-) {
-  const response = await fetch(
-    "/api/chemicals",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        chemicals,
-        stockMovements,
-      }),
-    },
-  );
-
-  const payload =
-    (await response.json()) as unknown;
-
-  if (!response.ok) {
-    let message =
-      "Unable to import chemicals to the GreenFlow database.";
-
-    if (
-      typeof payload === "object" &&
-      payload !== null
-    ) {
-      const errorValue =
-        (payload as Record<string, unknown>).error;
-
-      if (typeof errorValue === "string") {
-        message = errorValue;
-      }
-    }
-
-    throw new Error(message);
-  }
-
-  return payload;
-}
 const DEFAULT_EQUIPMENT = {
   nozzleColour: "Grey",
   nozzleType: "Deflector Tip",
@@ -381,186 +321,6 @@ const EMPTY_EQUIPMENT = {
   sprayWidthMetres: 0,
   pressureBar: 0,
 };
-
-const demoChemicals: ChemicalRecord[] = [
-  {
-    id: "chemical-demo-1",
-
-    name: "ProTurf Spring 21-5-6",
-    manufacturer: "ICL",
-    type: "Fertiliser",
-
-    activeIngredients:
-      "Nitrogen 21%, phosphate 5%, potassium 6%",
-
-    registrationNumber: "",
-
-    productInformationUrl: "",
-    productLabelUrl: "",
-    safetyDataSheetUrl: "",
-
-    packSize: 25,
-    packUnit: "kg",
-    costPerPack: 42,
-    supplier: "",
-    preferredOrderQuantity: 0,
-
-    // Pack-equivalents: 23 x 25 kg = 575 kg available.
-    currentStock: 23,
-    reorderLevel: 5,
-
-    applicationRate: 300,
-    applicationRateUnit: "kg/ha",
-
-    waterVolumePerHectare: 0,
-    minimumWaterVolumePerHectare: 0,
-    maximumWaterVolumePerHectare: 0,
-
-    maximumAnnualApplications: 3,
-    maximumAnnualDose: 750,
-
-    targetUse:
-      "Seasonal lawn feeding and colour improvement.",
-
-    ...EMPTY_EQUIPMENT,
-
-    ppeRequirements:
-      "Gloves and suitable work clothing.",
-
-    coshhNotes:
-      "Avoid creating dust. Wash hands after handling.",
-
-    environmentalWarnings:
-      "Keep away from drains and watercourses.",
-
-    active: true,
-
-    createdAt:
-      "2026-08-03T12:00:00.000Z",
-
-    updatedAt:
-      "2026-08-03T12:00:00.000Z",
-  },
-
-  {
-    id: "chemical-demo-2",
-
-    name: "Pastor Pro",
-    manufacturer: "Corteva",
-    type: "Herbicide",
-
-    activeIngredients:
-      "Fluroxypyr, clopyralid and triclopyr",
-
-    registrationNumber:
-      "MAPP 18092",
-
-    productInformationUrl: "",
-    productLabelUrl: "",
-    safetyDataSheetUrl: "",
-
-    packSize: 2,
-    packUnit: "L",
-    costPerPack: 128,
-    supplier: "",
-    preferredOrderQuantity: 0,
-
-    // Pack-equivalents: 4 x 2 L = 8 L available.
-    currentStock: 4,
-    reorderLevel: 2,
-
-    applicationRate: 2,
-    applicationRateUnit: "L/ha",
-
-    waterVolumePerHectare: 200,
-    minimumWaterVolumePerHectare: 200,
-    maximumWaterVolumePerHectare: 200,
-
-    maximumAnnualApplications: 1,
-    maximumAnnualDose: 2,
-
-    targetUse:
-      "Selective control of broad-leaved weeds in established turf.",
-
-    ...DEFAULT_EQUIPMENT,
-
-    ppeRequirements:
-      "Chemical-resistant gloves, coveralls and suitable footwear.",
-
-    coshhNotes:
-      "Follow the current product label and COSHH assessment before use.",
-
-    environmentalWarnings:
-      "Do not contaminate water. Observe all label buffer-zone requirements.",
-
-    active: true,
-
-    createdAt:
-      "2026-08-03T12:05:00.000Z",
-
-    updatedAt:
-      "2026-08-03T12:05:00.000Z",
-  },
-
-  {
-    id: "chemical-demo-3",
-
-    name: "Liquid Iron",
-    manufacturer: "Demo Supplier",
-    type: "Moss Control",
-
-    activeIngredients:
-      "Ferrous sulphate",
-
-    registrationNumber: "",
-
-    productInformationUrl: "",
-    productLabelUrl: "",
-    safetyDataSheetUrl: "",
-
-    packSize: 10,
-    packUnit: "L",
-    costPerPack: 36,
-    supplier: "",
-    preferredOrderQuantity: 0,
-
-    // Pack-equivalents: 6 x 10 L = 60 L available.
-    currentStock: 6,
-    reorderLevel: 2,
-
-    applicationRate: 20,
-    applicationRateUnit: "L/ha",
-
-    waterVolumePerHectare: 200,
-    minimumWaterVolumePerHectare: 200,
-    maximumWaterVolumePerHectare: 200,
-
-    maximumAnnualApplications: 4,
-    maximumAnnualDose: 80,
-
-    targetUse:
-      "Moss suppression and turf greening.",
-
-    ...DEFAULT_EQUIPMENT,
-
-    ppeRequirements:
-      "Gloves, eye protection and suitable work clothing.",
-
-    coshhNotes:
-      "May stain hard surfaces. Rinse spills immediately.",
-
-    environmentalWarnings:
-      "Avoid application near watercourses and drains.",
-
-    active: true,
-
-    createdAt:
-      "2026-08-03T12:10:00.000Z",
-
-    updatedAt:
-      "2026-08-03T12:10:00.000Z",
-  },
-];
 
 const ChemicalStoreContext =
   createContext<ChemicalStoreValue | null>(
@@ -659,153 +419,6 @@ export function ChemicalStoreProvider({
     stockMovementsRef.current =
       stockMovements;
   }, [stockMovements]);
-
-  useEffect(() => {
-    if (!ready) {
-      return;
-    }
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(chemicals),
-    );
-  }, [chemicals, ready]);
-
-  useEffect(() => {
-    if (!ready) {
-      return;
-    }
-
-    window.localStorage.setItem(
-      STOCK_MOVEMENT_STORAGE_KEY,
-      JSON.stringify(
-        stockMovements,
-      ),
-    );
-  }, [stockMovements, ready]);
-
-  function addChemical(
-    input: NewChemicalInput = {},
-  ) {
-    const now =
-      new Date().toISOString();
-
-    const newChemical =
-      normaliseChemical({
-        id: createChemicalId(),
-
-        name: "New chemical",
-        manufacturer: "",
-        type: "Other",
-
-        activeIngredients: "",
-        registrationNumber: "",
-
-        productInformationUrl: "",
-        productLabelUrl: "",
-        safetyDataSheetUrl: "",
-
-        packSize: 1,
-        packUnit: "L",
-        costPerPack: 0,
-
-        currentStock: 0,
-        reorderLevel: 0,
-
-        applicationRate: 0,
-        applicationRateUnit: "L/ha",
-
-        waterVolumePerHectare: 0,
-        minimumWaterVolumePerHectare: 0,
-        maximumWaterVolumePerHectare: 0,
-
-        maximumAnnualApplications: 0,
-        maximumAnnualDose: 0,
-
-        targetUse: "",
-
-        ...DEFAULT_EQUIPMENT,
-
-        ppeRequirements: "",
-        coshhNotes: "",
-        environmentalWarnings: "",
-
-        active: true,
-
-        ...input,
-
-        createdAt: now,
-        updatedAt: now,
-      });
-
-    const next = [
-      newChemical,
-      ...chemicalsRef.current,
-    ];
-
-    chemicalsRef.current =
-      next;
-
-    setChemicals(next);
-
-    void fetch(
-      "/api/chemicals",
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          chemical: newChemical,
-        }),
-      },
-    ).then(async (response) => {
-      if (!response.ok) {
-        let message =
-          "Unable to save new chemical to the GreenFlow database.";
-
-        try {
-          const payload =
-            (await response.json()) as unknown;
-
-          if (
-            typeof payload === "object" &&
-            payload !== null
-          ) {
-            const errorValue =
-              (
-                payload as Record<
-                  string,
-                  unknown
-                >
-              ).error;
-
-            if (
-              typeof errorValue ===
-              "string"
-            ) {
-              message =
-                errorValue;
-            }
-          }
-        } catch {
-          // Keep the default error message.
-        }
-
-        console.error(
-          "Failed to save new GreenFlow chemical:",
-          message,
-        );
-      }
-    }).catch((saveError) => {
-      console.error(
-        "Failed to save new GreenFlow chemical:",
-        saveError,
-      );
-    });
-
-    return newChemical;
-  }
 
   async function addChemicalSafely(
     input: NewChemicalInput = {},
@@ -944,88 +557,6 @@ export function ChemicalStoreProvider({
     };
   }
 
-  function updateChemical(
-    chemical: ChemicalRecord,
-  ) {
-    const updatedChemical =
-      normaliseChemical({
-        ...chemical,
-
-        updatedAt:
-          new Date().toISOString(),
-      });
-
-    const next =
-      chemicalsRef.current.map(
-        (item) =>
-          item.id ===
-          updatedChemical.id
-            ? updatedChemical
-            : item,
-      );
-
-    chemicalsRef.current =
-      next;
-
-    setChemicals(next);
-
-    void fetch(
-      "/api/chemicals",
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          chemical: updatedChemical,
-        }),
-      },
-    ).then(async (response) => {
-      if (!response.ok) {
-        let message =
-          "Unable to save chemical to the GreenFlow database.";
-
-        try {
-          const payload =
-            (await response.json()) as unknown;
-
-          if (
-            typeof payload === "object" &&
-            payload !== null
-          ) {
-            const errorValue =
-              (
-                payload as Record<
-                  string,
-                  unknown
-                >
-              ).error;
-
-            if (
-              typeof errorValue ===
-              "string"
-            ) {
-              message =
-                errorValue;
-            }
-          }
-        } catch {
-          // Keep the default error message.
-        }
-
-        console.error(
-          "Failed to save GreenFlow chemical:",
-          message,
-        );
-      }
-    }).catch((saveError) => {
-      console.error(
-        "Failed to save GreenFlow chemical:",
-        saveError,
-      );
-    });
-  }
-
   async function updateChemicalSafely(
     chemical: ChemicalRecord,
   ): Promise<ChemicalSaveResult> {
@@ -1124,32 +655,26 @@ export function ChemicalStoreProvider({
     };
   }
 
-  function deleteChemical(
+  async function deleteChemical(
     chemicalId: string,
-  ) {
-    const next =
-      chemicalsRef.current.filter(
-        (chemical) =>
-          chemical.id !== chemicalId,
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    try {
+      const response = await fetch(
+        "/api/chemicals",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chemicalId,
+          }),
+        },
       );
 
-    chemicalsRef.current =
-      next;
-
-    setChemicals(next);
-
-    void fetch(
-      "/api/chemicals",
-      {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          chemicalId,
-        }),
-      },
-    ).then(async (response) => {
       if (!response.ok) {
         let message =
           "Unable to delete chemical from the GreenFlow database.";
@@ -1182,18 +707,41 @@ export function ChemicalStoreProvider({
           // Keep the default error message.
         }
 
-        console.error(
-          "Failed to delete GreenFlow chemical:",
+        return {
+          success: false,
           message,
-        );
+        };
       }
-    }).catch((deleteError) => {
+    } catch (deleteError) {
       console.error(
         "Failed to delete GreenFlow chemical:",
         deleteError,
       );
-    });
+
+      return {
+        success: false,
+        message:
+          "Unable to delete chemical from the GreenFlow database.",
+      };
+    }
+
+    const next =
+      chemicalsRef.current.filter(
+        (chemical) =>
+          chemical.id !== chemicalId,
+      );
+
+    chemicalsRef.current =
+      next;
+
+    setChemicals(next);
+
+    return {
+      success: true,
+      message: "Chemical deleted.",
+    };
   }
+
   function getChemicalById(
     chemicalId: string,
   ) {
@@ -1218,87 +766,6 @@ export function ChemicalStoreProvider({
       chemical,
       areaSquareMetres,
     );
-  }
-
-  function recordStockMovement(
-    movement: NewChemicalStockMovement,
-  ) {
-    const created:
-      ChemicalStockMovement = {
-        ...movement,
-        id:
-          createStockMovementId(),
-        createdAt:
-          new Date().toISOString(),
-      };
-
-    const next = [
-      created,
-      ...stockMovementsRef.current,
-    ];
-
-    stockMovementsRef.current =
-      next;
-
-    setStockMovements(next);
-
-    void fetch(
-      "/api/chemicals/stock-movements",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          movement: created,
-        }),
-      },
-    ).then(async (response) => {
-      if (!response.ok) {
-        let message =
-          "Unable to save stock movement to the GreenFlow database.";
-
-        try {
-          const payload =
-            (await response.json()) as unknown;
-
-          if (
-            typeof payload === "object" &&
-            payload !== null
-          ) {
-            const errorValue =
-              (
-                payload as Record<
-                  string,
-                  unknown
-                >
-              ).error;
-
-            if (
-              typeof errorValue ===
-              "string"
-            ) {
-              message =
-                errorValue;
-            }
-          }
-        } catch {
-          // Keep the default error message.
-        }
-
-        console.error(
-          "Failed to save GreenFlow stock movement:",
-          message,
-        );
-      }
-    }).catch((saveError) => {
-      console.error(
-        "Failed to save GreenFlow stock movement:",
-        saveError,
-      );
-    });
-
-    return created;
   }
 
   async function applyStockMovement(
@@ -1677,13 +1144,6 @@ export function ChemicalStoreProvider({
         result.currentStockPacks ??
         nextPacks,
     };
-  }
-
-  function clearStockMovements() {
-    stockMovementsRef.current =
-      [];
-
-    setStockMovements([]);
   }
 
   async function deductChemicalStock(
@@ -2142,23 +1602,6 @@ export function ChemicalStoreProvider({
     };
   }
 
-  function restoreDemoChemicals() {
-    const demo =
-      cloneDemoChemicals();
-
-    chemicalsRef.current =
-      demo;
-
-    stockMovementsRef.current =
-      [];
-
-    setChemicals(
-      demo,
-    );
-
-    setStockMovements([]);
-  }
-
   const value =
     useMemo<ChemicalStoreValue>(
       () => ({
@@ -2166,9 +1609,7 @@ export function ChemicalStoreProvider({
         stockMovements,
         ready,
 
-        addChemical,
         addChemicalSafely,
-        updateChemical,
         updateChemicalSafely,
         deleteChemical,
 
@@ -2177,13 +1618,9 @@ export function ChemicalStoreProvider({
         deductChemicalStock,
         deductChemicalStockBatch,
 
-        recordStockMovement,
         applyStockMovement,
         reconcileChemicalStock,
         setChemicalStockPacks,
-        clearStockMovements,
-
-        restoreDemoChemicals,
       }),
       [
         chemicals,
@@ -2561,14 +1998,6 @@ function convertChemicalAmount(
   }
 
   return null;
-}
-
-function cloneDemoChemicals() {
-  return demoChemicals.map(
-    (chemical) => ({
-      ...chemical,
-    }),
-  );
 }
 
 function createStockMovementId() {

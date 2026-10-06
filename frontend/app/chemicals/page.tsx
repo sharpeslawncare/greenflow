@@ -81,7 +81,6 @@ export default function ChemicalsPage() {
     addChemicalSafely,
     updateChemicalSafely,
     deleteChemical,
-    restoreDemoChemicals,
     reconcileChemicalStock,
     setChemicalStockPacks,
   } = useChemicalStore();
@@ -904,7 +903,7 @@ export default function ChemicalsPage() {
     );
   }
 
-  function removeChemical() {
+  async function removeChemical() {
     if (!selectedChemical) {
       return;
     }
@@ -956,15 +955,27 @@ export default function ChemicalsPage() {
       return;
     }
 
-    deleteChemical(
-      selectedChemical.id,
-    );
+    const deletedId =
+      selectedChemical.id;
+
+    const result =
+      await deleteChemical(
+        deletedId,
+      );
+
+    if (!result.success) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
 
     const remaining =
       chemicals.filter(
         (chemical) =>
           chemical.id !==
-          selectedChemical.id,
+          deletedId,
       );
 
     setSelectedChemicalId("");
@@ -978,27 +989,7 @@ export default function ChemicalsPage() {
     );
 
     showMessage(
-      "Chemical deleted.",
-    );
-  }
-
-  function restoreDemoData() {
-    const confirmed =
-      window.confirm(
-        "Restore the original demonstration chemicals? Current chemical records will be replaced.",
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    restoreDemoChemicals();
-
-    setSelectedChemicalId("");
-    setDraft(null);
-
-    showMessage(
-      "Demonstration chemicals restored.",
+      result.message,
     );
   }
 
@@ -2415,13 +2406,6 @@ export default function ChemicalsPage() {
 
                   <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={restoreDemoData}
-                        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                      >
-                        Restore demo chemicals
-                      </button>
                       <button
                         type="button"
                         onClick={removeChemical}

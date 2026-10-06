@@ -136,7 +136,6 @@ export default function SettingsPage() {
     chemicals,
     stockMovements,
     ready: chemicalsReady,
-    restoreDemoChemicals,
   } = useChemicalStore();
 
   const [activeTab, setActiveTab] =
