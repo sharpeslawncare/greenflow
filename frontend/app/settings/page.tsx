@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   type CSSProperties,
-  type ChangeEvent,
   type ReactNode,
   useEffect,
   useMemo,
@@ -36,19 +35,6 @@ import {
   type AuditEntry,
   loadCentralAuditTrail,
 } from "@/components/audit-store";
-import {
-  createAutomaticRecoveryPointIfDue,
-  createRecoveryPoint,
-  deleteRecoveryPoint,
-  formatRecoveryPointDate,
-  formatRecoveryPointSize,
-  listRecoveryAuditEvents,
-  listRecoveryPoints,
-  restoreRecoveryPoint,
-  type RecoveryAuditEvent,
-  type RecoveryPoint,
-} from "@/components/recovery-point-store";
-
 type SettingsTab =
   | "maintenance"
   | "health"
@@ -171,25 +157,8 @@ export default function SettingsPage() {
   const [lastBackupAt, setLastBackupAt] =
     useState("");
 
-  const [
-    recoveryPoints,
-    setRecoveryPoints,
-  ] = useState<RecoveryPoint[]>([]);
-
-  const [
-    recoveryAuditEvents,
-    setRecoveryAuditEvents,
-  ] = useState<RecoveryAuditEvent[]>([]);
-
-  const [
-    recoveryReady,
-    setRecoveryReady,
-  ] = useState(false);
-
-  const [
-    recoveryBusy,
-    setRecoveryBusy,
-  ] = useState(false);
+  const [backupBusy, setBackupBusy] =
+    useState(false);
 
   useEffect(() => {
     const backupDate =
@@ -204,41 +173,6 @@ export default function SettingsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadRecoverySystem() {
-      try {
-        await createAutomaticRecoveryPointIfDue();
-
-        const points =
-          await listRecoveryPoints();
-
-        if (cancelled) return;
-
-        setRecoveryPoints(points);
-        setRecoveryAuditEvents(
-          listRecoveryAuditEvents(),
-        );
-      } catch (error) {
-        console.error(
-          "GreenFlow recovery points could not be loaded.",
-          error,
-        );
-      } finally {
-        if (!cancelled) {
-          setRecoveryReady(true);
-        }
-      }
-    }
-
-    void loadRecoverySystem();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   function showMessage(text: string) {
     setMessage(text);
 
@@ -247,314 +181,83 @@ export default function SettingsPage() {
     }, 2800);
   }
 
-  async function refreshRecoveryPoints() {
-    const points =
-      await listRecoveryPoints();
+  async function createBackup() {
+    if (backupBusy) return;
 
-    setRecoveryPoints(points);
-    setRecoveryAuditEvents(
-      listRecoveryAuditEvents(),
-    );
-  }
-
-  async function handleCreateRecoveryPoint() {
-    if (recoveryBusy) return;
-
-    setRecoveryBusy(true);
+    setBackupBusy(true);
 
     try {
-      await createRecoveryPoint(
-        "Manual recovery point",
-        "manual",
+      const response = await fetch(
+        "/api/backup",
+        {
+          method: "GET",
+          cache: "no-store",
+        },
       );
 
-      await refreshRecoveryPoints();
-
-      showMessage(
-        "Recovery point created.",
-      );
-    } catch (error) {
-      console.error(error);
-
-      showMessage(
-        "The recovery point could not be created.",
-      );
-    } finally {
-      setRecoveryBusy(false);
-    }
-  }
-
-  async function handleRestoreRecoveryPoint(
-    point: RecoveryPoint,
-  ) {
-    if (recoveryBusy) return;
-
-    const confirmed =
-      window.confirm(
-        `Restore the GreenFlow recovery point from ${formatRecoveryPointDate(
-          point.createdAt,
-        )}? A safety recovery point of the current data will be created first.`,
-      );
-
-    if (!confirmed) return;
-
-    setRecoveryBusy(true);
-
-    try {
-      await restoreRecoveryPoint(
-        point.id,
-      );
-
-      window.alert(
-        "Recovery point restored successfully. GreenFlow will now reload.",
-      );
-
-      window.location.reload();
-    } catch (error) {
-      console.error(error);
-
-      showMessage(
-        "The recovery point could not be restored.",
-      );
-
-      setRecoveryBusy(false);
-    }
-  }
-
-  async function handleDeleteRecoveryPoint(
-    point: RecoveryPoint,
-  ) {
-    if (recoveryBusy) return;
-
-    const confirmed =
-      window.confirm(
-        `Delete the recovery point from ${formatRecoveryPointDate(
-          point.createdAt,
-        )}? This cannot be undone.`,
-      );
-
-    if (!confirmed) return;
-
-    setRecoveryBusy(true);
-
-    try {
-      await deleteRecoveryPoint(
-        point.id,
-      );
-
-      await refreshRecoveryPoints();
-
-      showMessage(
-        "Recovery point deleted.",
-      );
-    } catch (error) {
-      console.error(error);
-
-      showMessage(
-        "The recovery point could not be deleted.",
-      );
-    } finally {
-      setRecoveryBusy(false);
-    }
-  }
-
-  function createBackup() {
-    const payload: Record<string, string> = {};
-
-    for (
-      let index = 0;
-      index < window.localStorage.length;
-      index += 1
-    ) {
-      const key =
-        window.localStorage.key(index);
-
-      if (
-        !key ||
-        !key.startsWith("greenflow-")
-      ) {
-        continue;
-      }
-
-      const value =
-        window.localStorage.getItem(key);
-
-      if (value !== null) {
-        payload[key] = value;
-      }
-    }
-
-    const createdAt =
-      new Date().toISOString();
-
-    const backup = {
-      application: "GreenFlow",
-      version: 1,
-      createdAt,
-      items: payload,
-    };
-
-    const blob = new Blob(
-      [
-        JSON.stringify(
-          backup,
-          null,
-          2,
-        ),
-      ],
-      {
-        type: "application/json",
-      },
-    );
-
-    const url =
-      URL.createObjectURL(blob);
-
-    const link =
-      document.createElement("a");
-
-    link.href = url;
-    link.download =
-      `greenflow-backup-${createdAt
-        .slice(0, 19)
-        .replaceAll(":", "-")}.json`;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-
-    window.localStorage.setItem(
-      "greenflow-last-backup-at",
-      createdAt,
-    );
-
-    setLastBackupAt(createdAt);
-
-    showMessage(
-      "GreenFlow backup downloaded.",
-    );
-  }
-
-  async function restoreBackup(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    const file =
-      event.target.files?.[0];
-
-    event.target.value = "";
-
-    if (!file) return;
-
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(
-        await file.text(),
-      );
-    } catch {
-      showMessage(
-        "The selected file is not valid JSON.",
-      );
-      return;
-    }
-
-    if (
-      !isGreenFlowBackup(parsed)
-    ) {
-      showMessage(
-        "The selected file is not a valid GreenFlow backup.",
-      );
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Restore the backup created ${formatBackupDate(
-        parsed.createdAt,
-      )}? Existing GreenFlow browser data will be replaced.`,
-    );
-
-    if (!confirmed) return;
-
-    const currentSettingsJson =
-      window.localStorage.getItem(
-        "greenflow-business-settings-v1",
-      );
-
-    const currentCustomerSequence =
-      window.localStorage.getItem(
-        "greenflow-customer-sequence-v1",
-      );
-
-    const currentGreenFlowKeys: string[] =
-      [];
-
-    for (
-      let index = 0;
-      index < window.localStorage.length;
-      index += 1
-    ) {
-      const key =
-        window.localStorage.key(index);
-
-      if (
-        key?.startsWith(
-          "greenflow-",
-        )
-      ) {
-        currentGreenFlowKeys.push(
-          key,
+      if (!response.ok) {
+        throw new Error(
+          `Backup request failed with status ${response.status}.`,
         );
       }
+
+      const blob = await response.blob();
+      const disposition =
+        response.headers.get(
+          "Content-Disposition",
+        ) ?? "";
+
+      const filenameMatch =
+        disposition.match(
+          /filename="([^"]+)"/,
+        );
+
+      const createdAt =
+        new Date().toISOString();
+
+      const filename =
+        filenameMatch?.[1] ??
+        `greenflow-central-backup-${createdAt
+          .slice(0, 19)
+          .replaceAll(":", "-")}.json`;
+
+      const url =
+        URL.createObjectURL(blob);
+
+      const link =
+        document.createElement("a");
+
+      link.href = url;
+      link.download = filename;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(url);
+
+      window.localStorage.setItem(
+        "greenflow-last-backup-at",
+        createdAt,
+      );
+
+      setLastBackupAt(createdAt);
+
+      showMessage(
+        "Central PostgreSQL backup downloaded.",
+      );
+    } catch (error) {
+      console.error(
+        "GreenFlow central backup could not be downloaded.",
+        error,
+      );
+
+      showMessage(
+        "The central backup could not be downloaded.",
+      );
+    } finally {
+      setBackupBusy(false);
     }
-
-    currentGreenFlowKeys.forEach(
-      (key) =>
-        window.localStorage.removeItem(
-          key,
-        ),
-    );
-
-    Object.entries(
-      parsed.items,
-    ).forEach(
-      ([key, value]) => {
-        if (
-          key.startsWith(
-            "greenflow-",
-          )
-        ) {
-          window.localStorage.setItem(
-            key,
-            value,
-          );
-        }
-      },
-    );
-
-    preserveHighestInvoiceSequence(
-      currentSettingsJson,
-      window.localStorage.getItem(
-        "greenflow-business-settings-v1",
-      ),
-    );
-
-    preserveHighestCustomerSequence(
-      currentCustomerSequence,
-      window.localStorage.getItem(
-        "greenflow-customer-sequence-v1",
-      ),
-      window.localStorage.getItem(
-        "greenflow-customers-v1",
-      ),
-    );
-
-    window.alert(
-      "Backup restored successfully. GreenFlow will now reload.",
-    );
-
-    window.location.reload();
   }
 
   function restoreDefaults() {
@@ -1138,32 +841,11 @@ export default function SettingsPage() {
                   lastBackupAt={
                     lastBackupAt
                   }
+                  backupBusy={
+                    backupBusy
+                  }
                   onCreateBackup={
                     createBackup
-                  }
-                  onRestoreBackup={
-                    restoreBackup
-                  }
-                  recoveryPoints={
-                    recoveryPoints
-                  }
-                  recoveryAuditEvents={
-                    recoveryAuditEvents
-                  }
-                  recoveryReady={
-                    recoveryReady
-                  }
-                  recoveryBusy={
-                    recoveryBusy
-                  }
-                  onCreateRecoveryPoint={
-                    handleCreateRecoveryPoint
-                  }
-                  onRestoreRecoveryPoint={
-                    handleRestoreRecoveryPoint
-                  }
-                  onDeleteRecoveryPoint={
-                    handleDeleteRecoveryPoint
                   }
                 />
               )}
@@ -1332,566 +1014,94 @@ function SettingsOverviewCard({
 
 function BackupRestoreTab({
   lastBackupAt,
+  backupBusy,
   onCreateBackup,
-  onRestoreBackup,
-  recoveryPoints,
-  recoveryAuditEvents,
-  recoveryReady,
-  recoveryBusy,
-  onCreateRecoveryPoint,
-  onRestoreRecoveryPoint,
-  onDeleteRecoveryPoint,
 }: {
   lastBackupAt: string;
+  backupBusy: boolean;
   onCreateBackup: () => void;
-  onRestoreBackup: (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => void;
-  recoveryPoints: RecoveryPoint[];
-  recoveryAuditEvents: RecoveryAuditEvent[];
-  recoveryReady: boolean;
-  recoveryBusy: boolean;
-  onCreateRecoveryPoint: () => void;
-  onRestoreRecoveryPoint: (
-    point: RecoveryPoint,
-  ) => void;
-  onDeleteRecoveryPoint: (
-    point: RecoveryPoint,
-  ) => void;
 }) {
   return (
     <div>
       <SectionHeading
-        title="Backup, recovery and restore"
-        description="Use automatic recovery points for quick rollback and downloadable backup files for an independent copy outside the browser."
+        title="Central backup"
+        description="Download an organisation-scoped export of GreenFlow data stored centrally in PostgreSQL."
       />
 
-      <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+      <section className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
-            <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-              Recovery points
+            <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+              PostgreSQL export
             </div>
 
-            <h3 className="mt-2 text-2xl font-bold text-blue-950">
-              Local safety snapshots
+            <h3 className="mt-2 text-2xl font-bold text-green-950">
+              Download central GreenFlow data
             </h3>
 
-            <p className="mt-2 text-sm leading-6 text-blue-900">
-              GreenFlow keeps up to six recovery points in this browser using IndexedDB. An automatic point is considered every six hours and is only added when GreenFlow data has changed. You can also create one manually before important work.
+            <p className="mt-2 text-sm leading-6 text-green-800">
+              Creates a JSON export directly from the central PostgreSQL data for this organisation. It includes customers and additional jobs, enquiries, seasons, programmes, route orders, treatments, chemicals and stock movements, working days, communications, customer actions, the audit trail, organisation settings and the invoice sequence.
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={
-              onCreateRecoveryPoint
-            }
-            disabled={recoveryBusy}
-            className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {recoveryBusy
-              ? "Working..."
-              : "Create Recovery Point"}
-          </button>
-        </div>
-
-        {!recoveryReady ? (
-          <div className="mt-5 rounded-xl border border-blue-200 bg-white p-5 text-sm text-slate-500">
-            Loading recovery points...
-          </div>
-        ) : recoveryPoints.length === 0 ? (
-          <div className="mt-5 rounded-xl border border-dashed border-blue-300 bg-white p-6 text-center">
-            <div className="font-bold text-slate-900">
-              No recovery points yet
-            </div>
-            <p className="mt-1 text-sm text-slate-500">
-              Create the first recovery point now. GreenFlow will then continue creating periodic safety points when data changes.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-5 overflow-hidden rounded-xl border border-blue-200 bg-white">
-            <div className="hidden grid-cols-[1.5fr_1fr_110px_190px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
-              <span>Recovery point</span>
-              <span>Type</span>
-              <span>Size</span>
-              <span className="text-right">
-                Actions
-              </span>
-            </div>
-
-            <div className="divide-y divide-slate-200">
-              {recoveryPoints.map(
-                (point) => (
-                  <div
-                    key={point.id}
-                    className="grid gap-3 px-4 py-4 md:grid-cols-[1.5fr_1fr_110px_190px] md:items-center"
-                  >
-                    <div>
-                      <div className="font-bold text-slate-900">
-                        {point.label}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {formatRecoveryPointDate(
-                          point.createdAt,
-                        )}{" "}
-                        · {point.itemCount} stored items
-                      </div>
-                    </div>
-
-                    <div>
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
-                          point.kind ===
-                          "automatic"
-                            ? "bg-green-100 text-green-800"
-                            : point.kind ===
-                                "pre-restore"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-blue-100 text-blue-800"
-                        }`}
-                      >
-                        {point.kind ===
-                        "automatic"
-                          ? "Automatic"
-                          : point.kind ===
-                              "pre-restore"
-                            ? "Pre-restore safety"
-                            : "Manual"}
-                      </span>
-                    </div>
-
-                    <div className="text-sm font-semibold text-slate-700">
-                      {formatRecoveryPointSize(
-                        point.byteSize,
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 md:justify-end">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onRestoreRecoveryPoint(
-                            point,
-                          )
-                        }
-                        disabled={recoveryBusy}
-                        className="rounded-lg bg-[#176b37] px-3 py-2 text-xs font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
-                      >
-                        Restore
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onDeleteRecoveryPoint(
-                            point,
-                          )
-                        }
-                        disabled={recoveryBusy}
-                        className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm leading-6 text-blue-900">
-          <strong>Important:</strong>{" "}
-          recovery points stay on this browser/device. They are designed for quick rollback, not as your only backup. Keep using downloadable backup files for an independent copy.
-        </div>
-      </section>
-
-      <div className="mt-6 grid gap-5 xl:grid-cols-2">
-        <article className="rounded-2xl border border-green-200 bg-green-50 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
-            Portable backup
-          </div>
-
-          <h3 className="mt-2 text-2xl font-bold text-green-950">
-            Download GreenFlow data
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-green-800">
-            Downloads customers, programmes, treatments, chemicals, live stock, stock movement history, routes, fleet, settings and saved working-day data as one JSON file.
-          </p>
 
           <button
             type="button"
             onClick={onCreateBackup}
-            className="mt-6 rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f]"
+            disabled={backupBusy}
+            className="rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#125b2f] disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            Create Backup
+            {backupBusy
+              ? "Creating Backup..."
+              : "Create Central Backup"}
           </button>
+        </div>
 
-          <div className="mt-4 rounded-xl border border-green-200 bg-white p-4 text-sm text-green-900">
-            <strong>Last backup:</strong>{" "}
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-green-200 bg-white p-4 text-sm leading-6 text-green-900">
+            <strong>Last central backup downloaded in this browser:</strong>{" "}
             {lastBackupAt
               ? formatBackupDate(
                   lastBackupAt,
                 )
-              : "No backup recorded in this browser."}
-          </div>
-        </article>
-
-        <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
-            Restore backup file
+              : "No central backup recorded yet."}
           </div>
 
-          <h3 className="mt-2 text-2xl font-bold text-amber-950">
-            Replace current browser data
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-amber-900">
-            Select a GreenFlow backup file. The restore process replaces existing GreenFlow data in this browser and then reloads the application.
-          </p>
-
-          <label className="mt-6 inline-flex cursor-pointer rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800">
-            Choose Backup File
-
-            <input
-              type="file"
-              accept="application/json,.json"
-              onChange={
-                onRestoreBackup
-              }
-              className="hidden"
-            />
-          </label>
-
-          <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm leading-6 text-amber-900">
-            Create a fresh downloadable backup before restoring another file. File restore does not merge data; it replaces GreenFlow&apos;s current browser records.
+          <div className="rounded-xl border border-green-200 bg-white p-4 text-sm leading-6 text-green-900">
+            <strong>Keep copies separately:</strong>{" "}
+            downloaded backups are ordinary JSON files. Store important copies somewhere separate from GreenFlow, such as your backup folder or OneDrive.
           </div>
-        </article>
-      </div>
-
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">
-          Recovery audit trail
         </div>
-
-        <h3 className="mt-2 text-xl font-bold text-slate-950">
-          Recent recovery activity
-        </h3>
-
-        <p className="mt-1 text-sm leading-6 text-slate-600">
-          This records recovery-point creation, restores and deletions. It does not alter your operational records.
-        </p>
-
-        {recoveryAuditEvents.length ===
-        0 ? (
-          <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
-            No recovery activity has been recorded yet.
-          </div>
-        ) : (
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="divide-y divide-slate-200">
-              {recoveryAuditEvents
-                .slice(0, 12)
-                .map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {formatRecoveryAuditAction(
-                          event.action,
-                        )}
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-500">
-                        {event.label}
-                      </div>
-                    </div>
-
-                    <div className="text-xs font-semibold text-slate-500">
-                      {formatRecoveryPointDate(
-                        event.createdAt,
-                      )}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
       </section>
 
-      <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-        Downloaded backups are ordinary JSON files. Keep important copies somewhere separate from the browser, such as your GreenFlow backup folder or OneDrive.
-      </div>
+      <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+        <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
+          Restore protection
+        </div>
+
+        <h3 className="mt-2 text-xl font-bold text-amber-950">
+          Automatic restore is not currently supported
+        </h3>
+
+        <p className="mt-2 text-sm leading-6 text-amber-900">
+          This backup is an independent export for safekeeping. GreenFlow does not currently offer an in-app PostgreSQL restore because restoring linked operational records, audit history and invoice numbering requires additional safeguards. The previous browser-data restore controls have been removed so they cannot overwrite local caches while PostgreSQL remains authoritative.
+        </p>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+        <div className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+          Browser-only data
+        </div>
+
+        <h3 className="mt-2 text-xl font-bold text-blue-950">
+          Fleet is not included yet
+        </h3>
+
+        <p className="mt-2 text-sm leading-6 text-blue-900">
+          Fleet is intentionally still stored only in this browser and is outside the central PostgreSQL backup. Fleet centralisation is deferred until after Live. The old browser recovery-point system is no longer exposed here because it was not a backup of the authoritative PostgreSQL data.
+        </p>
+      </section>
     </div>
   );
-}
-
-function formatRecoveryAuditAction(
-  action: RecoveryAuditEvent["action"],
-) {
-  if (
-    action ===
-    "recovery-point-created"
-  ) {
-    return "Recovery point created";
-  }
-
-  if (
-    action ===
-    "recovery-point-restored"
-  ) {
-    return "Recovery point restored";
-  }
-
-  return "Recovery point deleted";
-}
-
-function isGreenFlowBackup(
-  value: unknown,
-): value is {
-  application: "GreenFlow";
-  version: number;
-  createdAt: string;
-  items: Record<string, string>;
-} {
-  if (
-    !value ||
-    typeof value !== "object"
-  ) {
-    return false;
-  }
-
-  const candidate =
-    value as {
-      application?: unknown;
-      version?: unknown;
-      createdAt?: unknown;
-      items?: unknown;
-    };
-
-  return (
-    candidate.application ===
-      "GreenFlow" &&
-    typeof candidate.version ===
-      "number" &&
-    typeof candidate.createdAt ===
-      "string" &&
-    Boolean(
-      candidate.items &&
-        typeof candidate.items ===
-          "object" &&
-        !Array.isArray(
-          candidate.items,
-        ),
-    ) &&
-    Object.values(
-      candidate.items as Record<
-        string,
-        unknown
-      >,
-    ).every(
-      (item) =>
-        typeof item === "string",
-    )
-  );
-}
-
-function preserveHighestInvoiceSequence(
-  currentSettingsJson: string | null,
-  restoredSettingsJson: string | null,
-) {
-  if (
-    !currentSettingsJson ||
-    !restoredSettingsJson
-  ) {
-    return;
-  }
-
-  try {
-    const currentSettings =
-      JSON.parse(
-        currentSettingsJson,
-      ) as {
-        invoices?: {
-          nextInvoiceNumber?: number;
-        };
-      };
-
-    const restoredSettings =
-      JSON.parse(
-        restoredSettingsJson,
-      ) as {
-        invoices?: {
-          nextInvoiceNumber?: number;
-        };
-      };
-
-    const currentNext =
-      Number(
-        currentSettings.invoices
-          ?.nextInvoiceNumber,
-      );
-
-    const restoredNext =
-      Number(
-        restoredSettings.invoices
-          ?.nextInvoiceNumber,
-      );
-
-    if (
-      !Number.isFinite(currentNext) ||
-      !Number.isFinite(restoredNext) ||
-      currentNext <= restoredNext
-    ) {
-      return;
-    }
-
-    window.localStorage.setItem(
-      "greenflow-business-settings-v1",
-      JSON.stringify({
-        ...restoredSettings,
-        invoices: {
-          ...restoredSettings.invoices,
-          nextInvoiceNumber:
-            currentNext,
-        },
-      }),
-    );
-  } catch {
-    // If either settings record cannot be read,
-    // leave the restored backup untouched.
-  }
-}
-
-function preserveHighestCustomerSequence(
-  currentSequenceValue: string | null,
-  restoredSequenceValue: string | null,
-  restoredCustomersJson: string | null,
-) {
-  const currentSequence =
-    parsePositiveSafeInteger(
-      currentSequenceValue,
-    );
-
-  const restoredSequence =
-    parsePositiveSafeInteger(
-      restoredSequenceValue,
-    );
-
-  let highestRestoredCustomer = 0;
-
-  if (restoredCustomersJson) {
-    try {
-      const restoredCustomers =
-        JSON.parse(
-          restoredCustomersJson,
-        ) as unknown;
-
-      if (
-        Array.isArray(
-          restoredCustomers,
-        )
-      ) {
-        highestRestoredCustomer =
-          restoredCustomers.reduce(
-            (
-              highest,
-              customer,
-            ) => {
-              if (
-                !customer ||
-                typeof customer !==
-                  "object"
-              ) {
-                return highest;
-              }
-
-              const customerNumber =
-                "customerNumber" in
-                  customer
-                  ? String(
-                      (
-                        customer as {
-                          customerNumber?:
-                            unknown;
-                        }
-                      ).customerNumber ??
-                        "",
-                    ).trim()
-                  : "";
-
-              if (
-                !/^\d+$/.test(
-                  customerNumber,
-                )
-              ) {
-                return highest;
-              }
-
-              const numericValue =
-                Number(
-                  customerNumber,
-                );
-
-              return Number.isSafeInteger(
-                numericValue,
-              ) &&
-                numericValue > 0
-                ? Math.max(
-                    highest,
-                    numericValue,
-                  )
-                : highest;
-            },
-            0,
-          );
-      }
-    } catch {
-      /*
-       * Leave highestRestoredCustomer at zero.
-       * The current/restored sequence values can still
-       * protect the watermark even if customer JSON is
-       * unreadable.
-       */
-    }
-  }
-
-  const highestSequence =
-    Math.max(
-      currentSequence,
-      restoredSequence,
-      highestRestoredCustomer,
-    );
-
-  if (highestSequence <= 0) {
-    return;
-  }
-
-  window.localStorage.setItem(
-    "greenflow-customer-sequence-v1",
-    String(highestSequence),
-  );
-}
-
-function parsePositiveSafeInteger(
-  value: string | null,
-) {
-  if (!value) {
-    return 0;
-  }
-
-  const parsed =
-    Number(value);
-
-  return Number.isSafeInteger(
-    parsed,
-  ) &&
-    parsed > 0
-    ? parsed
-    : 0;
 }
 
 function formatBackupDate(
