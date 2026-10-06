@@ -2642,7 +2642,7 @@ function CloseDayMetric({
         {label}
       </div>
 
-      <div className={`mt-1 text-2xl font-black ${valueStyle}`}>
+      <div className={`mt-1 text-lg font-black ${valueStyle}`}>
         {value}
       </div>
 
