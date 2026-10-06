@@ -22,11 +22,6 @@ export type {
   SeasonTreatmentRound,
 } from "@/lib/season-types";
 
-type CreateSeasonInput = {
-  year: number;
-  firstGroupStartDate?: string;
-  groupCount?: number;
-};
 
 type SeasonStoreValue = {
   seasons: SeasonCalendar[];
@@ -35,10 +30,6 @@ type SeasonStoreValue = {
   saveSeason: (
     season: SeasonCalendar,
   ) => Promise<SeasonCalendar>;
-
-  createSeason: (
-    input: CreateSeasonInput,
-  ) => SeasonCalendar;
 
   deleteSeason: (
     seasonId: string,
@@ -71,9 +62,6 @@ type SeasonStoreValue = {
     year?: number,
   ) => Promise<void>;
 };
-
-const STORAGE_KEY =
-  "greenflow-season-calendars-v1";
 
 const DEFAULT_GROUP_COUNT = 30;
 
@@ -117,53 +105,10 @@ export function SeasonStoreProvider({
   const [ready, setReady] =
     useState(false);
 
-  const [
-    databaseLoaded,
-    setDatabaseLoaded,
-  ] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
 
     async function hydrateSeasons() {
-      let localSeasons: SeasonCalendar[] = [];
-
-      const saved =
-        window.localStorage.getItem(
-          STORAGE_KEY,
-        );
-
-      if (saved) {
-        try {
-          const parsed = JSON.parse(
-            saved,
-          ) as Array<
-            Partial<SeasonCalendar>
-          >;
-
-          if (Array.isArray(parsed)) {
-            localSeasons =
-              deduplicateSeasons(
-                parsed.map(
-                  normaliseSeason,
-                ),
-              ).sort(
-                sortSeasons,
-              );
-          }
-        } catch {
-          window.localStorage.removeItem(
-            STORAGE_KEY,
-          );
-        }
-      }
-
-      if (cancelled) {
-        return;
-      }
-
-      setSeasons(localSeasons);
-
       try {
         const response =
           await fetch("/api/seasons");
@@ -214,7 +159,6 @@ export function SeasonStoreProvider({
         }
 
         setSeasons(databaseSeasons);
-        setDatabaseLoaded(true);
       } catch (error) {
         console.error(
           "Failed to hydrate GreenFlow seasons from PostgreSQL:",
@@ -237,48 +181,6 @@ export function SeasonStoreProvider({
       cancelled = true;
     };
   }, []);
-  useEffect(() => {
-    if (
-      !ready ||
-      !databaseLoaded
-    ) {
-      return;
-    }
-
-    const currentYear =
-      new Date().getFullYear();
-
-    setSeasons((current) => {
-      const alreadyExists =
-        current.some(
-          (season) =>
-            season.year ===
-            currentYear,
-        );
-
-      if (alreadyExists) {
-        return current;
-      }
-
-      return [
-        createDefaultSeason(
-          currentYear,
-        ),
-        ...current,
-      ].sort(sortSeasons);
-    });
-  }, [ready, databaseLoaded]);
-
-  useEffect(() => {
-    if (!ready) {
-      return;
-    }
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(seasons),
-    );
-  }, [seasons, ready]);
 
   async function saveSeason(
     season: SeasonCalendar,
@@ -337,40 +239,6 @@ export function SeasonStoreProvider({
 
     return regenerated;
   }
-  function createSeason({
-    year,
-    firstGroupStartDate,
-    groupCount,
-  }: CreateSeasonInput) {
-    const normalisedYear =
-      safeSeasonYear(year);
-
-    const existing =
-      seasons.find(
-        (season) =>
-          season.year ===
-          normalisedYear,
-      );
-
-    if (existing) {
-      return existing;
-    }
-
-    const season =
-      createDefaultSeason(
-        normalisedYear,
-        firstGroupStartDate,
-        groupCount,
-      );
-
-    setSeasons((current) => [
-      season,
-      ...current,
-    ].sort(sortSeasons));
-
-    return season;
-  }
-
   async function deleteSeason(
     seasonId: string,
   ) {
@@ -583,7 +451,6 @@ export function SeasonStoreProvider({
         ready,
 
         saveSeason,
-        createSeason,
         deleteSeason,
 
         getSeason,

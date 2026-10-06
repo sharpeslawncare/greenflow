@@ -11,6 +11,7 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import {
+  createDefaultSeason,
   generateSeasonDates,
   getSeasonCycleLabel,
   isDateInSeasonCycle,
@@ -31,7 +32,6 @@ export default function SeasonPlannerPage() {
     seasons,
     ready,
     saveSeason,
-    createSeason,
     restoreDefaultSeason,
   } = useSeasonStore();
 
@@ -126,12 +126,8 @@ export default function SeasonPlannerPage() {
       return;
     }
 
-    const created = createSeason({
-      year: selectedYear,
-    });
-
     setDraft(
-      cloneSeason(created),
+      createDefaultSeason(selectedYear),
     );
     setPreviewStale(false);
   }, [
@@ -139,7 +135,6 @@ export default function SeasonPlannerPage() {
     requestedYearResolved,
     selectedYear,
     selectedSeason,
-    createSeason,
   ]);
 
   const sortedGroupDates =
