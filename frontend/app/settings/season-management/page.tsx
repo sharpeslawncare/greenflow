@@ -6,10 +6,10 @@ import { type CSSProperties, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useChemicalStore } from "@/components/chemical-store";
 import { useProgrammeStore } from "@/components/programme-store";
+import { useRouteOrderStore } from "@/components/route-order-store";
 import { useTreatmentStore } from "@/components/treatment-store";
 
 const CONFIRMATION_TEXT = "START NEW SEASON";
-const ROUTE_ORDER_STORAGE_KEY = "greenflow-route-orders-v1";
 const STANDARD_MIX_STORAGE_KEY =
   "greenflow-visit-centre-standard-mixes-v1";
 
@@ -31,6 +31,11 @@ export default function SeasonManagementPage() {
     stockMovements,
     ready: chemicalsReady,
   } = useChemicalStore();
+
+  const {
+    ready: routeOrdersReady,
+    clearAllRouteOrders,
+  } = useRouteOrderStore();
 
   const [confirmation, setConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -90,7 +95,8 @@ export default function SeasonManagementPage() {
   const ready =
     programmesReady &&
     treatmentsReady &&
-    chemicalsReady;
+    chemicalsReady &&
+    routeOrdersReady;
   const canReset =
     confirmation.trim() === CONFIRMATION_TEXT && !resetting;
 
@@ -150,12 +156,14 @@ export default function SeasonManagementPage() {
         }
       }
 
-      window.localStorage.removeItem(ROUTE_ORDER_STORAGE_KEY);
-      window.localStorage.removeItem(STANDARD_MIX_STORAGE_KEY);
+      const routeOrderClearResult =
+        await clearAllRouteOrders();
 
-      window.dispatchEvent(
-        new CustomEvent("greenflow:route-orders-updated"),
-      );
+      if (!routeOrderClearResult.success) {
+        throw new Error(routeOrderClearResult.message);
+      }
+
+      window.localStorage.removeItem(STANDARD_MIX_STORAGE_KEY);
 
       setConfirmation("");
       setCompleted(true);
@@ -371,8 +379,8 @@ export default function SeasonManagementPage() {
                 <strong>Stock and its audit history are deliberately preserved.</strong>{" "}
                 This reset does not reverse earlier treatment deductions,
                 deliveries, manual usage or stock counts. Inventory should only
-                be restarted through the separate Reset Demo Inventory action in
-                Maintenance.
+                be changed through the Chemical Centre or Stock & Purchasing
+                workflows.
               </div>
             </article>
           </section>

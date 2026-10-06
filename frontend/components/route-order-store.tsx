@@ -27,8 +27,6 @@ type RouteItem = {
   };
 };
 
-const STORAGE_KEY =
-  "greenflow-route-orders-v1";
 
 function makeKey(
   date: string,
@@ -55,101 +53,6 @@ function normaliseCustomerNumbers(
   );
 }
 
-function readOrders(): RouteOrder[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  const saved =
-    window.localStorage.getItem(
-      STORAGE_KEY,
-    );
-
-  if (!saved) {
-    return [];
-  }
-
-  try {
-    const parsed =
-      JSON.parse(saved) as {
-        orders?: unknown;
-      };
-
-    if (!Array.isArray(parsed.orders)) {
-      return [];
-    }
-
-    return parsed.orders
-      .filter(
-        (
-          order,
-        ): order is Record<
-          string,
-          unknown
-        > =>
-          Boolean(
-            order &&
-              typeof order ===
-                "object",
-          ),
-      )
-      .map((order) => ({
-        date:
-          typeof order.date ===
-          "string"
-            ? order.date
-            : "",
-        vanNumber:
-          Number(order.vanNumber),
-        customerNumbers:
-          normaliseCustomerNumbers(
-            order.customerNumbers,
-          ),
-        updatedAt:
-          typeof order.updatedAt ===
-          "string"
-            ? order.updatedAt
-            : new Date(
-                0,
-              ).toISOString(),
-      }))
-      .filter(
-        (order) =>
-          Boolean(order.date) &&
-          Number.isFinite(
-            order.vanNumber,
-          ) &&
-          order.vanNumber > 0,
-      );
-  } catch {
-    window.localStorage.removeItem(
-      STORAGE_KEY,
-    );
-
-    return [];
-  }
-}
-
-function writeOrders(
-  orders: RouteOrder[],
-) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      orders,
-    }),
-  );
-
-  window.dispatchEvent(
-    new CustomEvent(
-      "greenflow:route-orders-updated",
-    ),
-  );
-}
 
 async function persistRouteOrderToPostgreSQL(
   routeOrder: RouteOrder,
@@ -256,6 +159,56 @@ async function deleteRouteOrderFromPostgreSQL(
     };
   }
 }
+async function clearAllRouteOrdersFromPostgreSQL(): Promise<RouteOrderSaveResult> {
+  try {
+    const response = await fetch(
+      "/api/route-orders",
+      {
+        method: "DELETE",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          clearAll: true,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const payload = (await response
+        .json()
+        .catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      return {
+        success: false,
+        message:
+          payload?.error ||
+          "Route orders could not be cleared from PostgreSQL.",
+      };
+    }
+
+    return {
+      success: true,
+      message:
+        "Route orders cleared from PostgreSQL.",
+    };
+  } catch (error) {
+    console.error(
+      "Failed to clear GreenFlow route orders from PostgreSQL:",
+      error,
+    );
+
+    return {
+      success: false,
+      message:
+        "Route orders could not be cleared from PostgreSQL.",
+    };
+  }
+}
+
 export function normalisePostcode(
   value: string,
 ) {
@@ -301,15 +254,8 @@ export function useRouteOrderStore() {
   const [ready, setReady] =
     useState(false);
 
-  const reload =
-    useCallback(() => {
-      setOrders(readOrders());
-    }, []);
-
   useEffect(() => {
     let cancelled = false;
-
-    reload();
 
     async function hydrateFromPostgreSQL() {
       try {
@@ -379,13 +325,16 @@ export function useRouteOrderStore() {
 
         if (!cancelled) {
           setOrders(databaseOrders);
-          writeOrders(databaseOrders);
         }
       } catch (error) {
         console.error(
           "Failed to hydrate GreenFlow route orders from PostgreSQL:",
           error,
         );
+
+        if (!cancelled) {
+          setOrders([]);
+        }
       } finally {
         if (!cancelled) {
           setReady(true);
@@ -395,45 +344,10 @@ export function useRouteOrderStore() {
 
     void hydrateFromPostgreSQL();
 
-    function handleStorage(
-      event: StorageEvent,
-    ) {
-      if (
-        event.key ===
-        STORAGE_KEY
-      ) {
-        reload();
-      }
-    }
-
-    function handleUpdate() {
-      reload();
-    }
-
-    window.addEventListener(
-      "storage",
-      handleStorage,
-    );
-
-    window.addEventListener(
-      "greenflow:route-orders-updated",
-      handleUpdate,
-    );
-
     return () => {
       cancelled = true;
-
-      window.removeEventListener(
-        "storage",
-        handleStorage,
-      );
-
-      window.removeEventListener(
-        "greenflow:route-orders-updated",
-        handleUpdate,
-      );
     };
-  }, [reload]);
+  }, []);
   const ordersByKey =
     useMemo(
       () =>
@@ -571,7 +485,6 @@ export function useRouteOrderStore() {
             nextOrder,
           ];
 
-          writeOrders(next);
           return next;
         });
 
@@ -612,7 +525,6 @@ export function useRouteOrderStore() {
                 ) !== key,
             );
 
-          writeOrders(next);
           return next;
         });
 
@@ -620,6 +532,22 @@ export function useRouteOrderStore() {
       },
       [],
     );
+  const clearAllRouteOrders =
+    useCallback(
+      async (): Promise<RouteOrderSaveResult> => {
+        const result =
+          await clearAllRouteOrdersFromPostgreSQL();
+
+        if (!result.success) {
+          return result;
+        }
+
+        setOrders([]);
+        return result;
+      },
+      [],
+    );
+
   const createPostcodeOrder =
     useCallback(
       (
@@ -748,6 +676,7 @@ export function useRouteOrderStore() {
     getOrderedCustomerNumbers,
     saveRouteOrder,
     clearRouteOrder,
+    clearAllRouteOrders,
     createPostcodeOrder,
     sortBySavedRoute,
   };

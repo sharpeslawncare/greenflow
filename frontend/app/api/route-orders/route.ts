@@ -261,6 +261,35 @@ export async function DELETE(request: Request) {
   const value =
     body as Record<string, unknown>;
 
+  if (value.clearAll === true) {
+    try {
+      const result =
+        await prisma.routeOrder.deleteMany({
+          where: {
+            organisationId:
+              membership.organisationId,
+          },
+        });
+
+      return NextResponse.json({
+        clearedRouteOrders: result.count,
+      });
+    } catch (deleteError) {
+      console.error(
+        "Failed to clear GreenFlow route orders:",
+        deleteError,
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Unable to clear route orders from PostgreSQL.",
+        },
+        { status: 500 },
+      );
+    }
+  }
+
   if (
     typeof value.date !== "string" ||
     value.date.trim().length === 0 ||
