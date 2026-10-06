@@ -76,8 +76,8 @@ export default function CustomerPage() {
 
   return (
     <AppShell>
-      <main className="p-6 md:p-10">
-        <div className="mx-auto max-w-7xl">
+      <main className="gf-page">
+        <div className="gf-page-inner">
           <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <Link
               href="/customers"
