@@ -133,6 +133,9 @@ function QuickBooksExportPageContent() {
   const [exported, setExported] =
     useState(false);
 
+  const [exportError, setExportError] =
+    useState("");
+
   const exportRows = useMemo<QuickBooksRow[]>(
     () =>
       treatments
@@ -180,7 +183,7 @@ function QuickBooksExportPageContent() {
             treatment.invoiceAmount <= 0
           ) {
             problems.push(
-              "Invoice amount must be greater than Â£0",
+              "Invoice amount must be greater than £0",
             );
           }
 
@@ -235,10 +238,12 @@ function QuickBooksExportPageContent() {
     exportRows.length > 0 &&
     problemRows.length === 0;
 
-  function downloadQuickBooksCsv() {
+  async function downloadQuickBooksCsv() {
     if (!canExport) {
       return;
     }
+
+    setExportError("");
 
     const csvRows = [
       [...QUICKBOOKS_HEADERS],
@@ -284,8 +289,20 @@ function QuickBooksExportPageContent() {
     anchor.remove();
     URL.revokeObjectURL(url);
 
+    const saved =
+      await markQuickBooksExported(
+        selectedDate,
+      );
+
+    if (!saved) {
+      setExported(false);
+      setExportError(
+        "The QuickBooks CSV was downloaded, but GreenFlow could not record the export in PostgreSQL. Do not close the working day yet. Check the connection, then download the CSV again.",
+      );
+      return;
+    }
+
     setExported(true);
-    markQuickBooksExported(selectedDate);
   }
 
   return (
@@ -312,7 +329,7 @@ function QuickBooksExportPageContent() {
                 href={`/?date=${selectedDate}`}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                â† Back to Dashboard
+                ← Back to Dashboard
               </Link>
             </div>
 
@@ -329,6 +346,7 @@ function QuickBooksExportPageContent() {
                       event.target.value,
                     );
                     setExported(false);
+                    setExportError("");
                   }}
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#338b45] focus:ring-4 focus:ring-green-100"
                 />
@@ -341,6 +359,7 @@ function QuickBooksExportPageContent() {
                     getTodayDateValue(),
                   );
                   setExported(false);
+                  setExportError("");
                 }}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
@@ -364,6 +383,17 @@ function QuickBooksExportPageContent() {
             </div>
           </section>
 
+          {exportError && (
+            <section className="rounded-2xl border border-red-300 bg-red-50 p-4 shadow-sm">
+              <div className="font-bold text-red-900">
+                QuickBooks export status was not saved
+              </div>
+              <div className="mt-1 text-sm leading-6 text-red-800">
+                {exportError}
+              </div>
+            </section>
+          )}
+
           {closeWorkflow && (
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -372,7 +402,7 @@ function QuickBooksExportPageContent() {
                     End-of-day workflow
                   </div>
                   <h2 className="mt-1 text-xl font-bold text-slate-950">
-                    Step 3 of 4 Â· QuickBooks
+                    Step 3 of 4 · QuickBooks
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
                     Review and download the day&apos;s QuickBooks CSV, then return to GreenFlow for the final close.
@@ -383,7 +413,7 @@ function QuickBooksExportPageContent() {
                   href={`/chemical-usage?date=${selectedDate}&workflow=close`}
                   className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  â† Back
+                  ← Back
                 </Link>
               </div>
 
@@ -415,7 +445,7 @@ function QuickBooksExportPageContent() {
                     href={`/?date=${selectedDate}#close-day`}
                     className="inline-flex items-center rounded-xl bg-[#176b37] px-5 py-3 text-sm font-bold text-white hover:bg-[#12582d]"
                   >
-                    Next: Close working day â†’
+                    Next: Close working day →
                   </Link>
                 ) : (
                   <button
@@ -507,11 +537,11 @@ function QuickBooksExportPageContent() {
                       >
                         <div className="font-bold text-slate-900">
                           {row.invoiceNo || "No invoice number"}
-                          {" Â· "}
+                          {" · "}
                           {row.customer}
                         </div>
                         <div className="mt-1 text-amber-800">
-                          {row.problems.join(" â€¢ ")}
+                          {row.problems.join(" • ")}
                         </div>
                       </div>
                     ))}
@@ -564,7 +594,7 @@ function QuickBooksExportPageContent() {
                           className="align-top"
                         >
                           <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
-                            {row.invoiceNo || "â€”"}
+                            {row.invoiceNo || "—"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                             {row.customer}
@@ -613,7 +643,7 @@ function QuickBooksExportPageContent() {
                       QuickBooks fields
                     </div>
                     <div className="mt-1 leading-6">
-                      Due date matches invoice date, Terms is â€œDue on receiptâ€, Item Rate is 1, and Tax Code is â€œ20.0% Sâ€, matching your successful template.
+                      Due date matches invoice date, Terms is “Due on receipt”, Item Rate is 1, and Tax Code is “20.0% S”, matching your successful template.
                     </div>
                   </div>
 
@@ -666,7 +696,7 @@ function WorkflowProgressCard({
                 : "bg-slate-200 text-slate-600"
           }`}
         >
-          {state === "done" ? "âœ“" : number}
+          {state === "done" ? "✓" : number}
         </span>
         <div>
           <div className="text-sm font-bold text-slate-950">{title}</div>
@@ -685,70 +715,92 @@ function WorkflowProgressCard({
   );
 }
 
-function markQuickBooksExported(
+async function markQuickBooksExported(
   workingDate: string,
-) {
+): Promise<boolean> {
   try {
-    const storageKey =
-      "greenflow-close-day-v1";
-
-    const raw =
-      window.localStorage.getItem(
-        storageKey,
-      );
-
-    const parsed = raw
-      ? JSON.parse(raw)
-      : {};
-
-    const existing =
-      parsed &&
-      typeof parsed === "object" &&
-      parsed[workingDate] &&
-      typeof parsed[workingDate] ===
-        "object"
-        ? parsed[workingDate]
-        : {};
-
-    const next = {
-      ...(parsed &&
-      typeof parsed === "object"
-        ? parsed
-        : {}),
-      [workingDate]: {
-        ...existing,
-        quickbooksExported: true,
-        closed: false,
-        updatedAt:
-          new Date().toISOString(),
+    const response = await fetch(
+      "/api/working-days",
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          date: workingDate,
+          quickbooksExported: true,
+          closed: false,
+        }),
       },
-    };
-
-    window.localStorage.setItem(
-      storageKey,
-      JSON.stringify(next),
     );
 
-    void fetch("/api/working-days", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        date: workingDate,
-        quickbooksExported: true,
-        closed: false,
-      }),
-    }).catch((saveError) => {
-      console.warn(
-        "QuickBooks export was saved locally but could not be saved to PostgreSQL:",
-        saveError,
+    if (!response.ok) {
+      console.error(
+        "GreenFlow could not save the QuickBooks export status to PostgreSQL.",
+        response.status,
       );
-    });
-  } catch {
-    // The CSV has still been downloaded even if the browser cannot
-    // persist the Dashboard convenience flag.
+      return false;
+    }
+
+    /*
+     * PostgreSQL is authoritative. Only update the browser convenience
+     * copy after the central Working Day record has been saved.
+     */
+    try {
+      const storageKey =
+        "greenflow-close-day-v1";
+
+      const raw =
+        window.localStorage.getItem(
+          storageKey,
+        );
+
+      const parsed = raw
+        ? JSON.parse(raw)
+        : {};
+
+      const existing =
+        parsed &&
+        typeof parsed === "object" &&
+        parsed[workingDate] &&
+        typeof parsed[workingDate] ===
+          "object"
+          ? parsed[workingDate]
+          : {};
+
+      const next = {
+        ...(parsed &&
+        typeof parsed === "object"
+          ? parsed
+          : {}),
+        [workingDate]: {
+          ...existing,
+          quickbooksExported: true,
+          closed: false,
+          updatedAt:
+            new Date().toISOString(),
+        },
+      };
+
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify(next),
+      );
+    } catch (cacheError) {
+      console.warn(
+        "QuickBooks export was saved to PostgreSQL, but the browser convenience copy could not be updated:",
+        cacheError,
+      );
+    }
+
+    return true;
+  } catch (saveError) {
+    console.error(
+      "GreenFlow could not save the QuickBooks export status to PostgreSQL:",
+      saveError,
+    );
+    return false;
   }
 }
 
@@ -858,7 +910,7 @@ function formatQuickBooksMoney(
   const safeValue =
     Number.isFinite(value) ? value : 0;
 
-  return `Â£${safeValue.toFixed(2)}`;
+  return `£${safeValue.toFixed(2)}`;
 }
 
 function formatPounds(value: number) {
