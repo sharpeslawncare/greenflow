@@ -1309,7 +1309,7 @@ export default function ChemicalUsagePage() {
     );
   }
 
-  function continueToQuickBooks() {
+  async function continueToQuickBooks() {
     if (hasVisibleTestDayUsage) {
       showMessage(
         "This is a Test Day. Chemical usage can be reviewed here, but GreenFlow will not mark the chemical check complete or continue test invoices into the QuickBooks close-day workflow.",
@@ -1336,6 +1336,36 @@ export default function ChemicalUsagePage() {
     if (!workingDate) {
       showMessage(
         "Choose one working day before continuing to QuickBooks.",
+      );
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/working-days", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          date: workingDate,
+          chemicalsChecked: true,
+          closed: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Working day save failed with status ${response.status}.`,
+        );
+      }
+    } catch (saveError) {
+      console.warn(
+        "Chemical check could not be saved to PostgreSQL:",
+        saveError,
+      );
+      showMessage(
+        "GreenFlow could not record the chemical check in PostgreSQL. Do not continue to QuickBooks yet. Check the connection, then try again.",
       );
       return;
     }
@@ -1380,27 +1410,11 @@ export default function ChemicalUsagePage() {
         storageKey,
         JSON.stringify(next),
       );
-
-      void fetch("/api/working-days", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          date: workingDate,
-          chemicalsChecked: true,
-          closed: false,
-        }),
-      }).catch((saveError) => {
-        console.warn(
-          "Chemical check was saved locally but could not be saved to PostgreSQL:",
-          saveError,
-        );
-      });
-    } catch {
-      // The chemical audit itself is still valid even if the browser
-      // cannot persist the Dashboard convenience flag.
+    } catch (storageError) {
+      console.warn(
+        "Chemical check was saved to PostgreSQL, but the browser convenience copy could not be updated:",
+        storageError,
+      );
     }
 
     window.location.href =
@@ -2606,8 +2620,7 @@ export default function ChemicalUsagePage() {
                       </span>
 
                       <span className="font-semibold">
-                        £${row.estimatedProductCost.toFixed(2)}
-                        {row.estimatedProductCost.toFixed(
+                        £{row.estimatedProductCost.toFixed(
                           2,
                         )}
                       </span>
