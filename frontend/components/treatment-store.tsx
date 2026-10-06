@@ -203,7 +203,6 @@ type TreatmentStoreValue = {
   getTreatmentsForCustomer: (
     customerNumber: string,
   ) => TreatmentRecord[];
-  restoreDemoTreatments: () => void;
 };
 
 const TreatmentStoreContext =
@@ -299,90 +298,6 @@ async function deleteTreatmentFromPostgres(
     );
   }
 }
-const demoTreatments: TreatmentRecord[] = [
-  createTreatmentRecord({
-    id: "treatment-demo-1",
-    programmeId: "",
-    programmeVisitId: "",
-    invoiceNumber: "INV-2026-0001",
-    customerNumber: "1001",
-    scheduledDate: "2026-07-10",
-    recordedDate: "2026-07-10T15:30:00.000Z",
-    completedDate: "2026-07-10",
-    status: "Completed",
-    treatmentName: "Summer weed and feed",
-    treatmentAreaSquareMetres: 250,
-    applications: [
-      createTreatmentApplication({
-        id: "application-demo-fertiliser",
-        productId: "chemical-demo-1",
-        productName: "ProTurf Spring 21-5-6",
-        productType: "Fertiliser",
-        applicationRate: 35,
-        applicationRateUnit: "g/m²",
-        productRequired: 8750,
-        productUnit: "g",
-        estimatedProductCost: 8.75,
-      }),
-      createTreatmentApplication({
-        id: "application-demo-herbicide",
-        productId: "chemical-demo-2",
-        productName: "Pastor Pro",
-        productType: "Herbicide",
-        activeIngredients:
-          "Fluroxypyr, clopyralid and triclopyr",
-        registrationNumber: "MAPP 18092",
-        applicationRate: 2,
-        applicationRateUnit: "L/ha",
-        productRequired: 0.05,
-        productUnit: "L",
-        applicationMethod:
-          "Full Lawn Spray",
-        fullLawnProductRequired:
-          0.05,
-        actualProductRequired:
-          0.05,
-        spotSprayPercentage:
-          100,
-        calibratedWaterVolumePerHectare: 215.385,
-        waterRequiredLitres: 5.385,
-        tankCapacityLitres: 16,
-        tankFills: 0.337,
-        productPerTank: 0.148,
-        estimatedProductCost: 3.2,
-        nozzleColour: "Grey",
-        nozzleType: "Deflector Tip",
-        knapsackMake: "Berthoud",
-        knapsackModel: "Vermorel 2000",
-        walkingSpeedKph: 3,
-        flowRateLitresPerMinute: 1.4,
-        sprayWidthMetres: 1.3,
-        pressureBar: 1,
-      }),
-    ],
-    notes:
-      "Treatment completed successfully. Lawn condition satisfactory.",
-    nextVisitDate: "2026-09-18",
-  }),
-  createTreatmentRecord({
-    id: "treatment-demo-2",
-    programmeId: "",
-    programmeVisitId: "",
-    invoiceNumber: "",
-    customerNumber: "1002",
-    scheduledDate: "2026-07-11",
-    recordedDate: "2026-07-11T09:15:00.000Z",
-    completedDate: "",
-    status: "Needs Rescheduling",
-    treatmentName: "Summer weed and feed",
-    treatmentAreaSquareMetres: 0,
-    applications: [],
-    notes:
-      "Unable to gain access through the locked gate.",
-    nextVisitDate: "2026-07-15",
-  }),
-];
-
 export function TreatmentStoreProvider({
   children,
 }: {
@@ -788,15 +703,6 @@ export function TreatmentStoreProvider({
       );
   }
 
-  function restoreDemoTreatments() {
-    const demo =
-      cloneDemoTreatments();
-
-    treatmentsRef.current =
-      demo;
-    setTreatments(demo);
-  }
-
   const value = useMemo<TreatmentStoreValue>(
     () => ({
       treatments,
@@ -808,7 +714,6 @@ export function TreatmentStoreProvider({
       hasTreatmentForProgrammeVisit,
       hasFinalOutcomeForProgrammeVisit,
       getTreatmentsForCustomer,
-      restoreDemoTreatments,
     }),
     [treatments, ready],
   );
@@ -1512,25 +1417,6 @@ function isFinalTreatmentStatus(
   return (
     status === "Completed" ||
     status === "Cancelled"
-  );
-}
-
-function cloneDemoTreatments() {
-  return demoTreatments.map((item) =>
-    createTreatmentRecord({
-      ...item,
-      applications: item.applications.map(
-        (application) => ({
-          ...application,
-        }),
-      ),
-      customerAdvisories:
-        item.customerAdvisories.map(
-          (advisory) => ({
-            ...advisory,
-          }),
-        ),
-    }),
   );
 }
 
