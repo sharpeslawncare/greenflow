@@ -382,12 +382,6 @@ const ProgrammeStoreContext =
 
 
 
-const STORAGE_KEY =
-
-  "greenflow-customer-programmes-v1";
-
-
-
 const STANDARD_PROGRAMME_NAME =
 
   "Standard Annual Lawn Care Programme";
@@ -462,94 +456,6 @@ export function ProgrammeStoreProvider({
 
     async function hydrate() {
 
-      let loadedProgrammes:
-
-        CustomerProgramme[] = [];
-
-
-
-      const saved =
-
-        window.localStorage.getItem(
-
-          STORAGE_KEY,
-
-        );
-
-
-
-      if (saved) {
-
-        try {
-
-          const parsed = JSON.parse(
-
-            saved,
-
-          ) as Array<
-
-            Partial<CustomerProgramme>
-
-          >;
-
-
-
-          if (Array.isArray(parsed)) {
-
-            loadedProgrammes =
-
-              deduplicateProgrammes(
-
-                parsed.map(
-
-                  normaliseStoredProgramme,
-
-                ),
-
-              ).sort(
-
-                sortProgrammes,
-
-              );
-
-          }
-
-        } catch {
-
-          window.localStorage.removeItem(
-
-            STORAGE_KEY,
-
-          );
-
-        }
-
-      }
-
-
-
-      if (cancelled) {
-
-        return;
-
-      }
-
-
-
-      programmesRef.current =
-
-        loadedProgrammes;
-
-
-
-      setProgrammes(
-
-        loadedProgrammes,
-
-      );
-
-
-
       try {
 
         const response =
@@ -558,37 +464,41 @@ export function ProgrammeStoreProvider({
 
 
 
-        if (response.ok) {
+        if (!response.ok) {
 
-          const payload =
+          throw new Error(
 
-            (await response.json()) as {
+            "Programme data could not be loaded from PostgreSQL.",
 
-              programmes?: Array<
+          );
 
-                Partial<CustomerProgramme>
-
-              >;
-
-            };
+        }
 
 
 
-          if (
+        const payload =
 
-            Array.isArray(
+          (await response.json()) as {
 
-              payload.programmes,
+            programmes?: Array<
 
-            ) &&
+              Partial<CustomerProgramme>
 
-            payload.programmes.length > 0
+            >;
 
-          ) {
+          };
 
-            const databaseProgrammes =
 
-              deduplicateProgrammes(
+
+        const databaseProgrammes =
+
+          Array.isArray(
+
+            payload.programmes,
+
+          )
+
+            ? deduplicateProgrammes(
 
                 payload.programmes.map(
 
@@ -596,71 +506,31 @@ export function ProgrammeStoreProvider({
 
                 ),
 
-              );
+              ).sort(sortProgrammes)
+
+            : [];
 
 
 
-            const databaseKeys =
+        if (cancelled) {
 
-              new Set(
-
-                databaseProgrammes.map(
-
-                  programmeKey,
-
-                ),
-
-              );
-
-
-
-            loadedProgrammes = [
-
-              ...loadedProgrammes.filter(
-
-                (programme) =>
-
-                  !databaseKeys.has(
-
-                    programmeKey(
-
-                      programme,
-
-                    ),
-
-                  ),
-
-              ),
-
-              ...databaseProgrammes,
-
-            ].sort(sortProgrammes);
-
-
-
-            if (cancelled) {
-
-              return;
-
-            }
-
-
-
-            programmesRef.current =
-
-              loadedProgrammes;
-
-
-
-            setProgrammes(
-
-              loadedProgrammes,
-
-            );
-
-          }
+          return;
 
         }
+
+
+
+        programmesRef.current =
+
+          databaseProgrammes;
+
+
+
+        setProgrammes(
+
+          databaseProgrammes,
+
+        );
 
       } catch (error) {
 
@@ -671,6 +541,16 @@ export function ProgrammeStoreProvider({
           error,
 
         );
+
+
+
+        if (!cancelled) {
+
+          programmesRef.current = [];
+
+          setProgrammes([]);
+
+        }
 
       } finally {
 
@@ -881,44 +761,6 @@ export function ProgrammeStoreProvider({
     seasons,
 
   ]);
-
-
-
-  /*
-
-   * programmesRef is updated at the same time as every programme state
-
-   * change. Do not mirror `programmes` back into the ref in a separate
-
-   * effect: on the initial mount that effect sees the pre-hydration empty
-
-   * array and can overwrite the programmes just loaded from localStorage
-
-   * before startup synchronisation runs.
-
-   */
-
-
-
-  useEffect(() => {
-
-    if (!ready) {
-
-      return;
-
-    }
-
-
-
-    window.localStorage.setItem(
-
-      STORAGE_KEY,
-
-      JSON.stringify(programmes),
-
-    );
-
-  }, [programmes, ready]);
 
 
 
