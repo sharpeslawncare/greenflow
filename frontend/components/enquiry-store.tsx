@@ -45,6 +45,7 @@ export type EnquiryRecord = {
   source: EnquirySource;
   referredBy: string;
 
+  title: string;
   firstName: string;
   surname: string;
   fullName: string;
@@ -90,6 +91,7 @@ export type EnquiryRecord = {
 
 type NewEnquiryInput = {
   source?: EnquirySource;
+  title?: string;
   firstName?: string;
   surname?: string;
   address?: string;
@@ -272,6 +274,9 @@ export function EnquiryStoreProvider({
     const now =
       new Date().toISOString();
 
+    const title =
+      input.title?.trim() ?? "";
+
     const firstName =
       input.firstName?.trim() ?? "";
 
@@ -314,9 +319,11 @@ export function EnquiryStoreProvider({
         "Recommendation",
       referredBy: "",
 
+      title,
       firstName,
       surname,
       fullName: createFullName(
+        title,
         firstName,
         surname,
       ),
@@ -477,6 +484,7 @@ export function EnquiryStoreProvider({
         ...updatedEnquiry,
         fullName:
           createFullName(
+            updatedEnquiry.title,
             updatedEnquiry.firstName,
             updatedEnquiry.surname,
           ),
@@ -868,6 +876,9 @@ export function useEnquiryStore() {
 function normaliseEnquiryRecord(
   enquiry: Partial<EnquiryRecord>,
 ): EnquiryRecord {
+  const title =
+    enquiry.title?.trim() ?? "";
+
   const firstName =
     enquiry.firstName?.trim() ?? "";
 
@@ -907,12 +918,13 @@ function normaliseEnquiryRecord(
     referredBy:
       enquiry.referredBy?.trim() ?? "",
 
+    title,
     firstName,
     surname,
 
     fullName:
-      enquiry.fullName?.trim() ||
       createFullName(
+        title,
         firstName,
         surname,
       ),
@@ -1184,15 +1196,15 @@ function mergeDuplicateEnquiries(
       "ENQ-0000"
         ? preferred.enquiryNumber
         : secondary.enquiryNumber,
+    title:
+      preferred.title ||
+      secondary.title,
     firstName:
       preferred.firstName ||
       secondary.firstName,
     surname:
       preferred.surname ||
       secondary.surname,
-    fullName:
-      preferred.fullName ||
-      secondary.fullName,
     address:
       preferred.address ||
       secondary.address,
@@ -1388,10 +1400,11 @@ async function allocateEnquiryNumber() {
 }
 
 function createFullName(
+  title: string,
   firstName: string,
   surname: string,
 ) {
-  return [firstName, surname]
+  return [title, firstName, surname]
     .map((value) => value.trim())
     .filter(Boolean)
     .join(" ");

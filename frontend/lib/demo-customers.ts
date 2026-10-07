@@ -5,6 +5,7 @@ export type CustomerStatus =
 
 export type Customer = {
   customerNumber: string;
+  title?: string;
   firstName: string;
   surname: string;
   fullName: string;

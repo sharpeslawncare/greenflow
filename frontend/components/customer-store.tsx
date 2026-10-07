@@ -48,6 +48,7 @@ export type CustomerPaymentMethod =
   | "Direct Debit";
 
 export type StoredCustomer = Customer & {
+  title: string;
   programmeStartDate: string;
   additionalJobs: AdditionalCustomerJob[];
   gateCode: string;
@@ -668,6 +669,9 @@ function normaliseStoredCustomer(
         customer.customerNumber,
       ),
 
+    title:
+      customer.title?.trim() ?? "",
+
     firstName:
       customer.firstName?.trim() ?? "",
 
@@ -675,13 +679,11 @@ function normaliseStoredCustomer(
       customer.surname?.trim() ?? "",
 
     fullName:
-      customer.fullName?.trim() ||
-      [
-        customer.firstName?.trim(),
-        customer.surname?.trim(),
-      ]
-        .filter(Boolean)
-        .join(" "),
+      createFullName(
+        customer.title ?? "",
+        customer.firstName ?? "",
+        customer.surname ?? "",
+      ),
 
     address:
       customer.address?.trim() ?? "",
@@ -1042,15 +1044,15 @@ function mergeDuplicateCustomers(
     customerNumber:
       preferred.customerNumber ||
       secondary.customerNumber,
+    title:
+      preferred.title ||
+      secondary.title,
     firstName:
       preferred.firstName ||
       secondary.firstName,
     surname:
       preferred.surname ||
       secondary.surname,
-    fullName:
-      preferred.fullName ||
-      secondary.fullName,
     address:
       preferred.address ||
       secondary.address,
@@ -1190,6 +1192,7 @@ function deduplicateCustomers(
 const AUDITABLE_CUSTOMER_FIELDS: Array<
   keyof StoredCustomer
 > = [
+  "title",
   "firstName",
   "surname",
   "fullName",
@@ -1258,6 +1261,17 @@ function sortCustomers(
   return firstCustomer.customerNumber.localeCompare(
     secondCustomer.customerNumber,
   );
+}
+
+function createFullName(
+  title: string,
+  firstName: string,
+  surname: string,
+) {
+  return [title, firstName, surname]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 function safeNumber(

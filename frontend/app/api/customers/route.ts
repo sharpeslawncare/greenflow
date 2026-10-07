@@ -27,6 +27,7 @@ type AdditionalJobsParseResult =
 
 type CustomerInput = {
   customerNumber: string;
+  title: string;
   firstName: string;
   surname: string;
   fullName: string;
@@ -261,6 +262,17 @@ function parseAdditionalJobs(
   };
 }
 
+function createFullName(
+  title: string,
+  firstName: string,
+  surname: string,
+) {
+  return [title, firstName, surname]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 function parseCustomer(
   value: unknown,
 ): CustomerParseResult {
@@ -282,6 +294,11 @@ function parseCustomer(
       ? data.customerNumber.trim()
       : "";
 
+  const title =
+    typeof data.title === "string"
+      ? data.title.trim()
+      : "";
+
   const firstName =
     typeof data.firstName === "string"
       ? data.firstName.trim()
@@ -293,10 +310,11 @@ function parseCustomer(
       : "";
 
   const fullName =
-    typeof data.fullName === "string" &&
-    data.fullName.trim()
-      ? data.fullName.trim()
-      : `${firstName} ${surname}`.trim();
+    createFullName(
+      title,
+      firstName,
+      surname,
+    );
 
   const address =
     typeof data.address === "string"
@@ -482,6 +500,7 @@ function parseCustomer(
     success: true,
     customer: {
       customerNumber,
+      title,
       firstName,
       surname,
       fullName,
@@ -515,6 +534,7 @@ function customerDatabaseData(
 ) {
   return {
     customerNumber: customer.customerNumber,
+    title: customer.title,
     firstName: customer.firstName,
     surname: customer.surname,
     fullName: customer.fullName,

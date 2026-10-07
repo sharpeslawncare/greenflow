@@ -314,10 +314,12 @@ export default function EnquiriesPage() {
       };
 
       if (
+        field === "title" ||
         field === "firstName" ||
         field === "surname"
       ) {
         updated.fullName = [
+          updated.title,
           updated.firstName,
           updated.surname,
         ]
@@ -343,6 +345,8 @@ export default function EnquiriesPage() {
       return;
     }
 
+    const title =
+      draft.title.trim();
     const firstName =
       draft.firstName.trim();
     const surname =
@@ -482,11 +486,14 @@ export default function EnquiriesPage() {
     const savedEnquiry: EnquiryRecord = {
       ...draft,
 
+      title,
+
       firstName,
 
       surname,
 
       fullName: [
+        title,
         firstName,
         surname,
       ]
@@ -1066,14 +1073,23 @@ export default function EnquiriesPage() {
 
       customerNumber,
 
+      title:
+        draft.title.trim(),
+
       firstName:
         draft.firstName.trim(),
 
       surname:
         draft.surname.trim(),
 
-      fullName:
-        draft.fullName.trim(),
+      fullName: [
+        draft.title,
+        draft.firstName,
+        draft.surname,
+      ]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(" "),
 
       address:
         draft.address.trim(),
@@ -1201,14 +1217,23 @@ export default function EnquiriesPage() {
       {
         ...draft,
 
+        title:
+          draft.title.trim(),
+
         firstName:
           draft.firstName.trim(),
 
         surname:
           draft.surname.trim(),
 
-        fullName:
-          draft.fullName.trim(),
+        fullName: [
+          draft.title,
+          draft.firstName,
+          draft.surname,
+        ]
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .join(" "),
 
         address:
           draft.address.trim(),
@@ -1305,6 +1330,66 @@ export default function EnquiriesPage() {
     showMessage(
       `${draft.fullName} is now customer ${customerNumber}.`,
     );
+  }
+
+  function emailQuote() {
+    if (!draft) {
+      showMessage(
+        "Select an enquiry first.",
+        "error",
+      );
+      return;
+    }
+
+    const emailAddress =
+      draft.emailAddress.trim();
+
+    if (
+      !emailAddress ||
+      !isValidEmailAddress(emailAddress)
+    ) {
+      showMessage(
+        "Enter a valid email address before opening the quotation email.",
+        "error",
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        draft.quotedTreatmentPrice,
+      ) ||
+      draft.quotedTreatmentPrice <= 0
+    ) {
+      showMessage(
+        "Prepare the quotation before opening the quotation email.",
+        "error",
+      );
+      return;
+    }
+
+    const customerName =
+      draft.fullName.trim() ||
+      "Customer";
+
+    const subject =
+      `Lawn Care Quotation - Sharpes Lawn Care - ${draft.enquiryNumber}`;
+
+    const body = [
+      `Dear ${customerName},`,
+      "",
+      "Thank you for the opportunity to provide a quotation for your lawn care.",
+      "",
+      `Your quotation reference is ${draft.enquiryNumber} and the quoted price is £${draft.quotedTreatmentPrice.toFixed(2)} per standard treatment visit.`,
+      "",
+      "Please find your quotation attached. You can review the quotation and contact us if you would like to proceed or discuss any aspect of it.",
+      "",
+      "Kind regards,",
+      "Sharpes Lawn Care",
+    ].join("\n");
+
+    window.location.href =
+      `mailto:${encodeURIComponent(emailAddress)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
 
   async function removeSelectedEnquiry() {
@@ -1406,7 +1491,7 @@ export default function EnquiriesPage() {
           <header className="gf-page-header">
             <div className="gf-page-header-copy">
               <div className="gf-eyebrow">
-                New business
+                New Business
               </div>
               <h1 className="gf-h1">
                 Enquiries & Quotes
@@ -1428,7 +1513,7 @@ export default function EnquiriesPage() {
                 onClick={createNewEnquiry}
                 className="inline-flex h-11 items-center rounded-xl bg-[#176b37] px-5 text-sm font-bold text-white hover:bg-[#125b2f]"
               >
-                + New enquiry
+                + New Enquiry
               </button>
             </div>
           </header>
@@ -1448,13 +1533,13 @@ export default function EnquiriesPage() {
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
-              label="New enquiries"
+              label="New Enquiries"
               value={String(newCount)}
               detail="Need first contact or next step"
             />
 
             <SummaryCard
-              label="Visits arranged"
+              label="Visits Arranged"
               value={String(
                 visitsArrangedCount,
               )}
@@ -1462,7 +1547,7 @@ export default function EnquiriesPage() {
             />
 
             <SummaryCard
-              label="Quotes outstanding"
+              label="Quotes Outstanding"
               value={String(
                 quotesOutstandingCount,
               )}
@@ -1486,16 +1571,16 @@ export default function EnquiriesPage() {
             <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-4 border-b border-slate-200 pb-4">
                 <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
-                  Enquiry list
+                  Enquiry List
                 </div>
                 <h2 className="gf-h2 mt-1">
-                  Find an enquiry
+                  Find an Enquiry
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Search or filter the pipeline, then open an enquiry to continue from its current stage.
                 </p>
               </div>
-              <Field label="Search enquiries">
+              <Field label="Search Enquiries">
                 <input
                   value={search}
                   onChange={(event) =>
@@ -1521,7 +1606,7 @@ export default function EnquiriesPage() {
                     className={inputClass}
                   >
                     <option value="All">
-                      All statuses
+                      All Statuses
                     </option>
 
                     {enquiryStatuses.map(
@@ -1682,835 +1767,799 @@ export default function EnquiriesPage() {
     onClick={arrangeVisit}
     className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100"
   >
-    Arrange visit
+    Arrange Visit
   </button>
 
   <Link
     href={`/quotes/${selectedEnquiry.id}`}
     className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
   >
-    View quotation
+    View Quotation
   </Link>
 
   <button
     type="submit"
     className="rounded-xl bg-[#176b37] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
   >
-    Save enquiry
+    Save Enquiry
   </button>
 </div> 
                     </div>
                   </article>
 
-                  <section className="grid gap-4 lg:grid-cols-2">
-                    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <SectionHeading
-                        title="Contact details"
-                        description="Record who made the enquiry, how to contact them and how they found Sharpes Lawn Care."
-                      />
+                  <section>
+                    <div className="grid items-start gap-3 xl:grid-cols-2">
+                      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <SectionHeading
+                          title="1. Contact & Enquiry Details"
+                          description="Record the prospective customer's contact details, how they found you and what they require."
+                        />
 
-                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                        <Field label="First name">
-                          <input
-                            value={
-                              selectedEnquiry.firstName
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "firstName",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                          <Field label="Title">
+                            <select
+                              value={selectedEnquiry.title}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "title",
+                                  event.target.value,
+                                )
+                              }
+                              className={inputClass}
+                              aria-label="Title"
+                            >
+                              <option value="">Select Title</option>
+                              <option value="Mr">Mr</option>
+                              <option value="Mrs">Mrs</option>
+                              <option value="Mr & Mrs">Mr & Mrs</option>
+                              <option value="Ms">Ms</option>
+                              <option value="Dr">Dr</option>
+                              <option value="c/o">c/o</option>
+                            </select>
+                          </Field>
 
-                        <Field label="Surname">
-                          <input
-                            value={
-                              selectedEnquiry.surname
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "surname",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Enquiry source">
-                          <select
-                            value={
-                              selectedEnquiry.source
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "source",
-                                event.target
-                                  .value as EnquirySource,
-                              )
-                            }
-                            className={inputClass}
-                          >
-                            {enquirySources.map(
-                              (source) => (
-                                <option
-                                  key={source}
-                                  value={source}
-                                >
-                                  {source}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </Field>
-
-                        <Field label="Recommended by">
-                          <input
-                            value={
-                              selectedEnquiry.referredBy
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "referredBy",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            disabled={
-                              selectedEnquiry.source !==
-                              "Recommendation"
-                            }
-                            placeholder="Existing customer name"
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <div className="sm:col-span-2">
-                          <Field label="Address">
+                          <Field label="First Name">
                             <input
-                              value={
-                                selectedEnquiry.address
-                              }
+                              value={selectedEnquiry.firstName}
                               onChange={(event) =>
                                 updateDraft(
-                                  "address",
-                                  event.target
-                                    .value,
+                                  "firstName",
+                                  event.target.value,
                                 )
                               }
                               className={inputClass}
                             />
                           </Field>
-                        </div>
 
-                        <Field label="Postcode">
-                          <input
-                            value={
-                              selectedEnquiry.postcode
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "postcode",
-                                event.target.value.toUpperCase(),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Mobile phone">
-                          <input
-                            value={
-                              selectedEnquiry.mobilePhone
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "mobilePhone",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Home phone">
-                          <input
-                            value={
-                              selectedEnquiry.homePhone
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "homePhone",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Email address">
-                          <input
-                            type="email"
-                            value={
-                              selectedEnquiry.emailAddress
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "emailAddress",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <div className="sm:col-span-2">
-                          <Field label="Initial message">
-                            <textarea
-                              rows={4}
-                              value={
-                                selectedEnquiry.initialMessage
-                              }
+                          <Field label="Surname">
+                            <input
+                              value={selectedEnquiry.surname}
                               onChange={(event) =>
                                 updateDraft(
-                                  "initialMessage",
-                                  event.target
-                                    .value,
+                                  "surname",
+                                  event.target.value,
                                 )
                               }
                               className={inputClass}
                             />
                           </Field>
-                        </div>
 
-                        <div className="sm:col-span-2">
-                          <Field label="Internal notes">
-                            <textarea
-                              rows={3}
-                              value={
-                                selectedEnquiry.internalNotes
-                              }
-                              onChange={(event) =>
-                                updateDraft(
-                                  "internalNotes",
-                                  event.target
-                                    .value,
-                                )
-                              }
-                              className={inputClass}
-                            />
-                          </Field>
-                        </div>
-                      </div>
-                    </article>
+                          <div className="sm:col-span-2 2xl:col-span-3">
+                            <Field label="Full Name">
+                              <input
+                                value={selectedEnquiry.fullName}
+                                readOnly
+                                className={`${inputClass} bg-slate-50 text-slate-700`}
+                              />
+                            </Field>
+                          </div>
 
-                    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <SectionHeading
-                        title="Site visit & allocation"
-                        description="Arrange the lawn measurement and keep the suggested route allocation ready for conversion."
-                      />
-
-                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                        <Field label="Enquiry status">
-                          <select
-                            value={
-                              selectedEnquiry.status
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "status",
-                                event.target
-                                  .value as EnquiryStatus,
-                              )
-                            }
-                            className={inputClass}
-                          >
-                            {enquiryStatuses.map(
-                              (status) => (
-                                <option
-                                  key={status}
-                                  value={status}
-                                >
-                                  {status}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </Field>
-
-                        <Field label="Site visit date">
-                          <input
-                            type="date"
-                            value={
-                              selectedEnquiry.siteVisitDate
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "siteVisitDate",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Site visit time">
-                          <input
-                            type="time"
-                            value={
-                              selectedEnquiry.siteVisitTime
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "siteVisitTime",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Suggested group">
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={
-                              selectedEnquiry.suggestedGroupNumber
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "suggestedGroupNumber",
-                                Number(
-                                  event.target
-                                    .value,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Suggested van">
-                          <select
-                            value={
-                              selectedEnquiry.suggestedVanNumber
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "suggestedVanNumber",
-                                Number(
-                                  event.target
-                                    .value,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                          >
-                            {!activeVehicles.some(
-                              (vehicle) =>
-                                vehicle.number ===
-                                selectedEnquiry.suggestedVanNumber,
-                            ) && (
-                              <option
-                                value={
-                                  selectedEnquiry.suggestedVanNumber
+                          <div className="sm:col-span-2 2xl:col-span-3">
+                            <Field label="Email Address">
+                              <input
+                                type="email"
+                                value={selectedEnquiry.emailAddress}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "emailAddress",
+                                    event.target.value,
+                                  )
                                 }
-                                disabled
-                              >
-                                Van {selectedEnquiry.suggestedVanNumber} — inactive/missing
-                              </option>
-                            )}
+                                className={inputClass}
+                              />
+                            </Field>
+                          </div>
 
-                            {activeVehicles.map(
-                              (vehicle) => (
-                                <option
-                                  key={
-                                    vehicle.id
-                                  }
-                                  value={
-                                    vehicle.number
-                                  }
-                                >
-                                  {vehicle.name}
-                                </option>
-                              ),
-                            )}
-                          </select>
+                          <div className="sm:col-span-2 2xl:col-span-3">
+                            <Field label="Address">
+                              <input
+                                value={selectedEnquiry.address}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "address",
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                              />
+                            </Field>
+                          </div>
 
-                          <p className="mt-1 text-xs text-slate-500">
-                            Only active fleet vehicles can be assigned when the enquiry becomes a customer.
-                          </p>
-                        </Field>
-
-                        <ToggleField
-                          label="Lawn measured"
-                          description="Confirm that the lawn measurement is complete."
-                          checked={
-                            selectedEnquiry.lawnMeasured
-                          }
-                          onChange={(checked) =>
-                            updateDraft(
-                              "lawnMeasured",
-                              checked,
-                            )
-                          }
-                        />
-
-                        <ToggleField
-                          label="Treatment started immediately"
-                          description="Use when the first treatment was completed during the quotation visit."
-                          checked={
-                            selectedEnquiry.treatmentStartedImmediately
-                          }
-                          onChange={(checked) =>
-                            updateDraft(
-                              "treatmentStartedImmediately",
-                              checked,
-                            )
-                          }
-                        />
-                      </div>
-                    </article>
-                  </section>
-
-                  <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-                    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <SectionHeading
-                        title="Measure & quote"
-                        description="Record the lawn area, calculate the treatment price and track the quotation decision."
-                      />
-
-                      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        <Field label="Lawn size (m²)">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={
-                              selectedEnquiry.lawnSizeSquareMetres
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "lawnSizeSquareMetres",
-                                Number(
-                                  event.target
-                                    .value,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Price per m²">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.001"
-                            value={
-                              selectedEnquiry.pricePerSquareMetre
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "pricePerSquareMetre",
-                                Number(
-                                  event.target
-                                    .value,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <div className="flex items-end">
-                          <button
-                            type="button"
-                            onClick={
-                              calculateCurrentQuote
-                            }
-                            className="w-full rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
-                          >
-                            Calculate quote
-                          </button>
-                        </div>
-
-                        <ResultBox
-                          label="Calculated price"
-                          value={`£${selectedEnquiry.calculatedTreatmentPrice.toFixed(
-                            2,
-                          )}`}
-                          detail="Area × price per m²"
-                        />
-
-                        <ResultBox
-                          label="Quoted treatment price"
-                          value={`£${selectedEnquiry.quotedTreatmentPrice.toFixed(
-                            2,
-                          )}`}
-                          detail={
-                            selectedEnquiry.minimumPriceApplied
-                              ? "£18 minimum applied"
-                              : "Editable final quotation"
-                          }
-                          warning={
-                            selectedEnquiry.minimumPriceApplied
-                          }
-                        />
-
-                        <Field label="Override final quote">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={
-                              selectedEnquiry.quotedTreatmentPrice
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "quotedTreatmentPrice",
-                                Number(
-                                  event.target
-                                    .value,
-                                ),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Quote status">
-                          <select
-                            value={
-                              selectedEnquiry.quoteStatus
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "quoteStatus",
-                                event.target
-                                  .value as QuoteStatus,
-                              )
-                            }
-                            className={inputClass}
-                          >
-                            {quoteStatuses.map(
-                              (status) => (
-                                <option
-                                  key={status}
-                                  value={status}
-                                >
-                                  {status}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </Field>
-
-                        <Field label="Quote date">
-                          <input
-                            type="date"
-                            value={
-                              selectedEnquiry.quoteDate
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "quoteDate",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Quote expiry">
-                          <input
-                            type="date"
-                            value={
-                              selectedEnquiry.quoteExpiryDate
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "quoteExpiryDate",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <div className="sm:col-span-2 lg:col-span-3">
-                          <Field label="Quote notes">
-                            <textarea
-                              rows={4}
-                              value={
-                                selectedEnquiry.quoteNotes
-                              }
+                          <Field label="Postcode">
+                            <input
+                              value={selectedEnquiry.postcode}
                               onChange={(event) =>
                                 updateDraft(
-                                  "quoteNotes",
-                                  event.target
-                                    .value,
+                                  "postcode",
+                                  event.target.value.toUpperCase(),
                                 )
                               }
                               className={inputClass}
                             />
                           </Field>
+
+                          <Field label="Mobile Phone">
+                            <input
+                              value={selectedEnquiry.mobilePhone}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "mobilePhone",
+                                  event.target.value,
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+
+                          <Field label="Home Phone">
+                            <input
+                              value={selectedEnquiry.homePhone}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "homePhone",
+                                  event.target.value,
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+
+                          <div className="sm:col-span-2 2xl:col-span-3 border-t border-slate-200 pt-3">
+                            <div className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
+                              Enquiry Details
+                            </div>
+                          </div>
+
+                          <Field label="Enquiry Source">
+                            <select
+                              value={selectedEnquiry.source}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "source",
+                                  event.target.value as EnquirySource,
+                                )
+                              }
+                              className={inputClass}
+                            >
+                              {enquirySources.map(
+                                (source) => (
+                                  <option
+                                    key={source}
+                                    value={source}
+                                  >
+                                    {source}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </Field>
+
+                          <Field label="Recommended By">
+                            <input
+                              value={selectedEnquiry.referredBy}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "referredBy",
+                                  event.target.value,
+                                )
+                              }
+                              disabled={
+                                selectedEnquiry.source !==
+                                "Recommendation"
+                              }
+                              placeholder="Existing customer name"
+                              className={inputClass}
+                            />
+                          </Field>
+
+                          <div className="sm:col-span-2 2xl:col-span-3">
+                            <Field label="Initial Message / What They Require">
+                              <textarea
+                                rows={3}
+                                value={selectedEnquiry.initialMessage}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "initialMessage",
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                              />
+                            </Field>
+                          </div>
                         </div>
-                      </div>
+                      </article>
 
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={
-                            markQuotePresented
-                          }
-                          className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100"
-                        >
-                          Mark presented
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={
-                            markQuoteAccepted
-                          }
-                          className="rounded-xl border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
-                        >
-                          Mark accepted
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={
-                            markQuoteDeclined
-                          }
-                          className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-                        >
-                          Mark declined
-                        </button>
-                      </div>
-                    </article>
-
-                    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <SectionHeading
-                        title="Convert to customer"
-                        description="Record future extra work, then create the customer account once the quotation has been accepted."
-                      />
-
-                      <div className="mt-5 space-y-4">
-                        <ToggleField
-                          label="Extra work required"
-                          description="Record scarification, aeration, overseeding or other work."
-                          checked={
-                            selectedEnquiry.extraWorkRequired
-                          }
-                          onChange={(checked) =>
-                            updateDraft(
-                              "extraWorkRequired",
-                              checked,
-                            )
-                          }
+                      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <SectionHeading
+                          title="2. Quotation"
+                          description="Calculate the treatment price, prepare the customer quotation and record the decision."
                         />
 
-                        <Field label="Work description">
-                          <textarea
-                            rows={5}
-                            value={
-                              selectedEnquiry.extraWorkDescription
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "extraWorkDescription",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            disabled={
-                              !selectedEnquiry.extraWorkRequired
-                            }
-                            className={inputClass}
-                          />
-                        </Field>
-
-                        <Field label="Preferred season">
-                          <select
-                            value={
-                              selectedEnquiry.preferredExtraWorkSeason
-                            }
-                            onChange={(event) =>
-                              updateDraft(
-                                "preferredExtraWorkSeason",
-                                event.target
-                                  .value,
-                              )
-                            }
-                            disabled={
-                              !selectedEnquiry.extraWorkRequired
-                            }
-                            className={inputClass}
-                          >
-                            <option value="">
-                              Not selected
-                            </option>
-
-                            <option value="Spring">
-                              Spring
-                            </option>
-
-                            <option value="Summer">
-                              Summer
-                            </option>
-
-                            <option value="Autumn">
-                              Autumn
-                            </option>
-
-                            <option value="Winter">
-                              Winter
-                            </option>
-                          </select>
-                        </Field>
-
-                        {selectedEnquiry.status ===
-                          "Quote Accepted" && (
-                          <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-                            <div className="font-bold text-green-900">
-                              Ready to become a
-                              customer
-                            </div>
-
-                            <p className="mt-2 text-sm leading-6 text-green-800">
-                              GreenFlow will create
-                              the customer record and
-                              can also create the
-                              remaining annual
-                              programme.
-                            </p>
-
-                            <ToggleField
-                              label="Generate annual programme"
-                              description="Create scheduled treatment visits automatically."
-                              checked={
-                                generateProgramme
+                        <div className="mt-4 space-y-3">
+                          <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+                            <Field label="Quote Date">
+                            <input
+                              type="date"
+                              value={selectedEnquiry.quoteDate}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "quoteDate",
+                                  event.target.value,
+                                )
                               }
-                              onChange={
-                                setGenerateProgramme
+                              className={inputClass}
+                            />
+                          </Field>
+
+                            <Field label="Quote Expiry">
+                            <input
+                              type="date"
+                              value={selectedEnquiry.quoteExpiryDate}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "quoteExpiryDate",
+                                  event.target.value,
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+
+                            <Field label="Lawn Size (m²)">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={selectedEnquiry.lawnSizeSquareMetres}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "lawnSizeSquareMetres",
+                                  Number(event.target.value),
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+
+                            <Field label="Price Per m²">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.001"
+                              value={selectedEnquiry.pricePerSquareMetre}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "pricePerSquareMetre",
+                                  Number(event.target.value),
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+                          </div>
+
+                          <div className="grid items-end gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+                            <button
+                              type="button"
+                              onClick={calculateCurrentQuote}
+                              className="flex h-[124px] w-full items-center justify-center rounded-xl bg-[#176b37] px-4 py-4 text-center text-sm font-semibold text-white hover:bg-[#125b2f]"
+                            >
+                              Calculate Quote
+                            </button>
+
+                            <ResultBox
+                              label="Calculated Price"
+                              className="h-[124px]"
+                              value={`£${selectedEnquiry.calculatedTreatmentPrice.toFixed(
+                                2,
+                              )}`}
+                              detail="Lawn area × price per m²"
+                            />
+
+                            <ResultBox
+                              label="Quoted Price for Customer"
+                              className="h-[124px] !border-green-300 !bg-green-50"
+                              value={`£${selectedEnquiry.quotedTreatmentPrice.toFixed(
+                                2,
+                              )}`}
+                              detail={
+                                selectedEnquiry.minimumPriceApplied
+                                  ? "£18 minimum applied"
+                                  : "Per standard treatment visit"
+                              }
+                              warning={
+                                selectedEnquiry.minimumPriceApplied
                               }
                             />
 
-                            {generateProgramme && (
-                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                <Field label="Programme year">
-                                  <input
-                                    type="number"
-                                    min="2020"
-                                    max="2100"
-                                    value={
-                                      programmeYear
-                                    }
-                                    onChange={(
-                                      event,
-                                    ) =>
-                                      setProgrammeYear(
-                                        Number(
-                                          event
-                                            .target
-                                            .value,
-                                        ),
-                                      )
-                                    }
-                                    className={
-                                      inputClass
-                                    }
-                                  />
-                                </Field>
+                            <Field label="Override Final Quote">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={selectedEnquiry.quotedTreatmentPrice}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "quotedTreatmentPrice",
+                                  Number(event.target.value),
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+                          </div>
 
-                                <Field label="First treatment date">
-                                  <input
-                                    type="date"
-                                    value={
-                                      programmeStartDate
-                                    }
-                                    onChange={(
-                                      event,
-                                    ) =>
-                                      setProgrammeStartDate(
-                                        event
-                                          .target
-                                          .value,
-                                      )
-                                    }
-                                    className={
-                                      inputClass
-                                    }
-                                  />
-                                </Field>
+                          <div className="max-w-[220px]">
+                            <Field label="Quote Status">
+                            <select
+                              value={selectedEnquiry.quoteStatus}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "quoteStatus",
+                                  event.target.value as QuoteStatus,
+                                )
+                              }
+                              className={inputClass}
+                            >
+                              {quoteStatuses.map(
+                                (status) => (
+                                  <option
+                                    key={status}
+                                    value={status}
+                                  >
+                                    {status}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </Field>
+                          </div>
 
-                                <div className="rounded-xl border border-green-200 bg-white p-3 text-xs leading-5 text-green-800 sm:col-span-2">
-                                  Visits are generated
-                                  approximately 70 days
-                                  apart. Wednesdays and
-                                  weekends are avoided.
-                                  Dates outside the
-                                  selected year are not
-                                  included.
-                                </div>
-                              </div>
-                            )}
+                          <Field label="Quote Notes">
+                              <textarea
+                                rows={3}
+                                value={selectedEnquiry.quoteNotes}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "quoteNotes",
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                              />
+                            </Field>
+                        </div>
+
+                        <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4">
+                          <div className="text-sm font-bold text-green-900">
+                            Customer Quotation
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-green-800">
+                            View the finished quotation to print or save it as a PDF. Email Quote opens your email application with the customer's address, subject and message prepared; attach the saved quotation PDF before sending.
+                          </p>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link
+                              href={`/quotes/${selectedEnquiry.id}`}
+                              className="rounded-xl border border-[#338b45] bg-white px-4 py-2.5 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                            >
+                              View Quotation
+                            </Link>
 
                             <button
                               type="button"
-                              onClick={
-                                convertAcceptedEnquiry
-                              }
-                              className="mt-4 w-full rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                              onClick={emailQuote}
+                              className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
                             >
-                              Convert to customer
+                              Email Quote
                             </button>
                           </div>
-                        )}
+                        </div>
 
-                        {selectedEnquiry.status ===
-                          "Converted to Customer" && (
-                          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-                            <div className="font-bold text-blue-900">
-                              Customer created
-                            </div>
+                        <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-5">
+                          <button
+                            type="button"
+                            onClick={markQuotePresented}
+                            className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                          >
+                            Mark Presented
+                          </button>
 
-                            <p className="mt-2 text-sm text-blue-800">
-                              This enquiry became
-                              customer{" "}
-                              <strong>
-                                {
-                                  selectedEnquiry.convertedCustomerNumber
-                                }
-                              </strong>
-                              .
-                            </p>
+                          <button
+                            type="button"
+                            onClick={markQuoteAccepted}
+                            className="rounded-xl border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+                          >
+                            Mark Accepted
+                          </button>
 
-                            <Link
-                              href={`/customers/${selectedEnquiry.convertedCustomerNumber}`}
-                              className="mt-4 inline-flex rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+                          <button
+                            type="button"
+                            onClick={markQuoteDeclined}
+                            className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                          >
+                            Mark Declined
+                          </button>
+                        </div>
+                      
+                      </article>
+
+                      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <SectionHeading
+                          title="3. Site Visit"
+                          description="Arrange the visit, record the lawn measurement and note whether treatment began immediately."
+                        />
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                          <Field label="Site Visit Date">
+                            <input
+                              type="date"
+                              value={selectedEnquiry.siteVisitDate}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "siteVisitDate",
+                                  event.target.value,
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+
+                          <Field label="Site Visit Time">
+                            <input
+                              type="time"
+                              value={selectedEnquiry.siteVisitTime}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "siteVisitTime",
+                                  event.target.value,
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+
+                          
+
+                          <Field label="Enquiry Status">
+                            <select
+                              value={selectedEnquiry.status}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "status",
+                                  event.target.value as EnquiryStatus,
+                                )
+                              }
+                              className={inputClass}
                             >
-                              Open customer profile
-                            </Link>
+                              {enquiryStatuses.map(
+                                (status) => (
+                                  <option
+                                    key={status}
+                                    value={status}
+                                  >
+                                    {status}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </Field>
+
+                          <ToggleField
+                            label="Lawn Measured"
+                            description="Confirm that the lawn measurement is complete."
+                            checked={selectedEnquiry.lawnMeasured}
+                            onChange={(checked) =>
+                              updateDraft(
+                                "lawnMeasured",
+                                checked,
+                              )
+                            }
+                          />
+
+                          <ToggleField
+                            label="Treatment Started Immediately"
+                            description="Use when the first treatment was completed during the quotation visit."
+                            checked={
+                              selectedEnquiry.treatmentStartedImmediately
+                            }
+                            onChange={(checked) =>
+                              updateDraft(
+                                "treatmentStartedImmediately",
+                                checked,
+                              )
+                            }
+                          />
+                        </div>
+                      </article>
+
+                      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <SectionHeading
+                          title="4. Customer Setup"
+                          description="Prepare the route allocation and any future extra work before conversion."
+                        />
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          <Field label="Suggested Group">
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={selectedEnquiry.suggestedGroupNumber}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "suggestedGroupNumber",
+                                  Number(event.target.value),
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+
+                          <Field label="Suggested Van">
+                            <select
+                              value={selectedEnquiry.suggestedVanNumber}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "suggestedVanNumber",
+                                  Number(event.target.value),
+                                )
+                              }
+                              className={inputClass}
+                            >
+                              {!activeVehicles.some(
+                                (vehicle) =>
+                                  vehicle.number ===
+                                  selectedEnquiry.suggestedVanNumber,
+                              ) && (
+                                <option
+                                  value={
+                                    selectedEnquiry.suggestedVanNumber
+                                  }
+                                  disabled
+                                >
+                                  Van {selectedEnquiry.suggestedVanNumber} — inactive/missing
+                                </option>
+                              )}
+
+                              {activeVehicles.map(
+                                (vehicle) => (
+                                  <option
+                                    key={vehicle.id}
+                                    value={vehicle.number}
+                                  >
+                                    {vehicle.name}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </Field>
+
+                          <Field label="Preferred Season">
+                            <select
+                              value={
+                                selectedEnquiry.preferredExtraWorkSeason
+                              }
+                              onChange={(event) =>
+                                updateDraft(
+                                  "preferredExtraWorkSeason",
+                                  event.target.value,
+                                )
+                              }
+                              disabled={
+                                !selectedEnquiry.extraWorkRequired
+                              }
+                              className={inputClass}
+                            >
+                              <option value="">
+                                Not selected
+                              </option>
+                              <option value="Spring">
+                                Spring
+                              </option>
+                              <option value="Summer">
+                                Summer
+                              </option>
+                              <option value="Autumn">
+                                Autumn
+                              </option>
+                              <option value="Winter">
+                                Winter
+                              </option>
+                            </select>
+                          </Field>
+                        </div>
+
+                        <div className="mt-3 grid gap-3">
+                          <div className="sm:col-span-2 2xl:col-span-3">
+                            <ToggleField
+                              label="Extra Work Required"
+                              description="Record scarification, aeration, overseeding or other future work."
+                              checked={
+                                selectedEnquiry.extraWorkRequired
+                              }
+                              onChange={(checked) =>
+                                updateDraft(
+                                  "extraWorkRequired",
+                                  checked,
+                                )
+                              }
+                            />
                           </div>
-                        )}
-                      </div>
-                    </article>
+
+                          <div className="sm:col-span-2 2xl:col-span-3">
+                            <Field label="Work Description">
+                              <textarea
+                                rows={3}
+                                value={selectedEnquiry.extraWorkDescription}
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "extraWorkDescription",
+                                    event.target.value,
+                                  )
+                                }
+                                disabled={
+                                  !selectedEnquiry.extraWorkRequired
+                                }
+                                className={inputClass}
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      </article>
+
+                      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <SectionHeading
+                          title="5. Internal Notes"
+                          description="Private notes for Sharpes Lawn Care. These do not appear on the customer quotation."
+                        />
+
+                        <div className="mt-4">
+                          <Field label="Internal Notes">
+                            <textarea
+                              rows={3}
+                              value={selectedEnquiry.internalNotes}
+                              onChange={(event) =>
+                                updateDraft(
+                                  "internalNotes",
+                                  event.target.value,
+                                )
+                              }
+                              className={inputClass}
+                            />
+                          </Field>
+                        </div>
+                      </article>
+
+                      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <SectionHeading
+                          title="6. Convert to Customer"
+                          description="Once the quotation is accepted, create the customer account and optionally generate the annual programme."
+                        />
+
+                        <div className="mt-4">
+                          {selectedEnquiry.status ===
+                            "Quote Accepted" && (
+                            <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                              <div className="font-bold text-green-900">
+                                Ready to Become a Customer
+                              </div>
+
+                              <p className="mt-2 text-sm leading-6 text-green-800">
+                                GreenFlow will create the customer record and can also create the remaining annual programme.
+                              </p>
+
+                              <ToggleField
+                                label="Generate Annual Programme"
+                                description="Create scheduled treatment visits automatically."
+                                checked={generateProgramme}
+                                onChange={setGenerateProgramme}
+                              />
+
+                              {generateProgramme && (
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                  <Field label="Programme Year">
+                                    <input
+                                      type="number"
+                                      min="2020"
+                                      max="2100"
+                                      value={programmeYear}
+                                      onChange={(event) =>
+                                        setProgrammeYear(
+                                          Number(event.target.value),
+                                        )
+                                      }
+                                      className={inputClass}
+                                    />
+                                  </Field>
+
+                                  <Field label="First Treatment Date">
+                                    <input
+                                      type="date"
+                                      value={programmeStartDate}
+                                      onChange={(event) =>
+                                        setProgrammeStartDate(
+                                          event.target.value,
+                                        )
+                                      }
+                                      className={inputClass}
+                                    />
+                                  </Field>
+
+                                  <div className="rounded-xl border border-green-200 bg-white p-3 text-xs leading-5 text-green-800 sm:col-span-2">
+                                    Visits are generated approximately 70 days apart. Wednesdays and weekends are avoided. Dates outside the selected year are not included.
+                                  </div>
+                                </div>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={convertAcceptedEnquiry}
+                                className="mt-4 w-full rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
+                              >
+                                Convert to Customer
+                              </button>
+                            </div>
+                          )}
+
+                          {selectedEnquiry.status !==
+                            "Quote Accepted" &&
+                            selectedEnquiry.status !==
+                              "Converted to Customer" && (
+                              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                                Mark the quotation as accepted before converting this enquiry into a customer.
+                              </div>
+                            )}
+
+                          {selectedEnquiry.status ===
+                            "Converted to Customer" && (
+                            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                              <div className="font-bold text-blue-900">
+                                Customer Created
+                              </div>
+
+                              <p className="mt-2 text-sm text-blue-800">
+                                This enquiry became customer{" "}
+                                <strong>
+                                  {
+                                    selectedEnquiry.convertedCustomerNumber
+                                  }
+                                </strong>
+                                .
+                              </p>
+
+                              <Link
+                                href={`/customers/${selectedEnquiry.convertedCustomerNumber}`}
+                                className="mt-4 inline-flex rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+                              >
+                                Open Customer Profile
+                              </Link>
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    </div>
                   </section>
 
                   <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -2521,14 +2570,14 @@ export default function EnquiriesPage() {
                       }
                       className="rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
                     >
-                      Delete enquiry
+                      Delete Enquiry
                     </button>
 
                     <button
                       type="submit"
                       className="rounded-xl bg-[#176b37] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#125b2f]"
                     >
-                      Save all changes
+                      Save All Changes
                     </button>
                   </section>
                 </form>
@@ -2887,11 +2936,13 @@ function ResultBox({
   value,
   detail,
   warning = false,
+  className = "",
 }: {
   label: string;
   value: string;
   detail: string;
   warning?: boolean;
+  className?: string;
 }) {
   return (
     <div
@@ -2899,7 +2950,7 @@ function ResultBox({
         warning
           ? "border-amber-200 bg-amber-50"
           : "border-slate-200 bg-slate-50"
-      }`}
+      } ${className}`}
     >
       <div className="text-xs font-semibold text-slate-500">
         {label}

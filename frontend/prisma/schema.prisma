@@ -80,6 +80,7 @@ model Customer {
   organisationId String
 
   customerNumber String
+  title          String @default("")
   firstName      String @default("")
   surname        String @default("")
   fullName       String @default("")
@@ -154,6 +155,7 @@ model Enquiry {
   source     String @default("Recommendation")
   referredBy String @default("")
 
+  title     String @default("")
   firstName String @default("")
   surname   String @default("")
   fullName  String @default("")

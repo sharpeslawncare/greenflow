@@ -110,6 +110,17 @@ function serializeEnquiry<
   };
 }
 
+function createFullName(
+  title: string,
+  firstName: string,
+  surname: string,
+) {
+  return [title, firstName, surname]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 function parseNonNegativeNumber(
   value: unknown,
 ) {
@@ -217,6 +228,7 @@ export async function PATCH(
     source?: string;
     referredBy?: string;
 
+    title?: string;
     firstName?: string;
     surname?: string;
     fullName?: string;
@@ -376,6 +388,13 @@ export async function PATCH(
   }
 
   if (
+    typeof data.title === "string"
+  ) {
+    updateData.title =
+      data.title.trim();
+  }
+
+  if (
     typeof data.firstName === "string"
   ) {
     updateData.firstName =
@@ -390,16 +409,14 @@ export async function PATCH(
   }
 
   if (
-    typeof data.fullName === "string"
-  ) {
-    updateData.fullName =
-      data.fullName.trim();
-  }
-
-  if (
+    updateData.title !== undefined ||
     updateData.firstName !== undefined ||
     updateData.surname !== undefined
   ) {
+    const title =
+      updateData.title ??
+      existingEnquiry.title;
+
     const firstName =
       updateData.firstName ??
       existingEnquiry.firstName;
@@ -408,12 +425,12 @@ export async function PATCH(
       updateData.surname ??
       existingEnquiry.surname;
 
-    if (
-      updateData.fullName === undefined
-    ) {
-      updateData.fullName =
-        `${firstName} ${surname}`.trim();
-    }
+    updateData.fullName =
+      createFullName(
+        title,
+        firstName,
+        surname,
+      );
   }
 
   if (typeof data.address === "string") {

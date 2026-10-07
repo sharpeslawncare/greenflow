@@ -20,6 +20,7 @@ import type {
 
 type CustomerForm = {
   customerNumber: string;
+  title: string;
   firstName: string;
   surname: string;
   fullName: string;
@@ -676,8 +677,18 @@ export default function CustomersPage() {
 
     let customerNumber =
       form.customerNumber.trim();
+    const title =
+      form.title.trim();
+    const firstName =
+      form.firstName.trim();
+    const surname =
+      form.surname.trim();
     const fullName =
-      form.fullName.trim();
+      createFullName(
+        title,
+        firstName,
+        surname,
+      );
     const address =
       form.address.trim();
     const postcode =
@@ -850,8 +861,9 @@ export default function CustomersPage() {
 
     const customer: Customer = {
       customerNumber,
-      firstName: form.firstName.trim(),
-      surname: form.surname.trim(),
+      title,
+      firstName,
+      surname,
       fullName,
       address,
       postcode,
@@ -1832,15 +1844,54 @@ export default function CustomersPage() {
                 </select>
               </FormField>
 
+              <FormField label="Title">
+                <select
+                  value={form.title}
+                  onChange={(event) => {
+                    const title =
+                      event.target.value;
+
+                    setForm({
+                      ...form,
+                      title,
+                      fullName:
+                        createFullName(
+                          title,
+                          form.firstName,
+                          form.surname,
+                        ),
+                    });
+                  }}
+                  className={inputClass}
+                >
+                  <option value="">Select Title</option>
+                  <option value="Mr">Mr</option>
+                  <option value="Mrs">Mrs</option>
+                  <option value="Mr & Mrs">Mr & Mrs</option>
+                  <option value="Ms">Ms</option>
+                  <option value="Dr">Dr</option>
+                  <option value="c/o">c/o</option>
+                </select>
+              </FormField>
+
               <FormField label="First name">
                 <input
                   value={form.firstName}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const firstName =
+                      event.target.value;
+
                     setForm({
                       ...form,
-                      firstName: event.target.value,
-                    })
-                  }
+                      firstName,
+                      fullName:
+                        createFullName(
+                          form.title,
+                          firstName,
+                          form.surname,
+                        ),
+                    });
+                  }}
                   className={inputClass}
                 />
               </FormField>
@@ -1848,26 +1899,30 @@ export default function CustomersPage() {
               <FormField label="Surname">
                 <input
                   value={form.surname}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const surname =
+                      event.target.value;
+
                     setForm({
                       ...form,
-                      surname: event.target.value,
-                    })
-                  }
+                      surname,
+                      fullName:
+                        createFullName(
+                          form.title,
+                          form.firstName,
+                          surname,
+                        ),
+                    });
+                  }}
                   className={inputClass}
                 />
               </FormField>
 
-              <FormField label="Full name">
+              <FormField label="Full Name">
                 <input
                   value={form.fullName}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      fullName: event.target.value,
-                    })
-                  }
-                  className={inputClass}
+                  readOnly
+                  className={`${inputClass} bg-slate-50 text-slate-700`}
                 />
               </FormField>
 
@@ -2766,11 +2821,23 @@ function ImportSummaryCard({
   );
 }
 
+function createFullName(
+  title: string,
+  firstName: string,
+  surname: string,
+) {
+  return [title, firstName, surname]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 function createEmptyForm(
   customerNumber: string,
 ): CustomerForm {
   return {
     customerNumber,
+    title: "",
     firstName: "",
     surname: "",
     fullName: "",

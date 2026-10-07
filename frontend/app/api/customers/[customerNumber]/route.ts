@@ -213,6 +213,17 @@ function parseAdditionalJobs(
   };
 }
 
+function createFullName(
+  title: string,
+  firstName: string,
+  surname: string,
+) {
+  return [title, firstName, surname]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 function serializeCustomer<
   T extends {
     treatmentPrice: unknown;
@@ -317,6 +328,7 @@ export async function PATCH(
   const data = body as Record<string, unknown>;
 
   const updateData: {
+    title?: string;
     firstName?: string;
     surname?: string;
     fullName?: string;
@@ -341,16 +353,16 @@ export async function PATCH(
     programmeStartDate?: string;
   } = {};
 
+  if (typeof data.title === "string") {
+    updateData.title = data.title.trim();
+  }
+
   if (typeof data.firstName === "string") {
     updateData.firstName = data.firstName.trim();
   }
 
   if (typeof data.surname === "string") {
     updateData.surname = data.surname.trim();
-  }
-
-  if (typeof data.fullName === "string") {
-    updateData.fullName = data.fullName.trim();
   }
 
   if (typeof data.address === "string") {
@@ -577,9 +589,14 @@ export async function PATCH(
   }
 
   if (
+    updateData.title !== undefined ||
     updateData.firstName !== undefined ||
     updateData.surname !== undefined
   ) {
+    const title =
+      updateData.title ??
+      existingCustomer.title;
+
     const firstName =
       updateData.firstName ??
       existingCustomer.firstName;
@@ -588,10 +605,12 @@ export async function PATCH(
       updateData.surname ??
       existingCustomer.surname;
 
-    if (updateData.fullName === undefined) {
-      updateData.fullName =
-        `${firstName} ${surname}`.trim();
-    }
+    updateData.fullName =
+      createFullName(
+        title,
+        firstName,
+        surname,
+      );
   }
 
   let additionalJobs:

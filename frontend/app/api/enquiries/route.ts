@@ -41,6 +41,7 @@ type EnquiryInput = {
   source: string;
   referredBy: string;
 
+  title: string;
   firstName: string;
   surname: string;
   fullName: string;
@@ -144,6 +145,17 @@ function stringValue(
   return typeof value === "string"
     ? value.trim()
     : fallback;
+}
+
+function createFullName(
+  title: string,
+  firstName: string,
+  surname: string,
+) {
+  return [title, firstName, surname]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 function booleanValue(
@@ -409,18 +421,21 @@ function parseEnquiry(
     };
   }
 
+  const title =
+    stringValue(data.title);
+
   const firstName =
     stringValue(data.firstName);
 
   const surname =
     stringValue(data.surname);
 
-  const suppliedFullName =
-    stringValue(data.fullName);
-
   const fullName =
-    suppliedFullName ||
-    `${firstName} ${surname}`.trim();
+    createFullName(
+      title,
+      firstName,
+      surname,
+    );
 
   return {
     success: true,
@@ -436,6 +451,7 @@ function parseEnquiry(
       referredBy:
         stringValue(data.referredBy),
 
+      title,
       firstName,
       surname,
       fullName,
@@ -540,6 +556,7 @@ function enquiryDatabaseData(
     source: enquiry.source,
     referredBy: enquiry.referredBy,
 
+    title: enquiry.title,
     firstName: enquiry.firstName,
     surname: enquiry.surname,
     fullName: enquiry.fullName,

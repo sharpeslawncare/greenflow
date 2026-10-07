@@ -612,14 +612,15 @@ function cancelEditing() {
     const result = await updateCustomer({
       ...draft,
 
+      title:
+        draft.title.trim(),
+
       fullName:
-        draft.fullName.trim() ||
-        [
-          draft.firstName.trim(),
-          draft.surname.trim(),
-        ]
-          .filter(Boolean)
-          .join(" "),
+        createFullName(
+          draft.title,
+          draft.firstName,
+          draft.surname,
+        ),
     });
 
     if (!result.success) {
@@ -1667,17 +1668,54 @@ function cancelEditing() {
             </div>
 
             <div className="grid gap-4 p-6 md:grid-cols-2">
-              <FormField label="First name">
-                <input
-                  value={draft.firstName}
-                  onChange={(event) =>
+              <FormField label="Title">
+                <select
+                  value={draft.title}
+                  onChange={(event) => {
+                    const title =
+                      event.target.value;
+
                     setDraft({
                       ...draft,
-                      firstName:
-                        event.target
-                          .value,
-                    })
-                  }
+                      title,
+                      fullName:
+                        createFullName(
+                          title,
+                          draft.firstName,
+                          draft.surname,
+                        ),
+                    });
+                  }}
+                  className={inputClass}
+                >
+                  <option value="">Select Title</option>
+                  <option value="Mr">Mr</option>
+                  <option value="Mrs">Mrs</option>
+                  <option value="Mr & Mrs">Mr & Mrs</option>
+                  <option value="Ms">Ms</option>
+                  <option value="Dr">Dr</option>
+                  <option value="c/o">c/o</option>
+                </select>
+              </FormField>
+
+              <FormField label="First Name">
+                <input
+                  value={draft.firstName}
+                  onChange={(event) => {
+                    const firstName =
+                      event.target.value;
+
+                    setDraft({
+                      ...draft,
+                      firstName,
+                      fullName:
+                        createFullName(
+                          draft.title,
+                          firstName,
+                          draft.surname,
+                        ),
+                    });
+                  }}
                   className={inputClass}
                 />
               </FormField>
@@ -1685,30 +1723,30 @@ function cancelEditing() {
               <FormField label="Surname">
                 <input
                   value={draft.surname}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const surname =
+                      event.target.value;
+
                     setDraft({
                       ...draft,
-                      surname:
-                        event.target
-                          .value,
-                    })
-                  }
+                      surname,
+                      fullName:
+                        createFullName(
+                          draft.title,
+                          draft.firstName,
+                          surname,
+                        ),
+                    });
+                  }}
                   className={inputClass}
                 />
               </FormField>
 
-              <FormField label="Display name">
+              <FormField label="Full Name">
                 <input
                   value={draft.fullName}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      fullName:
-                        event.target
-                          .value,
-                    })
-                  }
-                  className={inputClass}
+                  readOnly
+                  className={`${inputClass} bg-slate-50 text-slate-700`}
                 />
               </FormField>
 
@@ -4039,6 +4077,17 @@ function toDateValue(
     ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function createFullName(
+  title: string,
+  firstName: string,
+  surname: string,
+) {
+  return [title, firstName, surname]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 function formatDate(
