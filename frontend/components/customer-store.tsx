@@ -81,6 +81,8 @@ type CustomerStoreValue = {
 
   getNextCustomerNumber: () => string;
 
+  allocateCustomerNumber: () => Promise<string>;
+
   restoreDemoCustomers: () => void;
 
   replaceCustomers: (
@@ -96,6 +98,12 @@ const CustomerStoreContext =
 type CustomerApiResponse = {
   customers?: unknown;
   customer?: unknown;
+  error?: unknown;
+};
+
+type CustomerSequenceApiResponse = {
+  customerNumber?: unknown;
+  nextCustomerNumber?: unknown;
   error?: unknown;
 };
 
@@ -488,6 +496,42 @@ export function CustomerStoreProvider({
     return String(highestNumber + 1);
   }
 
+  async function allocateCustomerNumber() {
+    const response = await fetch("/api/customer-sequence", {
+      method: "POST",
+      cache: "no-store",
+    });
+
+    let payload: CustomerSequenceApiResponse;
+
+    try {
+      payload =
+        (await response.json()) as CustomerSequenceApiResponse;
+    } catch {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        customerErrorMessage(
+          payload,
+          "Unable to allocate a customer number from PostgreSQL.",
+        ),
+      );
+    }
+
+    if (
+      typeof payload.customerNumber !== "string" ||
+      !payload.customerNumber.trim()
+    ) {
+      throw new Error(
+        "The customer sequence API returned an invalid customer number.",
+      );
+    }
+
+    return payload.customerNumber.trim();
+  }
+
   function restoreDemoCustomers() {
     const demo = normaliseEstablishedCustomers(demoCustomers);
     const optimisticCustomers = mergeCustomerUpserts(
@@ -567,6 +611,7 @@ export function CustomerStoreProvider({
       updateCustomer,
       getCustomer,
       getNextCustomerNumber,
+      allocateCustomerNumber,
       restoreDemoCustomers,
       replaceCustomers,
     }),

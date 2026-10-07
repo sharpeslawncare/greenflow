@@ -119,7 +119,7 @@ export default function EnquiriesPage() {
   const {
     ready: customersReady,
     addCustomer,
-    getNextCustomerNumber,
+    allocateCustomerNumber,
   } = useCustomerStore();
 
   const {
@@ -1013,8 +1013,41 @@ export default function EnquiriesPage() {
       return;
     }
 
-    const customerNumber =
-      getNextCustomerNumber();
+    const programmePreviewVisits =
+      generateProgramme
+        ? buildCustomerProgrammeVisits(
+            "pending",
+            programmeYear,
+            programmeStartDate,
+          )
+        : [];
+
+    if (
+      generateProgramme &&
+      programmePreviewVisits.length === 0
+    ) {
+      showMessage(
+        "No treatment visits could be created for the selected programme year and start date.",
+        "error",
+      );
+      return;
+    }
+
+    let customerNumber: string;
+
+    try {
+      customerNumber =
+        await allocateCustomerNumber();
+    } catch (error) {
+      showMessage(
+        error instanceof Error &&
+          error.message.trim()
+          ? error.message
+          : "Unable to allocate a customer number from PostgreSQL.",
+        "error",
+      );
+      return;
+    }
 
     const programmeVisits =
       generateProgramme
@@ -1024,17 +1057,6 @@ export default function EnquiriesPage() {
             programmeStartDate,
           )
         : [];
-
-    if (
-      generateProgramme &&
-      programmeVisits.length === 0
-    ) {
-      showMessage(
-        "No treatment visits could be created for the selected programme year and start date.",
-        "error",
-      );
-      return;
-    }
 
     const firstProgrammeVisit =
       programmeVisits[0];

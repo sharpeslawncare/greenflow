@@ -29,6 +29,7 @@ model Organisation {
   auditEntries           AuditEntry[]
   settings               OrganisationSettings?
   invoiceSequence        InvoiceSequence?
+  customerSequence       CustomerSequence?
 }
 
 model Season {
@@ -406,6 +407,19 @@ model InvoiceSequence {
   id             String @id
   organisationId String @unique
   nextNumber     Int    @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+}
+
+model CustomerSequence {
+  id             String @id
+  organisationId String @unique
+  nextNumber     Int    @default(1001)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -86,6 +86,7 @@ export default function CustomersPage() {
     ready: customersReady,
     addCustomer,
     getNextCustomerNumber,
+    allocateCustomerNumber,
     restoreDemoCustomers,
   } = useCustomerStore();
 
@@ -133,6 +134,11 @@ export default function CustomersPage() {
 
   const [formError, setFormError] =
     useState("");
+
+  const [
+    automaticCustomerNumberPreview,
+    setAutomaticCustomerNumberPreview,
+  ] = useState("");
 
   const [
     successMessage,
@@ -641,9 +647,15 @@ export default function CustomersPage() {
   }
 
   function openAddCustomer() {
+    const nextCustomerNumber =
+      getNextCustomerNumber();
+
+    setAutomaticCustomerNumberPreview(
+      nextCustomerNumber,
+    );
     setForm(
       createEmptyForm(
-        getNextCustomerNumber(),
+        nextCustomerNumber,
       ),
     );
 
@@ -662,7 +674,7 @@ export default function CustomersPage() {
     event.preventDefault();
     setFormError("");
 
-    const customerNumber =
+    let customerNumber =
       form.customerNumber.trim();
     const fullName =
       form.fullName.trim();
@@ -693,6 +705,8 @@ export default function CustomersPage() {
         "Enter a customer number.",
       );
     } else if (
+      customerNumber !==
+        automaticCustomerNumberPreview &&
       customers.some(
         (customer) =>
           customer.customerNumber.trim() ===
@@ -816,6 +830,24 @@ export default function CustomersPage() {
       return;
     }
 
+    if (
+      customerNumber ===
+      automaticCustomerNumberPreview
+    ) {
+      try {
+        customerNumber =
+          await allocateCustomerNumber();
+      } catch (error) {
+        setFormError(
+          error instanceof Error &&
+            error.message.trim()
+            ? error.message
+            : "Unable to allocate a customer number from PostgreSQL.",
+        );
+        return;
+      }
+    }
+
     const customer: Customer = {
       customerNumber,
       firstName: form.firstName.trim(),
@@ -855,6 +887,7 @@ export default function CustomersPage() {
     }
 
     setAddingCustomer(false);
+    setAutomaticCustomerNumberPreview("");
     setActiveTab(
       customer.status ===
         "Inactive"
