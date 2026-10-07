@@ -244,6 +244,8 @@ type SettingsStoreValue = {
 
   ready: boolean;
 
+  centralSaveError: string;
+
 
 
   updateBusinessSettings: (
@@ -882,6 +884,12 @@ export function SettingsStoreProvider({
 
 
 
+  const [centralSaveError, setCentralSaveError] =
+
+    useState("");
+
+
+
   const invoiceSequenceRef =
 
     useRef(
@@ -1336,7 +1344,13 @@ export function SettingsStoreProvider({
         settings.treatmentWording,
         settings.branding,
 
-      );
+      ).then((saved) => {
+        setCentralSaveError(
+          saved
+            ? ""
+            : "GreenFlow could not save these settings to PostgreSQL. Your changes are still visible in this browser, but they are not confirmed centrally.",
+        );
+      });
 
     }, 600);
 
@@ -2257,6 +2271,8 @@ export function SettingsStoreProvider({
 
         ready,
 
+        centralSaveError,
+
         updateBusinessSettings,
 
         updateInvoiceSettings,
@@ -2291,7 +2307,7 @@ export function SettingsStoreProvider({
 
       }),
 
-      [settings, ready],
+      [settings, ready, centralSaveError],
 
     );
 
@@ -2585,6 +2601,8 @@ async function saveCentralOrganisationSettings(
 
     }
 
+    return true;
+
   } catch (saveError) {
 
     console.error(
@@ -2594,6 +2612,8 @@ async function saveCentralOrganisationSettings(
       saveError,
 
     );
+
+    return false;
 
   }
 

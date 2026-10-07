@@ -93,6 +93,7 @@ export default function SettingsPage() {
   const {
     settings,
     ready,
+    centralSaveError,
     updateBusinessSettings,
     updateInvoiceSettings,
     updateTreatmentWording,
@@ -359,6 +360,16 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {centralSaveError && (
+            <div
+              role="alert"
+              className="mb-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-900"
+            >
+              <strong>Central Settings Save Failed.</strong>{" "}
+              {centralSaveError}
+            </div>
+          )}
+
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#176b37]">
@@ -541,8 +552,16 @@ export default function SettingsPage() {
                 Centralised settings are saved automatically.
               </span>
 
-              <span className="font-semibold text-green-700">
-                Settings saved automatically
+              <span
+                className={`font-semibold ${
+                  centralSaveError
+                    ? "text-red-700"
+                    : "text-green-700"
+                }`}
+              >
+                {centralSaveError
+                  ? "Central save needs attention"
+                  : "Settings saved automatically"}
               </span>
             </footer>
           </section>
