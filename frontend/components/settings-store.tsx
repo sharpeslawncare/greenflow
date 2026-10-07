@@ -975,7 +975,7 @@ export function SettingsStoreProvider({
 
           resolvedSettings = {
 
-            ...browserSettings,
+            ...defaultSettings,
 
             business:
 
@@ -983,13 +983,13 @@ export function SettingsStoreProvider({
 
                 ? normaliseBusinessSettings({
 
-                    ...browserSettings.business,
+                    ...defaultSettings.business,
 
                     ...payload.settings.business,
 
                   } as BusinessSettings)
 
-                : browserSettings.business,
+                : { ...defaultSettings.business },
 
             invoices:
 
@@ -997,17 +997,17 @@ export function SettingsStoreProvider({
 
                 ? normaliseInvoiceSettings({
 
-                    ...browserSettings.invoices,
+                    ...defaultSettings.invoices,
 
                     ...payload.settings.invoices,
 
                     nextInvoiceNumber:
 
-                      browserSettings.invoices.nextInvoiceNumber,
+                      defaultSettings.invoices.nextInvoiceNumber,
 
                   } as InvoiceSettings)
 
-                : browserSettings.invoices,
+                : { ...defaultSettings.invoices },
 
             treatmentLibrary:
 
@@ -1019,21 +1019,19 @@ export function SettingsStoreProvider({
 
                   )
 
-                : browserSettings.treatmentLibrary,
+                : defaultSettings.treatmentLibrary.map((treatment) => ({
+                    ...treatment,
+                    advisoryIds: [...treatment.advisoryIds],
+                  })),
 
             customChemicalTypes:
 
               Array.isArray(payload.settings.customChemicalTypes)
 
-                ? normaliseCustomChemicalTypes([
-
-                    ...payload.settings.customChemicalTypes,
-
-                    ...browserSettings.customChemicalTypes,
-
-                  ])
-
-                : browserSettings.customChemicalTypes,
+                ? normaliseCustomChemicalTypes(
+                    payload.settings.customChemicalTypes,
+                  )
+                : [...defaultSettings.customChemicalTypes],
 
             communications:
 
@@ -1041,13 +1039,13 @@ export function SettingsStoreProvider({
 
                 ? {
 
-                    ...browserSettings.communications,
+                    ...defaultSettings.communications,
 
                     ...payload.settings.communications,
 
                   }
 
-                : browserSettings.communications,
+                : { ...defaultSettings.communications },
 
             advisories:
 
@@ -1059,21 +1057,23 @@ export function SettingsStoreProvider({
 
                   )
 
-                : browserSettings.advisories,
+                : defaultSettings.advisories.map((advisory) => ({
+                    ...advisory,
+                  })),
             treatmentWording:
               isBrowserRecord(payload.settings.treatmentWording)
                 ? {
                     ...defaultSettings.treatmentWording,
                     ...payload.settings.treatmentWording,
                   } as TreatmentWordingSettings
-                : browserSettings.treatmentWording,
+                : { ...defaultSettings.treatmentWording },
             branding:
               isBrowserRecord(payload.settings.branding)
                 ? {
                     ...defaultSettings.branding,
                     ...payload.settings.branding,
                   } as BrandingSettings
-                : browserSettings.branding,
+                : { ...defaultSettings.branding },
 
           };
 
