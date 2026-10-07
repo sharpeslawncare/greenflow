@@ -1726,7 +1726,7 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-2">
+          <section className="mt-4 grid gap-4 lg:grid-cols-2">
             <Link
               href={`/jobs?date=${selectedDate}`}
               className="group rounded-[24px] border-2 border-green-300 bg-white p-6 shadow-sm transition hover:border-[#338b45] hover:shadow-md"
