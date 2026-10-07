@@ -1118,7 +1118,7 @@ export default function EnquiriesPage() {
     };
 
     const result =
-      addCustomer(newCustomer);
+      await addCustomer(newCustomer);
 
     if (!result.success) {
       showMessage(

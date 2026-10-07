@@ -2318,7 +2318,7 @@ function VisitCentrePageContent() {
       return failures;
     }
 
-    function rollbackCustomerWrites() {
+    async function rollbackCustomerWrites() {
       const failures: string[] = [];
 
       for (
@@ -2326,7 +2326,7 @@ function VisitCentrePageContent() {
         [...savedCustomerWrites].reverse()
       ) {
         const result =
-          updateCustomer(
+          await updateCustomer(
             write.previousCustomer,
           );
 
@@ -2389,13 +2389,13 @@ function VisitCentrePageContent() {
 
     for (const write of customerWrites) {
       const result =
-        updateCustomer(
+        await updateCustomer(
           write.nextCustomer,
         );
 
       if (!result.success) {
         const rollbackFailures = [
-          ...rollbackCustomerWrites(),
+          ...(await rollbackCustomerWrites()),
           ...(await rollbackProgrammeWrites()),
         ];
 
@@ -2432,7 +2432,7 @@ function VisitCentrePageContent() {
       if (!result.success) {
         const rollbackFailures = [
           ...(await rollbackTreatmentWrites()),
-          ...rollbackCustomerWrites(),
+          ...(await rollbackCustomerWrites()),
           ...(await rollbackProgrammeWrites()),
         ];
 
@@ -2486,7 +2486,7 @@ function VisitCentrePageContent() {
       if (!stockResult.success) {
         const rollbackFailures = [
           ...(await rollbackTreatmentWrites()),
-          ...rollbackCustomerWrites(),
+          ...(await rollbackCustomerWrites()),
           ...(await rollbackProgrammeWrites()),
         ];
 

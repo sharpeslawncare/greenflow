@@ -828,7 +828,7 @@ function RoutesPageContent() {
     );
   }
 
-  function moveSelectedCustomers() {
+  async function moveSelectedCustomers() {
     if (
       selectedCustomers.length ===
       0
@@ -879,13 +879,22 @@ function RoutesPageContent() {
         continue;
       }
 
-      updateCustomer({
-        ...customer,
-        groupNumber:
-          destinationGroup,
-        vanNumber:
-          destinationVan,
-      });
+      const result =
+        await updateCustomer({
+          ...customer,
+          groupNumber:
+            destinationGroup,
+          vanNumber:
+            destinationVan,
+        });
+
+      if (!result.success) {
+        showMessage(
+          result.message,
+          "error",
+        );
+        return;
+      }
     }
 
     const movedCount =
@@ -907,7 +916,7 @@ function RoutesPageContent() {
     );
   }
 
-  function updateVan(
+  async function updateVan(
     customer: StoredCustomer,
     vanNumber: number,
   ) {
@@ -923,10 +932,19 @@ function RoutesPageContent() {
       return;
     }
 
-    updateCustomer({
-      ...customer,
-      vanNumber,
-    });
+    const result =
+      await updateCustomer({
+        ...customer,
+        vanNumber,
+      });
+
+    if (!result.success) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
 
     showMessage(
       `${customer.fullName} assigned to ${

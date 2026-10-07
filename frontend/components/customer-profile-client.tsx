@@ -595,7 +595,7 @@ function cancelEditing() {
   setEditing(false);
 }
 
-  function saveCustomer() {
+  async function saveCustomer() {
     if (!draft) {
       return;
     }
@@ -609,7 +609,7 @@ function cancelEditing() {
       return;
     }
 
-    updateCustomer({
+    const result = await updateCustomer({
       ...draft,
 
       fullName:
@@ -621,6 +621,13 @@ function cancelEditing() {
           .filter(Boolean)
           .join(" "),
     });
+
+    if (!result.success) {
+      setSavedMessage(
+        result.message,
+      );
+      return;
+    }
 
     setEditing(false);
 
@@ -685,7 +692,7 @@ function cancelEditing() {
     }
   }
 
-  function saveAdditionalJob() {
+  async function saveAdditionalJob() {
     const treatment =
       activeTreatmentLibrary.find(
         (item) =>
@@ -750,7 +757,7 @@ function cancelEditing() {
     };
 
     const result =
-      updateCustomer({
+      await updateCustomer({
         ...currentCustomer,
         additionalJobs: [
           ...currentCustomer.additionalJobs,
@@ -794,7 +801,7 @@ function cancelEditing() {
     setEditingAdditionalJobPrice("");
   }
 
-  function saveAdditionalJobPrice(
+  async function saveAdditionalJobPrice(
     jobId: string,
   ) {
     const price = Number(
@@ -812,7 +819,7 @@ function cancelEditing() {
     }
 
     const result =
-      updateCustomer({
+      await updateCustomer({
         ...currentCustomer,
         additionalJobs:
           currentCustomer.additionalJobs.map(
@@ -846,7 +853,7 @@ function cancelEditing() {
     }, 3500);
   }
 
-  function cancelAdditionalJob(
+  async function cancelAdditionalJob(
     jobId: string,
   ) {
     const job =
@@ -870,7 +877,7 @@ function cancelEditing() {
       return;
     }
 
-    updateCustomer({
+    const result = await updateCustomer({
       ...currentCustomer,
       additionalJobs:
         currentCustomer.additionalJobs.map(
@@ -884,9 +891,15 @@ function cancelEditing() {
               : item,
         ),
     });
+
+    if (!result.success) {
+      setSavedMessage(
+        result.message,
+      );
+    }
   }
 
-  function deleteAdditionalJob(
+  async function deleteAdditionalJob(
     jobId: string,
   ) {
     const job =
@@ -911,7 +924,7 @@ function cancelEditing() {
       return;
     }
 
-    updateCustomer({
+    const result = await updateCustomer({
       ...currentCustomer,
       additionalJobs:
         currentCustomer.additionalJobs.filter(
@@ -919,6 +932,12 @@ function cancelEditing() {
             item.id !== jobId,
         ),
     });
+
+    if (!result.success) {
+      setSavedMessage(
+        result.message,
+      );
+    }
   }
 
   function openActionModal() {

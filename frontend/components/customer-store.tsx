@@ -69,14 +69,11 @@ type CustomerStoreValue = {
 
   addCustomer: (
     customer: CustomerInput,
-  ) => {
-    success: boolean;
-    message: string;
-  };
+  ) => Promise<CustomerUpdateResult>;
 
   updateCustomer: (
     customer: CustomerInput,
-  ) => CustomerUpdateResult;
+  ) => Promise<CustomerUpdateResult>;
 
   getCustomer: (
     customerNumber: string,
@@ -201,6 +198,14 @@ export function CustomerStoreProvider({
         customerErrorMessage(payload, "Unable to create customer in PostgreSQL."),
       );
     }
+
+    if (!payload.customer || typeof payload.customer !== "object") {
+      throw new Error("The customer API returned an invalid customer record.");
+    }
+
+    return normaliseStoredCustomer(
+      payload.customer as Partial<StoredCustomer>,
+    );
   }
 
   async function patchCustomer(customer: StoredCustomer) {
@@ -219,6 +224,14 @@ export function CustomerStoreProvider({
         customerErrorMessage(payload, "Unable to update customer in PostgreSQL."),
       );
     }
+
+    if (!payload.customer || typeof payload.customer !== "object") {
+      throw new Error("The customer API returned an invalid customer record.");
+    }
+
+    return normaliseStoredCustomer(
+      payload.customer as Partial<StoredCustomer>,
+    );
   }
 
   async function bulkUpsertCustomers(upsertCustomers: StoredCustomer[]) {
@@ -290,7 +303,9 @@ export function CustomerStoreProvider({
     customersRef.current = customers;
   }, [customers]);
 
-  function addCustomer(customer: CustomerInput) {
+  async function addCustomer(
+    customer: CustomerInput,
+  ): Promise<CustomerUpdateResult> {
     const newCustomer = normaliseNewCustomer(customer);
 
     if (!newCustomer.customerNumber) {
@@ -315,22 +330,35 @@ export function CustomerStoreProvider({
       };
     }
 
-    const nextCustomers = [...currentCustomers, newCustomer].sort(sortCustomers);
-    applyCustomers(nextCustomers);
+    try {
+      const persistedCustomer =
+        await postCustomer(newCustomer);
 
-    recordAuditEvent({
-      area: "Customers",
-      action: "Created",
-      reference: newCustomer.customerNumber,
-      description: `Customer ${newCustomer.customerNumber} created.`,
-      changedFields: [],
-    });
+      const nextCustomers = mergeCustomerUpserts(
+        customersRef.current,
+        [persistedCustomer],
+      );
+      applyCustomers(nextCustomers);
 
-    void postCustomer(newCustomer).catch(async (error) => {
+      recordAuditEvent({
+        area: "Customers",
+        action: "Created",
+        reference: persistedCustomer.customerNumber,
+        description: `Customer ${persistedCustomer.customerNumber} created.`,
+        changedFields: [],
+      });
+
+      return {
+        success: true,
+        message:
+          "Customer added successfully. Remaining treatment dates will be assigned automatically from their group.",
+      };
+    } catch (error) {
       console.error(
         `Failed to persist customer ${newCustomer.customerNumber}:`,
         error,
       );
+
       try {
         await loadCustomersFromDatabase();
       } catch (reloadError) {
@@ -339,18 +367,20 @@ export function CustomerStoreProvider({
           reloadError,
         );
       }
-    });
 
-    return {
-      success: true,
-      message:
-        "Customer added successfully. Remaining treatment dates will be assigned automatically from their group.",
-    };
+      return {
+        success: false,
+        message:
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Unable to create customer in PostgreSQL.",
+      };
+    }
   }
 
-  function updateCustomer(
+  async function updateCustomer(
     updatedCustomer: CustomerInput,
-  ): CustomerUpdateResult {
+  ): Promise<CustomerUpdateResult> {
     const currentCustomers = customersRef.current;
     const index = currentCustomers.findIndex((customer) =>
       sameCustomerNumber(
@@ -376,26 +406,52 @@ export function CustomerStoreProvider({
       normalised,
     );
 
-    const nextCustomers = currentCustomers.map((customer, itemIndex) =>
-      itemIndex === index ? normalised : customer,
-    );
-    applyCustomers(nextCustomers);
+    try {
+      const persistedCustomer =
+        await patchCustomer(normalised);
 
-    if (changedFields.length > 0) {
-      recordAuditEvent({
-        area: "Customers",
-        action: "Updated",
-        reference: normalised.customerNumber,
-        description: `Customer ${normalised.customerNumber} updated.`,
-        changedFields,
-      });
-    }
+      const latestCustomers = customersRef.current;
+      const latestIndex = latestCustomers.findIndex((customer) =>
+        sameCustomerNumber(
+          customer.customerNumber,
+          persistedCustomer.customerNumber,
+        ),
+      );
 
-    void patchCustomer(normalised).catch(async (error) => {
+      if (latestIndex >= 0) {
+        const nextCustomers = latestCustomers.map((customer, itemIndex) =>
+          itemIndex === latestIndex ? persistedCustomer : customer,
+        );
+        applyCustomers(nextCustomers);
+      } else {
+        applyCustomers(
+          mergeCustomerUpserts(
+            latestCustomers,
+            [persistedCustomer],
+          ),
+        );
+      }
+
+      if (changedFields.length > 0) {
+        recordAuditEvent({
+          area: "Customers",
+          action: "Updated",
+          reference: persistedCustomer.customerNumber,
+          description: `Customer ${persistedCustomer.customerNumber} updated.`,
+          changedFields,
+        });
+      }
+
+      return {
+        success: true,
+        message: "Customer updated successfully.",
+      };
+    } catch (error) {
       console.error(
         `Failed to persist changes for customer ${normalised.customerNumber}:`,
         error,
       );
+
       try {
         await loadCustomersFromDatabase();
       } catch (reloadError) {
@@ -404,12 +460,15 @@ export function CustomerStoreProvider({
           reloadError,
         );
       }
-    });
 
-    return {
-      success: true,
-      message: "Customer updated successfully.",
-    };
+      return {
+        success: false,
+        message:
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Unable to update customer in PostgreSQL.",
+      };
+    }
   }
 
   function getCustomer(customerNumber: string) {

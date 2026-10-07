@@ -653,7 +653,7 @@ export default function AdditionalJobsPlannerPage() {
     );
   }
 
-  function createBulkJobs() {
+  async function createBulkJobs() {
     if (
       bulkCustomerNumbers.length === 0
     ) {
@@ -704,8 +704,7 @@ export default function AdditionalJobsPlannerPage() {
     const failures: string[] = [];
     let created = 0;
 
-    selectedCustomers.forEach(
-      (customer) => {
+    for (const customer of selectedCustomers) {
         const price =
           getSuggestedAdditionalJobPrice(
             customer,
@@ -735,7 +734,7 @@ export default function AdditionalJobsPlannerPage() {
         };
 
         const result =
-          updateCustomer({
+          await updateCustomer({
             ...customer,
             additionalJobs: [
               ...customer.additionalJobs,
@@ -754,8 +753,7 @@ export default function AdditionalJobsPlannerPage() {
         } else {
           created += 1;
         }
-      },
-    );
+    }
 
     if (failures.length > 0) {
       showMessage(
@@ -863,7 +861,7 @@ export default function AdditionalJobsPlannerPage() {
     setSelectedKeys([]);
   }
 
-  function applyWorkingDate() {
+  async function applyWorkingDate() {
     if (
       selectedRows.length === 0
     ) {
@@ -937,11 +935,10 @@ export default function AdditionalJobsPlannerPage() {
     const failures: string[] =
       [];
 
-    grouped.forEach(
-      ({
-        customer,
-        jobIds,
-      }) => {
+    for (const {
+      customer,
+      jobIds,
+    } of grouped.values()) {
         const updatedCustomer = {
           ...customer,
           additionalJobs:
@@ -960,7 +957,7 @@ export default function AdditionalJobsPlannerPage() {
         };
 
         const result =
-          updateCustomer(
+          await updateCustomer(
             updatedCustomer,
           );
 
@@ -973,8 +970,7 @@ export default function AdditionalJobsPlannerPage() {
             result.message,
           );
         }
-      },
-    );
+    }
 
     if (
       failures.length > 0

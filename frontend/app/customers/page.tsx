@@ -564,7 +564,7 @@ export default function CustomersPage() {
     setImportError("");
   }
 
-  function confirmCustomerImport() {
+  async function confirmCustomerImport() {
     if (
       !importPreview ||
       importValidRows.length === 0
@@ -594,7 +594,7 @@ export default function CustomersPage() {
       const row of importValidRows
     ) {
       const result =
-        addCustomer(
+        await addCustomer(
           row.customer,
         );
 
@@ -656,7 +656,7 @@ export default function CustomersPage() {
     setFormError("");
   }
 
-  function handleAddCustomer(
+  async function handleAddCustomer(
     event: FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -845,7 +845,7 @@ export default function CustomersPage() {
     };
 
     const result =
-      addCustomer(customer);
+      await addCustomer(customer);
 
     if (!result.success) {
       setFormError(
