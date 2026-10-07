@@ -65,9 +65,6 @@ type CommunicationsData = {
   records: CommunicationRecord[];
 };
 
-const COMMUNICATIONS_STORAGE_KEY =
-  "greenflow-communications-v1";
-
 const CLOSE_DAY_STORAGE_KEY =
   "greenflow-close-day-v1";
 
@@ -190,37 +187,43 @@ export default function DashboardPage() {
   }, []);
 
   function loadLocalModules() {
-    const savedCommunications =
-      window.localStorage.getItem(
-        COMMUNICATIONS_STORAGE_KEY,
-      );
-
-    if (savedCommunications) {
-      try {
-        const parsedCommunications =
-          JSON.parse(
-            savedCommunications,
-          ) as CommunicationsData;
-
-        if (
-          Array.isArray(
-            parsedCommunications.records,
-          )
-        ) {
-          setCommunicationsData(
-            parsedCommunications,
+    void fetch("/api/communications", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Communications load failed with status ${response.status}.`,
           );
         }
-      } catch {
+
+        return (await response.json()) as CommunicationsData;
+      })
+      .then((payload) => {
+        if (!Array.isArray(payload.records)) {
+          throw new Error(
+            "Communications response did not contain a records array.",
+          );
+        }
+
+        setCommunicationsData({
+          records: payload.records,
+        });
+      })
+      .catch((loadError) => {
+        console.warn(
+          "Dashboard communications could not be loaded from PostgreSQL:",
+          loadError,
+        );
+
         setCommunicationsData({
           records: [],
         });
-      }
-    } else {
-      setCommunicationsData({
-        records: [],
       });
-    }
 
     const savedCloseDayData =
       window.localStorage.getItem(
