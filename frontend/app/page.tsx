@@ -292,16 +292,11 @@ export default function DashboardPage() {
             ]),
           );
 
-        const mergedCloseDayData = {
-          ...localCloseDayData,
-          ...serverCloseDayData,
-        };
-
-        setCloseDayData(mergedCloseDayData);
+        setCloseDayData(serverCloseDayData);
 
         window.localStorage.setItem(
           CLOSE_DAY_STORAGE_KEY,
-          JSON.stringify(mergedCloseDayData),
+          JSON.stringify(serverCloseDayData),
         );
       })
       .catch((loadError) => {
@@ -360,12 +355,20 @@ export default function DashboardPage() {
           quickbooksExported: nextRecord.quickbooksExported,
           closed: nextRecord.closed,
         }),
-      }).catch((saveError) => {
-        console.warn(
-          "Close-day state was saved locally but could not be saved to PostgreSQL:",
-          saveError,
-        );
-      });
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(
+              `Working day save failed with status ${response.status}.`,
+            );
+          }
+        })
+        .catch((saveError) => {
+          console.warn(
+            "Close-day state was saved locally but could not be saved to PostgreSQL:",
+            saveError,
+          );
+        });
 
       return next;
     });
