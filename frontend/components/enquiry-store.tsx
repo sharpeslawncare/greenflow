@@ -278,15 +278,32 @@ export function EnquiryStoreProvider({
     const surname =
       input.surname?.trim() ?? "";
 
+    let enquiryNumber: string;
+
+    try {
+      enquiryNumber =
+        await allocateEnquiryNumber();
+    } catch (error) {
+      console.error(
+        "Failed to reserve a GreenFlow enquiry number:",
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "GreenFlow could not reserve an enquiry number from PostgreSQL. Please try again.",
+      };
+    }
+
     const newEnquiry: EnquiryRecord = {
       id: `enquiry-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`,
 
-      enquiryNumber:
-        createNextEnquiryNumber(
-          enquiriesRef.current,
-        ),
+      enquiryNumber,
 
       createdAt: now,
       updatedAt: now,
@@ -1330,38 +1347,44 @@ function deduplicateEnquiries(
   );
 }
 
-function createNextEnquiryNumber(
-  enquiries: EnquiryRecord[],
-) {
-  const highestNumber =
-    enquiries.reduce(
-      (highest, enquiry) => {
-        const numericPart = Number(
-          enquiry.enquiryNumber.replace(
-            /\D/g,
-            "",
-          ),
-        );
+async function allocateEnquiryNumber() {
+  const response = await fetch(
+    "/api/enquiry-sequence",
+    {
+      method: "POST",
+      cache: "no-store",
+    },
+  );
 
-        if (
-          !Number.isFinite(
-            numericPart,
-          )
-        ) {
-          return highest;
-        }
+  const body =
+    (await response.json().catch(
+      () => ({}),
+    )) as {
+      enquiryNumber?: unknown;
+      error?: unknown;
+    };
 
-        return Math.max(
-          highest,
-          numericPart,
-        );
-      },
-      0,
+  if (!response.ok) {
+    throw new Error(
+      typeof body.error === "string" &&
+        body.error.trim()
+        ? body.error.trim()
+        : "GreenFlow could not reserve an enquiry number from PostgreSQL. Please try again.",
     );
+  }
 
-  return `ENQ-${String(
-    highestNumber + 1,
-  ).padStart(4, "0")}`;
+  if (
+    typeof body.enquiryNumber !== "string" ||
+    !body.enquiryNumber.trim()
+  ) {
+    throw new Error(
+      "The enquiry sequence API returned an invalid enquiry number.",
+    );
+  }
+
+  return body.enquiryNumber
+    .trim()
+    .toUpperCase();
 }
 
 function createFullName(

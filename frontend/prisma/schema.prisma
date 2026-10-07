@@ -30,6 +30,7 @@ model Organisation {
   settings               OrganisationSettings?
   invoiceSequence        InvoiceSequence?
   customerSequence       CustomerSequence?
+  enquirySequence        EnquirySequence?
 }
 
 model Season {
@@ -420,6 +421,19 @@ model CustomerSequence {
   id             String @id
   organisationId String @unique
   nextNumber     Int    @default(1001)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+}
+
+model EnquirySequence {
+  id             String @id
+  organisationId String @unique
+  nextNumber     Int    @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
