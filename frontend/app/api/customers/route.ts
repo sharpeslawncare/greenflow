@@ -579,6 +579,55 @@ function serializeCustomer<
   };
 }
 
+async function reconcileCustomerSequence(
+  tx: Pick<typeof prisma, "$executeRaw">,
+  organisationId: string,
+) {
+  const id = `customer-sequence-${organisationId}`;
+
+  /*
+   * Keep the central sequence above every numeric customer identity already
+   * committed by this transaction. Historic/imported numbers are preserved,
+   * non-numeric identities remain valid, and the sequence never moves back.
+   */
+  await tx.$executeRaw`
+    WITH "customerWatermark" AS (
+      SELECT
+        GREATEST(
+          1000::numeric,
+          COALESCE(
+            MAX(
+              CASE
+                WHEN "customerNumber" ~ '^[0-9]+$'
+                  THEN "customerNumber"::numeric
+                ELSE NULL
+              END
+            ),
+            1000::numeric
+          )
+        ) AS "highestNumber"
+      FROM "Customer"
+      WHERE "organisationId" = ${organisationId}
+    )
+    INSERT INTO "CustomerSequence"
+      ("id", "organisationId", "nextNumber", "createdAt", "updatedAt")
+    SELECT
+      ${id},
+      ${organisationId},
+      ("highestNumber" + 1)::integer,
+      NOW(),
+      NOW()
+    FROM "customerWatermark"
+    ON CONFLICT ("organisationId")
+    DO UPDATE SET
+      "nextNumber" = GREATEST(
+        "CustomerSequence"."nextNumber",
+        EXCLUDED."nextNumber"
+      ),
+      "updatedAt" = NOW();
+  `;
+}
+
 export async function GET() {
   const { error, membership } =
     await getCurrentMembership();
@@ -799,6 +848,11 @@ export async function POST(request: Request) {
               }
             }
 
+            await reconcileCustomerSequence(
+              tx,
+              membership.organisationId,
+            );
+
             return tx.customer.findMany({
               where: {
                 organisationId:
@@ -922,6 +976,11 @@ export async function POST(request: Request) {
               ),
           });
         }
+
+        await reconcileCustomerSequence(
+          tx,
+          membership.organisationId,
+        );
 
         return tx.customer.findUniqueOrThrow({
           where: {
