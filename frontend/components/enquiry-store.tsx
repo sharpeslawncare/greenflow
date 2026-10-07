@@ -105,21 +105,26 @@ export type EnquiryMutationResult = {
   message: string;
 };
 
+export type EnquiryCreateResult =
+  EnquiryMutationResult & {
+    enquiry?: EnquiryRecord;
+  };
+
 type EnquiryStoreValue = {
   enquiries: EnquiryRecord[];
   ready: boolean;
 
   addEnquiry: (
     input?: NewEnquiryInput,
-  ) => EnquiryRecord;
+  ) => Promise<EnquiryCreateResult>;
 
   updateEnquiry: (
     updatedEnquiry: EnquiryRecord,
-  ) => EnquiryMutationResult;
+  ) => Promise<EnquiryMutationResult>;
 
   deleteEnquiry: (
     enquiryId: string,
-  ) => void;
+  ) => Promise<EnquiryMutationResult>;
 
   getEnquiryById: (
     enquiryId: string,
@@ -138,18 +143,14 @@ type EnquiryStoreValue = {
   markConverted: (
     enquiryId: string,
     customerNumber: string,
-  ) => EnquiryMutationResult;
-
-  restoreDemoEnquiries: () => void;
-  clearEnquiries: () => void;
+  ) => Promise<EnquiryMutationResult>;
 };
+
 
 const EnquiryStoreContext =
   createContext<EnquiryStoreValue | null>(
     null,
   );
-
-const defaultDemoEnquiries: EnquiryRecord[] = [];
 
 export function EnquiryStoreProvider({
   children,
@@ -265,9 +266,9 @@ export function EnquiryStoreProvider({
       enquiries;
   }, [enquiries]);
 
-  function addEnquiry(
+  async function addEnquiry(
     input: NewEnquiryInput = {},
-  ) {
+  ): Promise<EnquiryCreateResult> {
     const now =
       new Date().toISOString();
 
@@ -357,66 +358,85 @@ export function EnquiryStoreProvider({
       convertedAt: "",
     };
 
-    const current =
-      enquiriesRef.current;
-
-    const duplicateNumber =
-      current.some(
-        (enquiry) =>
-          enquiry.enquiryNumber ===
-          newEnquiry.enquiryNumber,
+    try {
+      const response = await fetch(
+        "/api/enquiries",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(newEnquiry),
+        },
       );
 
-    if (duplicateNumber) {
-      newEnquiry.enquiryNumber =
-        createNextEnquiryNumber(
-          current,
-        );
-    }
+      const body =
+        (await response.json().catch(
+          () => ({}),
+        )) as {
+          error?: string;
+          enquiry?: Partial<EnquiryRecord>;
+        };
 
-    const next = [
-      newEnquiry,
-      ...current,
-    ];
-
-    enquiriesRef.current = next;
-    setEnquiries(next);
-
-    void fetch("/api/enquiries", {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-      body: JSON.stringify(newEnquiry),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const body =
-            (await response.json().catch(
-              () => ({}),
-            )) as { error?: string };
-
-          throw new Error(
+      if (!response.ok) {
+        return {
+          success: false,
+          message:
             body.error ||
-              `Unable to create enquiry (${response.status}).`,
-          );
-        }
-      })
-      .catch(async (error) => {
-        console.error(
-          "Failed to persist GreenFlow enquiry:",
-          error,
-        );
-        await reloadEnquiries();
-      });
+            `Unable to create enquiry (${response.status}).`,
+        };
+      }
 
-    return newEnquiry;
+      if (!body.enquiry) {
+        await reloadEnquiries();
+
+        return {
+          success: false,
+          message:
+            "The enquiry may have been created, but GreenFlow could not confirm the saved record. Refresh the enquiry list before trying again.",
+        };
+      }
+
+      const persisted =
+        normaliseEnquiryRecord(
+          body.enquiry,
+        );
+
+      const next = [
+        persisted,
+        ...enquiriesRef.current.filter(
+          (enquiry) =>
+            enquiry.id !== persisted.id,
+        ),
+      ];
+
+      enquiriesRef.current = next;
+      setEnquiries(next);
+
+      return {
+        success: true,
+        message:
+          "Enquiry created successfully.",
+        enquiry: persisted,
+      };
+    } catch (error) {
+      console.error(
+        "Failed to persist GreenFlow enquiry:",
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          "GreenFlow could not save the enquiry to PostgreSQL. Please try again.",
+      };
+    }
   }
 
-  function updateEnquiry(
+  async function updateEnquiry(
     updatedEnquiry: EnquiryRecord,
-  ): EnquiryMutationResult {
+  ): Promise<EnquiryMutationResult> {
     const current =
       enquiriesRef.current;
 
@@ -464,98 +484,149 @@ export function EnquiryStoreProvider({
       };
     }
 
-    const next =
-      current.map(
-        (enquiry, index) =>
-          index === existingIndex
-            ? normalised
-            : enquiry,
+    try {
+      const response = await fetch(
+        `/api/enquiries/${encodeURIComponent(
+          normalised.id,
+        )}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(normalised),
+        },
       );
 
-    enquiriesRef.current = next;
-    setEnquiries(next);
+      const body =
+        (await response.json().catch(
+          () => ({}),
+        )) as {
+          error?: string;
+          enquiry?: Partial<EnquiryRecord>;
+        };
 
-    void fetch(
-      `/api/enquiries/${encodeURIComponent(
-        normalised.id,
-      )}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify(normalised),
-      },
-    )
-      .then(async (response) => {
-        if (!response.ok) {
-          const body =
-            (await response.json().catch(
-              () => ({}),
-            )) as { error?: string };
-
-          throw new Error(
+      if (!response.ok) {
+        return {
+          success: false,
+          message:
             body.error ||
-              `Unable to update enquiry (${response.status}).`,
-          );
-        }
-      })
-      .catch(async (error) => {
-        console.error(
-          "Failed to persist GreenFlow enquiry update:",
-          error,
-        );
-        await reloadEnquiries();
-      });
+            `Unable to update enquiry (${response.status}).`,
+        };
+      }
 
-    return {
-      success: true,
-      message:
-        "Enquiry updated successfully.",
-    };
+      if (!body.enquiry) {
+        await reloadEnquiries();
+
+        return {
+          success: false,
+          message:
+            "The enquiry may have been updated, but GreenFlow could not confirm the saved record. Refresh the enquiry before trying again.",
+        };
+      }
+
+      const persisted =
+        normaliseEnquiryRecord(
+          body.enquiry,
+        );
+
+      const latest =
+        enquiriesRef.current;
+
+      const next =
+        latest.map((enquiry) =>
+          enquiry.id === persisted.id
+            ? persisted
+            : enquiry,
+        );
+
+      enquiriesRef.current = next;
+      setEnquiries(next);
+
+      return {
+        success: true,
+        message:
+          "Enquiry updated successfully.",
+      };
+    } catch (error) {
+      console.error(
+        "Failed to persist GreenFlow enquiry update:",
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          "GreenFlow could not save the enquiry changes to PostgreSQL. Please try again.",
+      };
+    }
   }
 
-  function deleteEnquiry(
+  async function deleteEnquiry(
     enquiryId: string,
-  ) {
-    const current =
-      enquiriesRef.current;
+  ): Promise<EnquiryMutationResult> {
+    const existing =
+      enquiriesRef.current.find(
+        (enquiry) =>
+          enquiry.id === enquiryId,
+      );
 
-    const next = current.filter(
-      (enquiry) =>
-        enquiry.id !== enquiryId,
-    );
+    if (!existing) {
+      return {
+        success: false,
+        message:
+          "The enquiry could not be found, so it was not deleted.",
+      };
+    }
 
-    enquiriesRef.current = next;
-    setEnquiries(next);
+    try {
+      const response = await fetch(
+        `/api/enquiries/${encodeURIComponent(
+          enquiryId,
+        )}`,
+        { method: "DELETE" },
+      );
 
-    void fetch(
-      `/api/enquiries/${encodeURIComponent(
-        enquiryId,
-      )}`,
-      { method: "DELETE" },
-    )
-      .then(async (response) => {
-        if (!response.ok) {
-          const body =
-            (await response.json().catch(
-              () => ({}),
-            )) as { error?: string };
+      const body =
+        (await response.json().catch(
+          () => ({}),
+        )) as { error?: string };
 
-          throw new Error(
+      if (!response.ok) {
+        return {
+          success: false,
+          message:
             body.error ||
-              `Unable to delete enquiry (${response.status}).`,
-          );
-        }
-      })
-      .catch(async (error) => {
-        console.error(
-          "Failed to delete GreenFlow enquiry:",
-          error,
+            `Unable to delete enquiry (${response.status}).`,
+        };
+      }
+
+      const next =
+        enquiriesRef.current.filter(
+          (enquiry) =>
+            enquiry.id !== enquiryId,
         );
-        await reloadEnquiries();
-      });
+
+      enquiriesRef.current = next;
+      setEnquiries(next);
+
+      return {
+        success: true,
+        message: "Enquiry deleted.",
+      };
+    } catch (error) {
+      console.error(
+        "Failed to delete GreenFlow enquiry:",
+        error,
+      );
+
+      return {
+        success: false,
+        message:
+          "GreenFlow could not delete the enquiry from PostgreSQL. Please try again.",
+      };
+    }
   }
 
   function getEnquiryById(
@@ -617,10 +688,10 @@ export function EnquiryStoreProvider({
     };
   }
 
-  function markConverted(
+  async function markConverted(
     enquiryId: string,
     customerNumber: string,
-  ): EnquiryMutationResult {
+  ): Promise<EnquiryMutationResult> {
     const trimmedCustomerNumber =
       customerNumber.trim();
 
@@ -662,114 +733,81 @@ export function EnquiryStoreProvider({
       updatedAt: now,
     };
 
-    const next =
-      current.map(
-        (enquiry, index) =>
-          index === existingIndex
-            ? updated
-            : enquiry,
-      );
-
-    enquiriesRef.current = next;
-    setEnquiries(next);
-
-    void fetch(
-      `/api/enquiries/${encodeURIComponent(
-        enquiryId,
-      )}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type":
-            "application/json",
+    try {
+      const response = await fetch(
+        `/api/enquiries/${encodeURIComponent(
+          enquiryId,
+        )}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(updated),
         },
-        body: JSON.stringify(updated),
-      },
-    )
-      .then(async (response) => {
-        if (!response.ok) {
-          const body =
-            (await response.json().catch(
-              () => ({}),
-            )) as { error?: string };
+      );
 
-          throw new Error(
+      const body =
+        (await response.json().catch(
+          () => ({}),
+        )) as {
+          error?: string;
+          enquiry?: Partial<EnquiryRecord>;
+        };
+
+      if (!response.ok) {
+        return {
+          success: false,
+          message:
             body.error ||
-              `Unable to mark enquiry as converted (${response.status}).`,
-          );
-        }
-      })
-      .catch(async (error) => {
-        console.error(
-          "Failed to persist GreenFlow enquiry conversion:",
-          error,
-        );
+            `Unable to mark enquiry as converted (${response.status}).`,
+        };
+      }
+
+      if (!body.enquiry) {
         await reloadEnquiries();
-      });
 
-    return {
-      success: true,
-      message:
-        "Enquiry marked as converted.",
-    };
-  }
+        return {
+          success: false,
+          message:
+            "The enquiry conversion may have been saved, but GreenFlow could not confirm it. Refresh the enquiry before trying again.",
+        };
+      }
 
-  function restoreDemoEnquiries() {
-    const demo =
-      defaultDemoEnquiries.map(
-        (enquiry) => ({ ...enquiry }),
-      );
-
-    enquiriesRef.current = demo;
-    setEnquiries(demo);
-
-    void fetch("/api/enquiries", {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-      body: JSON.stringify({
-        enquiries: demo,
-      }),
-    }).catch(async (error) => {
-      console.error(
-        "Failed to restore GreenFlow demo enquiries:",
-        error,
-      );
-      await reloadEnquiries();
-    });
-  }
-
-  function clearEnquiries() {
-    const current =
-      enquiriesRef.current;
-
-    enquiriesRef.current = [];
-    setEnquiries([]);
-
-    void Promise.all(
-      current.map(async (enquiry) => {
-        const response = await fetch(
-          `/api/enquiries/${encodeURIComponent(
-            enquiry.id,
-          )}`,
-          { method: "DELETE" },
+      const persisted =
+        normaliseEnquiryRecord(
+          body.enquiry,
         );
 
-        if (!response.ok) {
-          throw new Error(
-            `Unable to delete enquiry ${enquiry.enquiryNumber} (${response.status}).`,
-          );
-        }
-      }),
-    ).catch(async (error) => {
+      const next =
+        enquiriesRef.current.map(
+          (enquiry) =>
+            enquiry.id === persisted.id
+              ? persisted
+              : enquiry,
+        );
+
+      enquiriesRef.current = next;
+      setEnquiries(next);
+
+      return {
+        success: true,
+        message:
+          "Enquiry marked as converted.",
+      };
+    } catch (error) {
       console.error(
-        "Failed to clear GreenFlow enquiries:",
+        "Failed to persist GreenFlow enquiry conversion:",
         error,
       );
-      await reloadEnquiries();
-    });
+
+      return {
+        success: false,
+        message:
+          "GreenFlow could not save the enquiry conversion to PostgreSQL. Do not convert this enquiry again until the record is checked.",
+      };
+    }
   }
 
   const value =
@@ -783,8 +821,6 @@ export function EnquiryStoreProvider({
         getEnquiryById,
         calculateQuote,
         markConverted,
-        restoreDemoEnquiries,
-        clearEnquiries,
       }),
       [enquiries, ready],
     );

@@ -1474,7 +1474,7 @@ export default function DashboardPage() {
       treatments,
     ]);
 
-  function saveQuickEnquiry() {
+  async function saveQuickEnquiry() {
     const name = quickEnquiry.name.trim();
     const address = quickEnquiry.address.trim();
     const mobilePhone = quickEnquiry.mobilePhone.trim();
@@ -1494,7 +1494,7 @@ export default function DashboardPage() {
     const firstName = nameParts[0] ?? "";
     const surname = nameParts.slice(1).join(" ");
 
-    const saved = addEnquiry({
+    const result = await addEnquiry({
       source: quickEnquiry.source,
       firstName,
       surname,
@@ -1502,6 +1502,15 @@ export default function DashboardPage() {
       mobilePhone,
       initialMessage,
     });
+
+    if (!result.success || !result.enquiry) {
+      setQuickEnquiryMessage(
+        result.message,
+      );
+      return;
+    }
+
+    const saved = result.enquiry;
 
     const savedContact =
       saved.fullName ||

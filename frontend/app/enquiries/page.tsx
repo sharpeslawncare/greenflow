@@ -114,7 +114,6 @@ export default function EnquiriesPage() {
     getEnquiryById,
     calculateQuote,
     markConverted,
-    restoreDemoEnquiries,
   } = useEnquiryStore();
 
   const {
@@ -272,8 +271,18 @@ export default function EnquiriesPage() {
     setGenerateProgramme(true);
   }
 
-  function createNewEnquiry() {
-    const enquiry = addEnquiry();
+  async function createNewEnquiry() {
+    const result = await addEnquiry();
+
+    if (!result.success || !result.enquiry) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
+
+    const enquiry = result.enquiry;
 
     setDraft({
       ...enquiry,
@@ -321,7 +330,7 @@ export default function EnquiriesPage() {
     });
   }
 
-  function saveEnquiry(
+  async function saveEnquiry(
     event?: FormEvent<HTMLFormElement>,
   ) {
     event?.preventDefault();
@@ -511,7 +520,7 @@ export default function EnquiriesPage() {
     };
 
     const result =
-      updateEnquiry(
+      await updateEnquiry(
         savedEnquiry,
       );
 
@@ -1224,13 +1233,13 @@ export default function EnquiriesPage() {
       };
 
     const conversionSaveResult =
-      updateEnquiry(
+      await updateEnquiry(
         convertedDraft,
       );
 
     if (!conversionSaveResult.success) {
       const fallbackResult =
-        markConverted(
+        await markConverted(
           draft.id,
           customerNumber,
         );
@@ -1276,7 +1285,7 @@ export default function EnquiriesPage() {
     );
   }
 
-  function removeSelectedEnquiry() {
+  async function removeSelectedEnquiry() {
     if (!draft) {
       return;
     }
@@ -1292,7 +1301,16 @@ export default function EnquiriesPage() {
       return;
     }
 
-    deleteEnquiry(draft.id);
+    const result =
+      await deleteEnquiry(draft.id);
+
+    if (!result.success) {
+      showMessage(
+        result.message,
+        "error",
+      );
+      return;
+    }
 
     const remaining =
       enquiries.filter(
@@ -1309,24 +1327,7 @@ export default function EnquiriesPage() {
     );
 
     showMessage(
-      "Enquiry deleted.",
-    );
-  }
-
-  function restoreDemoData() {
-    const confirmed = window.confirm(
-      "Restore the original demonstration enquiries? Current enquiry records will be replaced.",
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    restoreDemoEnquiries();
-    setDraft(null);
-
-    showMessage(
-      "Demo enquiries restored.",
+      result.message,
     );
   }
 
@@ -1457,26 +1458,6 @@ export default function EnquiriesPage() {
               )}
               detail="Accepted or already converted"
             />
-          </section>
-
-          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                  Enquiry tools
-                </div>
-                <p className="mt-1 text-sm text-slate-500">
-                  Demo restore is kept separate from normal enquiry work.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={restoreDemoData}
-                className="inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Restore demo enquiries
-              </button>
-            </div>
           </section>
 
           <section className="mt-4 grid gap-4 xl:grid-cols-[360px_1fr]">
