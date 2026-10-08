@@ -117,11 +117,47 @@ model Customer {
   organisation   Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   additionalJobs AdditionalCustomerJob[]
   programmes     Programme[]
+  lawnAreas      CustomerLawnArea[]
 
   @@unique([organisationId, customerNumber])
   @@index([organisationId])
   @@index([organisationId, status])
   @@index([organisationId, postcode])
+}
+
+
+model CustomerLawnArea {
+  id         String @id @default(cuid())
+  customerId String
+
+  name         String @default("")
+  areaSquareMetres Int @default(0)
+  displayOrder Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([customerId, displayOrder])
+}
+
+model EnquiryLawnArea {
+  id        String @id @default(cuid())
+  enquiryId String
+
+  name             String @default("")
+  areaSquareMetres Int    @default(0)
+  displayOrder     Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId])
+  @@index([enquiryId, displayOrder])
 }
 
 model AdditionalCustomerJob {
@@ -201,7 +237,8 @@ model Enquiry {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  lawnAreas     EnquiryLawnArea[]
 
   @@unique([organisationId, enquiryNumber])
   @@index([organisationId])

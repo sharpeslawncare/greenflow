@@ -47,8 +47,16 @@ export type CustomerPaymentMethod =
   | "Standard"
   | "Direct Debit";
 
+export type CustomerLawnArea = {
+  id: string;
+  name: string;
+  areaSquareMetres: number;
+  displayOrder: number;
+};
+
 export type StoredCustomer = Customer & {
   title: string;
+  lawnAreas: CustomerLawnArea[];
   programmeStartDate: string;
   additionalJobs: AdditionalCustomerJob[];
   gateCode: string;
@@ -703,8 +711,23 @@ function normaliseStoredCustomer(
       customer.mobilePhone?.trim() ?? "",
 
     lawnSize:
-      safeNumber(
-        customer.lawnSize,
+      normaliseCustomerLawnAreas(
+        customer.lawnAreas,
+      ).length > 0
+        ? normaliseCustomerLawnAreas(
+            customer.lawnAreas,
+          ).reduce(
+            (total, lawnArea) =>
+              total + lawnArea.areaSquareMetres,
+            0,
+          )
+        : safeNumber(
+            customer.lawnSize,
+          ),
+
+    lawnAreas:
+      normaliseCustomerLawnAreas(
+        customer.lawnAreas,
       ),
 
     groupNumber:
@@ -834,6 +857,52 @@ function normaliseUpdatedCustomer(
         ? suppliedStartDate!
         : existingCustomer.programmeStartDate,
   };
+}
+
+function normaliseCustomerLawnAreas(
+  value: unknown,
+): CustomerLawnArea[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(
+      (
+        item,
+      ): item is Partial<CustomerLawnArea> =>
+        Boolean(
+          item &&
+            typeof item === "object",
+        ),
+    )
+    .map((lawnArea, index) => ({
+      id:
+        typeof lawnArea.id === "string" &&
+        lawnArea.id.trim()
+          ? lawnArea.id.trim()
+          : `customer-lawn-${Date.now()}-${index}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+
+      name:
+        typeof lawnArea.name === "string"
+          ? lawnArea.name.trim()
+          : "",
+
+      areaSquareMetres:
+        safePositiveInteger(
+          lawnArea.areaSquareMetres,
+          0,
+        ),
+
+      displayOrder: index,
+    }))
+    .filter(
+      (lawnArea) =>
+        Boolean(lawnArea.name) &&
+        lawnArea.areaSquareMetres > 0,
+    );
 }
 
 function normaliseAdditionalJobs(
@@ -1202,6 +1271,7 @@ const AUDITABLE_CUSTOMER_FIELDS: Array<
   "homePhone",
   "mobilePhone",
   "lawnSize",
+  "lawnAreas",
   "groupNumber",
   "treatmentPrice",
   "status",

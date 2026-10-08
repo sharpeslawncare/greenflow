@@ -13,6 +13,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { useCustomerStore } from "@/components/customer-store";
 import {
+  type EnquiryLawnArea,
   type EnquiryRecord,
   type EnquirySource,
   type EnquiryStatus,
@@ -27,7 +28,6 @@ import {
 import { useFleetStore } from "@/components/fleet-store";
 import {
   demoCustomers,
-  type Customer,
 } from "@/lib/demo-customers";
 
 type StatusFilter =
@@ -264,6 +264,9 @@ export default function EnquiriesPage() {
   ) {
     setDraft({
       ...enquiry,
+      lawnAreas: enquiry.lawnAreas.map(
+        (lawnArea) => ({ ...lawnArea }),
+      ),
     });
 
     setProgrammeYear(currentYear);
@@ -286,6 +289,9 @@ export default function EnquiriesPage() {
 
     setDraft({
       ...enquiry,
+      lawnAreas: enquiry.lawnAreas.map(
+        (lawnArea) => ({ ...lawnArea }),
+      ),
     });
 
     setProgrammeYear(currentYear);
@@ -330,6 +336,116 @@ export default function EnquiriesPage() {
 
       return updated;
     });
+  }
+
+  function addLawnArea() {
+    if (!draft) {
+      return;
+    }
+
+    const nextOrder = draft.lawnAreas.length;
+
+    const lawnArea: EnquiryLawnArea = {
+      id: `lawn-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+      name: "",
+      areaSquareMetres: 0,
+      displayOrder: nextOrder,
+    };
+
+    const lawnAreas = [
+      ...draft.lawnAreas,
+      lawnArea,
+    ];
+
+    updateDraftWithLawnAreas(lawnAreas);
+  }
+
+  function updateLawnArea(
+    lawnAreaId: string,
+    field: "name" | "areaSquareMetres",
+    value: string | number,
+  ) {
+    if (!draft) {
+      return;
+    }
+
+    const lawnAreas = draft.lawnAreas.map(
+      (lawnArea) =>
+        lawnArea.id === lawnAreaId
+          ? {
+              ...lawnArea,
+              [field]: value,
+            }
+          : lawnArea,
+    );
+
+    updateDraftWithLawnAreas(lawnAreas);
+  }
+
+  function removeLawnArea(
+    lawnAreaId: string,
+  ) {
+    if (!draft) {
+      return;
+    }
+
+    const lawnAreas = draft.lawnAreas
+      .filter(
+        (lawnArea) =>
+          lawnArea.id !== lawnAreaId,
+      )
+      .map((lawnArea, index) => ({
+        ...lawnArea,
+        displayOrder: index,
+      }));
+
+    updateDraftWithLawnAreas(lawnAreas);
+  }
+
+  function updateDraftWithLawnAreas(
+    lawnAreas: EnquiryLawnArea[],
+  ) {
+    const normalisedLawnAreas =
+      lawnAreas.map((lawnArea, index) => ({
+        ...lawnArea,
+        displayOrder: index,
+      }));
+
+    const totalArea =
+      normalisedLawnAreas.reduce(
+        (total, lawnArea) =>
+          total +
+          (Number.isFinite(
+            lawnArea.areaSquareMetres,
+          )
+            ? Math.max(
+                0,
+                Math.floor(
+                  lawnArea.areaSquareMetres,
+                ),
+              )
+            : 0),
+        0,
+      );
+
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            lawnAreas: normalisedLawnAreas,
+            lawnSizeSquareMetres:
+              normalisedLawnAreas.length > 0
+                ? totalArea
+                : current.lawnSizeSquareMetres,
+            lawnMeasured:
+              normalisedLawnAreas.length > 0
+                ? totalArea > 0
+                : current.lawnMeasured,
+          }
+        : current,
+    );
   }
 
   async function saveEnquiry(
@@ -385,6 +501,34 @@ export default function EnquiriesPage() {
         "error",
       );
       return;
+    }
+
+    if (draft.lawnAreas.length > 0) {
+      for (const lawnArea of draft.lawnAreas) {
+        if (!lawnArea.name.trim()) {
+          showMessage(
+            "Enter a name for each lawn measurement.",
+            "error",
+          );
+          return;
+        }
+
+        if (
+          !Number.isFinite(
+            lawnArea.areaSquareMetres,
+          ) ||
+          !Number.isInteger(
+            lawnArea.areaSquareMetres,
+          ) ||
+          lawnArea.areaSquareMetres <= 0
+        ) {
+          showMessage(
+            "Each lawn measurement must have an area greater than 0 m².",
+            "error",
+          );
+          return;
+        }
+      }
     }
 
     const quoteIsPreparedOrBeyond =
@@ -524,6 +668,37 @@ export default function EnquiriesPage() {
 
       extraWorkDescription:
         draft.extraWorkDescription.trim(),
+
+      lawnAreas:
+        draft.lawnAreas.map(
+          (lawnArea, index) => ({
+            ...lawnArea,
+            name: lawnArea.name.trim(),
+            areaSquareMetres:
+              Math.max(
+                0,
+                Math.floor(
+                  lawnArea.areaSquareMetres,
+                ),
+              ),
+            displayOrder: index,
+          }),
+        ),
+
+      lawnSizeSquareMetres:
+        draft.lawnAreas.length > 0
+          ? draft.lawnAreas.reduce(
+              (total, lawnArea) =>
+                total +
+                Math.max(
+                  0,
+                  Math.floor(
+                    lawnArea.areaSquareMetres,
+                  ),
+                ),
+              0,
+            )
+          : draft.lawnSizeSquareMetres,
     };
 
     const result =
@@ -1068,7 +1243,7 @@ export default function EnquiriesPage() {
     const firstProgrammeVisit =
       programmeVisits[0];
 
-    const newCustomer: Customer = {
+    const newCustomer = {
       ...demoCustomers[0],
 
       customerNumber,
@@ -1112,10 +1287,21 @@ export default function EnquiriesPage() {
       lawnSize:
         draft.lawnSizeSquareMetres,
 
+      lawnAreas:
+        draft.lawnAreas.map(
+          (lawnArea, index) => ({
+            id: lawnArea.id,
+            name: lawnArea.name.trim(),
+            areaSquareMetres:
+              lawnArea.areaSquareMetres,
+            displayOrder: index,
+          }),
+        ),
+
       treatmentPrice:
         draft.quotedTreatmentPrice,
 
-      status: "Active",
+      status: "Active" as const,
 
       lastVisit:
         draft
@@ -2026,21 +2212,34 @@ export default function EnquiriesPage() {
                             />
                           </Field>
 
-                            <Field label="Lawn Size (m²)">
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={selectedEnquiry.lawnSizeSquareMetres}
-                              onChange={(event) =>
-                                updateDraft(
-                                  "lawnSizeSquareMetres",
-                                  Number(event.target.value),
-                                )
-                              }
-                              className={inputClass}
-                            />
-                          </Field>
+                            <Field label="Total Area (m²)">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={
+                                  selectedEnquiry.lawnSizeSquareMetres
+                                }
+                                onChange={(event) =>
+                                  updateDraft(
+                                    "lawnSizeSquareMetres",
+                                    Number(
+                                      event.target.value,
+                                    ),
+                                  )
+                                }
+                                readOnly={
+                                  selectedEnquiry.lawnAreas
+                                    .length > 0
+                                }
+                                className={`${inputClass} ${
+                                  selectedEnquiry.lawnAreas
+                                    .length > 0
+                                    ? "bg-slate-50 text-slate-700"
+                                    : ""
+                                }`}
+                              />
+                            </Field>
 
                             <Field label="Price Per m²">
                             <input
@@ -2057,6 +2256,122 @@ export default function EnquiriesPage() {
                               className={inputClass}
                             />
                           </Field>
+                          </div>
+
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-bold text-slate-900">
+                                  Lawn Measurements
+                                </div>
+                                <p className="mt-1 text-xs leading-5 text-slate-600">
+                                  Record individual lawns when useful. Their areas are added together automatically for the quotation.
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={addLawnArea}
+                                className="rounded-xl border border-[#338b45] bg-white px-3 py-2 text-sm font-semibold text-[#176b37] hover:bg-green-50"
+                              >
+                                + Add Lawn
+                              </button>
+                            </div>
+
+                            {selectedEnquiry.lawnAreas.length >
+                            0 ? (
+                              <div className="mt-4 space-y-3">
+                                {selectedEnquiry.lawnAreas.map(
+                                  (lawnArea) => (
+                                    <div
+                                      key={lawnArea.id}
+                                      className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_150px_auto]"
+                                    >
+                                      <Field label="Lawn Name">
+                                        <input
+                                          value={
+                                            lawnArea.name
+                                          }
+                                          onChange={(
+                                            event,
+                                          ) =>
+                                            updateLawnArea(
+                                              lawnArea.id,
+                                              "name",
+                                              event.target
+                                                .value,
+                                            )
+                                          }
+                                          placeholder="e.g. Front Lawn"
+                                          className={
+                                            inputClass
+                                          }
+                                        />
+                                      </Field>
+
+                                      <Field label="Area (m²)">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="1"
+                                          value={
+                                            lawnArea.areaSquareMetres
+                                          }
+                                          onChange={(
+                                            event,
+                                          ) =>
+                                            updateLawnArea(
+                                              lawnArea.id,
+                                              "areaSquareMetres",
+                                              Number(
+                                                event
+                                                  .target
+                                                  .value,
+                                              ),
+                                            )
+                                          }
+                                          className={
+                                            inputClass
+                                          }
+                                        />
+                                      </Field>
+
+                                      <div className="flex items-end">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            removeLawnArea(
+                                              lawnArea.id,
+                                            )
+                                          }
+                                          className="h-11 rounded-xl border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 hover:bg-red-50"
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ),
+                                )}
+
+                                <div className="flex justify-end border-t border-slate-200 pt-3">
+                                  <div className="text-right">
+                                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                      Total Lawn Area
+                                    </div>
+                                    <div className="mt-1 text-xl font-bold text-slate-900">
+                                      {
+                                        selectedEnquiry.lawnSizeSquareMetres
+                                      }{" "}
+                                      m²
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="mt-3 text-xs leading-5 text-slate-600">
+                                No individual lawn breakdown has been recorded. The total lawn area above remains available for existing or historical records.
+                              </p>
+                            )}
                           </div>
 
                           <div className="grid items-end gap-3 sm:grid-cols-2 2xl:grid-cols-4">

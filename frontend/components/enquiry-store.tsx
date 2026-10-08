@@ -34,6 +34,13 @@ export type QuoteStatus =
   | "Accepted"
   | "Declined";
 
+export type EnquiryLawnArea = {
+  id: string;
+  name: string;
+  areaSquareMetres: number;
+  displayOrder: number;
+};
+
 export type EnquiryRecord = {
   id: string;
   enquiryNumber: string;
@@ -65,6 +72,7 @@ export type EnquiryRecord = {
 
   lawnMeasured: boolean;
   lawnSizeSquareMetres: number;
+  lawnAreas: EnquiryLawnArea[];
 
   minimumPriceApplied: boolean;
   pricePerSquareMetre: number;
@@ -358,6 +366,7 @@ export function EnquiryStoreProvider({
 
       lawnMeasured: false,
       lawnSizeSquareMetres: 0,
+      lawnAreas: [],
 
       minimumPriceApplied: false,
       pricePerSquareMetre: 0.20,
@@ -966,6 +975,11 @@ function normaliseEnquiryRecord(
         enquiry.lawnSizeSquareMetres,
       ),
 
+    lawnAreas:
+      normaliseLawnAreas(
+        enquiry.lawnAreas,
+      ),
+
     minimumPriceApplied:
       enquiry.minimumPriceApplied ??
       false,
@@ -1032,6 +1046,41 @@ function normaliseEnquiryRecord(
     convertedAt:
       enquiry.convertedAt ?? "",
   };
+}
+
+
+function normaliseLawnAreas(
+  value: EnquiryLawnArea[] | undefined,
+): EnquiryLawnArea[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((lawnArea, index) => ({
+      id:
+        typeof lawnArea?.id === "string"
+          ? lawnArea.id.trim()
+          : "",
+      name:
+        typeof lawnArea?.name === "string"
+          ? lawnArea.name.trim()
+          : "",
+      areaSquareMetres:
+        typeof lawnArea?.areaSquareMetres === "number" &&
+        Number.isFinite(lawnArea.areaSquareMetres)
+          ? Math.max(0, Math.floor(lawnArea.areaSquareMetres))
+          : 0,
+      displayOrder:
+        typeof lawnArea?.displayOrder === "number" &&
+        Number.isFinite(lawnArea.displayOrder)
+          ? Math.max(0, Math.floor(lawnArea.displayOrder))
+          : index,
+    }))
+    .sort(
+      (left, right) =>
+        left.displayOrder - right.displayOrder,
+    );
 }
 
 function normaliseEnquiryNumber(
@@ -1230,6 +1279,10 @@ function mergeDuplicateEnquiries(
       preferred.lawnSizeSquareMetres > 0
         ? preferred.lawnSizeSquareMetres
         : secondary.lawnSizeSquareMetres,
+    lawnAreas:
+      preferred.lawnAreas.length > 0
+        ? preferred.lawnAreas
+        : secondary.lawnAreas,
     pricePerSquareMetre:
       preferred.pricePerSquareMetre > 0
         ? preferred.pricePerSquareMetre

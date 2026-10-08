@@ -30,6 +30,13 @@ const ALLOWED_QUOTE_STATUSES = [
   "Declined",
 ] as const;
 
+type LawnAreaInput = {
+  id: string;
+  name: string;
+  areaSquareMetres: number;
+  displayOrder: number;
+};
+
 type EnquiryInput = {
   id: string;
   enquiryNumber: string;
@@ -61,6 +68,7 @@ type EnquiryInput = {
 
   lawnMeasured: boolean;
   lawnSizeSquareMetres: number;
+  lawnAreas: LawnAreaInput[] | null;
 
   minimumPriceApplied: boolean;
   pricePerSquareMetre: number;
@@ -200,6 +208,78 @@ function positiveInteger(
   return number;
 }
 
+function parseLawnAreas(
+  value: unknown,
+):
+  | { success: true; lawnAreas: LawnAreaInput[] | null }
+  | { success: false; error: string } {
+  if (value === undefined) {
+    return { success: true, lawnAreas: null };
+  }
+
+  if (!Array.isArray(value)) {
+    return {
+      success: false,
+      error: "Lawn areas must be supplied as an array.",
+    };
+  }
+
+  const lawnAreas: LawnAreaInput[] = [];
+  const seenIds = new Set<string>();
+
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} is invalid.`,
+      };
+    }
+
+    const data = item as Record<string, unknown>;
+    const id = stringValue(data.id);
+    const name = stringValue(data.name);
+    const areaSquareMetres = nonNegativeNumber(data.areaSquareMetres);
+
+    if (!name) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} requires a name.`,
+      };
+    }
+
+    if (
+      areaSquareMetres === null ||
+      !Number.isInteger(areaSquareMetres) ||
+      areaSquareMetres <= 0
+    ) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} must have a positive whole-number area.`,
+      };
+    }
+
+    if (id && seenIds.has(id)) {
+      return {
+        success: false,
+        error: `Duplicate lawn area ID "${id}".`,
+      };
+    }
+
+    if (id) seenIds.add(id);
+
+    lawnAreas.push({
+      id,
+      name,
+      areaSquareMetres,
+      displayOrder: index,
+    });
+  }
+
+  return { success: true, lawnAreas };
+}
+
 function parseDate(
   value: unknown,
   fallback: Date,
@@ -304,12 +384,22 @@ function parseEnquiry(
     };
   }
 
-  const lawnSizeSquareMetres =
+  const lawnAreasResult =
+    parseLawnAreas(data.lawnAreas);
+
+  if (!lawnAreasResult.success) {
+    return {
+      success: false,
+      error: lawnAreasResult.error,
+    };
+  }
+
+  const suppliedLawnSizeSquareMetres =
     nonNegativeNumber(
       data.lawnSizeSquareMetres,
     );
 
-  if (lawnSizeSquareMetres === null) {
+  if (suppliedLawnSizeSquareMetres === null) {
     return {
       success: false,
       error:
@@ -317,13 +407,23 @@ function parseEnquiry(
     };
   }
 
-  if (!Number.isInteger(lawnSizeSquareMetres)) {
+  if (!Number.isInteger(suppliedLawnSizeSquareMetres)) {
     return {
       success: false,
       error:
         "Lawn size must be a whole number.",
     };
   }
+
+  const lawnSizeSquareMetres =
+    lawnAreasResult.lawnAreas &&
+    lawnAreasResult.lawnAreas.length > 0
+      ? lawnAreasResult.lawnAreas.reduce(
+          (total, lawnArea) =>
+            total + lawnArea.areaSquareMetres,
+          0,
+        )
+      : suppliedLawnSizeSquareMetres;
 
   const pricePerSquareMetre =
     nonNegativeNumber(
@@ -488,6 +588,7 @@ function parseEnquiry(
         booleanValue(data.lawnMeasured),
 
       lawnSizeSquareMetres,
+      lawnAreas: lawnAreasResult.lawnAreas,
 
       minimumPriceApplied:
         booleanValue(
@@ -692,6 +793,13 @@ export async function GET() {
       where: {
         organisationId:
           membership.organisationId,
+      },
+      include: {
+        lawnAreas: {
+          orderBy: {
+            displayOrder: "asc",
+          },
+        },
       },
       orderBy: [
         {
@@ -918,6 +1026,32 @@ export async function POST(
                     ),
                   },
                 });
+
+                if (enquiry.lawnAreas !== null) {
+                  await tx.enquiryLawnArea.deleteMany({
+                    where: {
+                      enquiryId: existing.id,
+                    },
+                  });
+
+                  if (enquiry.lawnAreas.length > 0) {
+                    await tx.enquiryLawnArea.createMany({
+                      data: enquiry.lawnAreas.map(
+                        (lawnArea) => ({
+                          ...(lawnArea.id
+                            ? { id: lawnArea.id }
+                            : {}),
+                          enquiryId: existing.id,
+                          name: lawnArea.name,
+                          areaSquareMetres:
+                            lawnArea.areaSquareMetres,
+                          displayOrder:
+                            lawnArea.displayOrder,
+                        }),
+                      ),
+                    });
+                  }
+                }
               } else {
                 await tx.enquiry.create({
                   data: {
@@ -927,6 +1061,25 @@ export async function POST(
                     ...enquiryDatabaseData(
                       enquiry,
                     ),
+                    ...(enquiry.lawnAreas &&
+                    enquiry.lawnAreas.length > 0
+                      ? {
+                          lawnAreas: {
+                            create: enquiry.lawnAreas.map(
+                              (lawnArea) => ({
+                                ...(lawnArea.id
+                                  ? { id: lawnArea.id }
+                                  : {}),
+                                name: lawnArea.name,
+                                areaSquareMetres:
+                                  lawnArea.areaSquareMetres,
+                                displayOrder:
+                                  lawnArea.displayOrder,
+                              }),
+                            ),
+                          },
+                        }
+                      : {}),
                   },
                 });
               }
@@ -941,6 +1094,13 @@ export async function POST(
                     (enquiry) =>
                       enquiry.id,
                   ),
+                },
+              },
+              include: {
+                lawnAreas: {
+                  orderBy: {
+                    displayOrder: "asc",
+                  },
                 },
               },
               orderBy: {
@@ -1032,6 +1192,33 @@ export async function POST(
           ...enquiryDatabaseData(
             enquiryInput,
           ),
+
+          ...(enquiryInput.lawnAreas &&
+          enquiryInput.lawnAreas.length > 0
+            ? {
+                lawnAreas: {
+                  create: enquiryInput.lawnAreas.map(
+                    (lawnArea) => ({
+                      ...(lawnArea.id
+                        ? { id: lawnArea.id }
+                        : {}),
+                      name: lawnArea.name,
+                      areaSquareMetres:
+                        lawnArea.areaSquareMetres,
+                      displayOrder:
+                        lawnArea.displayOrder,
+                    }),
+                  ),
+                },
+              }
+            : {}),
+        },
+        include: {
+          lawnAreas: {
+            orderBy: {
+              displayOrder: "asc",
+            },
+          },
         },
       });
 

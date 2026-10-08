@@ -152,6 +152,89 @@ function parsePositiveInteger(
   return number;
 }
 
+
+type LawnAreaInput = {
+  id: string;
+  name: string;
+  areaSquareMetres: number;
+  displayOrder: number;
+};
+
+function parseLawnAreas(
+  value: unknown,
+):
+  | { success: true; lawnAreas: LawnAreaInput[] | null }
+  | { success: false; error: string } {
+  if (value === undefined) {
+    return { success: true, lawnAreas: null };
+  }
+
+  if (!Array.isArray(value)) {
+    return {
+      success: false,
+      error: "Lawn areas must be supplied as an array.",
+    };
+  }
+
+  const lawnAreas: LawnAreaInput[] = [];
+  const seenIds = new Set<string>();
+
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} is invalid.`,
+      };
+    }
+
+    const data = item as Record<string, unknown>;
+    const id =
+      typeof data.id === "string" ? data.id.trim() : "";
+    const name =
+      typeof data.name === "string" ? data.name.trim() : "";
+    const areaSquareMetres =
+      parseNonNegativeNumber(data.areaSquareMetres);
+
+    if (!name) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} requires a name.`,
+      };
+    }
+
+    if (
+      areaSquareMetres === null ||
+      !Number.isInteger(areaSquareMetres) ||
+      areaSquareMetres <= 0
+    ) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} must have a positive whole-number area.`,
+      };
+    }
+
+    if (id && seenIds.has(id)) {
+      return {
+        success: false,
+        error: `Duplicate lawn area ID "${id}".`,
+      };
+    }
+
+    if (id) seenIds.add(id);
+
+    lawnAreas.push({
+      id,
+      name,
+      areaSquareMetres,
+      displayOrder: index,
+    });
+  }
+
+  return { success: true, lawnAreas };
+}
+
 export async function PATCH(
   request: Request,
   context: RouteContext,
@@ -220,6 +303,16 @@ export async function PATCH(
 
   const data =
     body as Record<string, unknown>;
+
+  const lawnAreasResult =
+    parseLawnAreas(data.lawnAreas);
+
+  if (!lawnAreasResult.success) {
+    return NextResponse.json(
+      { error: lawnAreasResult.error },
+      { status: 400 },
+    );
+  }
 
   const updateData: {
     enquiryNumber?: string;
@@ -547,6 +640,19 @@ export async function PATCH(
   }
 
   if (
+    lawnAreasResult.lawnAreas !== null &&
+    lawnAreasResult.lawnAreas.length > 0
+  ) {
+    updateData.lawnSizeSquareMetres =
+      lawnAreasResult.lawnAreas.reduce(
+        (total, lawnArea) =>
+          total + lawnArea.areaSquareMetres,
+        0,
+      );
+    updateData.lawnMeasured = true;
+  }
+
+  if (
     data.minimumPriceApplied !==
     undefined
   ) {
@@ -816,12 +922,55 @@ export async function PATCH(
 
   try {
     const enquiry =
-      await prisma.enquiry.update({
-        where: {
-          id: existingEnquiry.id,
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.enquiry.update({
+            where: {
+              id: existingEnquiry.id,
+            },
+            data: updateData,
+          });
+
+          if (lawnAreasResult.lawnAreas !== null) {
+            await tx.enquiryLawnArea.deleteMany({
+              where: {
+                enquiryId: existingEnquiry.id,
+              },
+            });
+
+            if (lawnAreasResult.lawnAreas.length > 0) {
+              await tx.enquiryLawnArea.createMany({
+                data: lawnAreasResult.lawnAreas.map(
+                  (lawnArea) => ({
+                    ...(lawnArea.id
+                      ? { id: lawnArea.id }
+                      : {}),
+                    enquiryId: existingEnquiry.id,
+                    name: lawnArea.name,
+                    areaSquareMetres:
+                      lawnArea.areaSquareMetres,
+                    displayOrder:
+                      lawnArea.displayOrder,
+                  }),
+                ),
+              });
+            }
+          }
+
+          return tx.enquiry.findUniqueOrThrow({
+            where: {
+              id: existingEnquiry.id,
+            },
+            include: {
+              lawnAreas: {
+                orderBy: {
+                  displayOrder: "asc",
+                },
+              },
+            },
+          });
         },
-        data: updateData,
-      });
+      );
 
     return NextResponse.json({
       enquiry:

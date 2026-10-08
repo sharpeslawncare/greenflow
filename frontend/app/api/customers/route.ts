@@ -3,6 +3,24 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
+
+type LawnAreaInput = {
+  id: string;
+  name: string;
+  areaSquareMetres: number;
+  displayOrder: number;
+};
+
+type LawnAreasParseResult =
+  | {
+      success: true;
+      lawnAreas: LawnAreaInput[] | null;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
 type AdditionalJobInput = {
   id: string;
   treatmentLibraryId: string;
@@ -37,6 +55,7 @@ type CustomerInput = {
   homePhone: string;
   mobilePhone: string;
   lawnSize: number;
+  lawnAreas: LawnAreaInput[] | null;
   groupNumber: number;
   treatmentPrice: number;
   status: string;
@@ -262,6 +281,98 @@ function parseAdditionalJobs(
   };
 }
 
+function parseLawnAreas(
+  value: unknown,
+): LawnAreasParseResult {
+  if (value === undefined) {
+    return {
+      success: true,
+      lawnAreas: null,
+    };
+  }
+
+  if (!Array.isArray(value)) {
+    return {
+      success: false,
+      error: "Lawn areas must be supplied as an array.",
+    };
+  }
+
+  const lawnAreas: LawnAreaInput[] = [];
+  const seenIds = new Set<string>();
+
+  for (let index = 0; index < value.length; index += 1) {
+    const rawLawnArea = value[index];
+
+    if (
+      !rawLawnArea ||
+      typeof rawLawnArea !== "object" ||
+      Array.isArray(rawLawnArea)
+    ) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} is invalid.`,
+      };
+    }
+
+    const lawnArea =
+      rawLawnArea as Record<string, unknown>;
+
+    const id =
+      typeof lawnArea.id === "string"
+        ? lawnArea.id.trim()
+        : "";
+
+    const name =
+      typeof lawnArea.name === "string"
+        ? lawnArea.name.trim()
+        : "";
+
+    const areaSquareMetres = Number(
+      lawnArea.areaSquareMetres ?? 0,
+    );
+
+    if (!name) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} requires a name.`,
+      };
+    }
+
+    if (
+      !Number.isFinite(areaSquareMetres) ||
+      !Number.isInteger(areaSquareMetres) ||
+      areaSquareMetres <= 0
+    ) {
+      return {
+        success: false,
+        error: `Lawn area ${index + 1} must have a positive whole-number area.`,
+      };
+    }
+
+    if (id && seenIds.has(id)) {
+      return {
+        success: false,
+        error: `Duplicate lawn area ID "${id}".`,
+      };
+    }
+
+    if (id) seenIds.add(id);
+
+    lawnAreas.push({
+      id,
+      name,
+      areaSquareMetres,
+      displayOrder: index,
+    });
+  }
+
+  return {
+    success: true,
+    lawnAreas,
+  };
+}
+
 function createFullName(
   title: string,
   firstName: string,
@@ -341,7 +452,28 @@ function parseCustomer(
       ? data.mobilePhone.trim()
       : "";
 
-  const lawnSize = Number(data.lawnSize ?? 0);
+  const lawnAreasResult =
+    parseLawnAreas(data.lawnAreas);
+
+  if (!lawnAreasResult.success) {
+    return {
+      success: false,
+      error: lawnAreasResult.error,
+    };
+  }
+
+  const suppliedLawnSize =
+    Number(data.lawnSize ?? 0);
+
+  const lawnSize =
+    lawnAreasResult.lawnAreas &&
+    lawnAreasResult.lawnAreas.length > 0
+      ? lawnAreasResult.lawnAreas.reduce(
+          (total, lawnArea) =>
+            total + lawnArea.areaSquareMetres,
+          0,
+        )
+      : suppliedLawnSize;
 
   const groupNumber = Number(
     data.groupNumber ?? 0,
@@ -510,6 +642,7 @@ function parseCustomer(
       homePhone,
       mobilePhone,
       lawnSize,
+      lawnAreas: lawnAreasResult.lawnAreas,
       groupNumber,
       treatmentPrice,
       status,
@@ -564,6 +697,12 @@ function customerDatabaseData(
 function serializeCustomer<
   T extends {
     treatmentPrice: unknown;
+    lawnAreas: Array<{
+      id: string;
+      name: string;
+      areaSquareMetres: number;
+      displayOrder: number;
+    }>;
     additionalJobs: Array<{
       id: string;
       treatmentLibraryId: string;
@@ -581,6 +720,16 @@ function serializeCustomer<
     ...customer,
     treatmentPrice: Number(
       customer.treatmentPrice,
+    ),
+    lawnAreas: customer.lawnAreas.map(
+      (lawnArea) => ({
+        id: lawnArea.id,
+        name: lawnArea.name,
+        areaSquareMetres:
+          lawnArea.areaSquareMetres,
+        displayOrder:
+          lawnArea.displayOrder,
+      }),
     ),
     additionalJobs: customer.additionalJobs.map(
       (job) => ({
@@ -661,6 +810,11 @@ export async function GET() {
       organisationId: membership.organisationId,
     },
     include: {
+      lawnAreas: {
+        orderBy: {
+          displayOrder: "asc",
+        },
+      },
       additionalJobs: {
         orderBy: {
           createdAt: "asc",
@@ -821,6 +975,32 @@ export async function POST(request: Request) {
                     },
                   },
                 );
+
+                if (customer.lawnAreas !== null) {
+                  await tx.customerLawnArea.deleteMany({
+                    where: {
+                      customerId,
+                    },
+                  });
+
+                  if (customer.lawnAreas.length > 0) {
+                    await tx.customerLawnArea.createMany({
+                      data: customer.lawnAreas.map(
+                        (lawnArea) => ({
+                          ...(lawnArea.id
+                            ? { id: lawnArea.id }
+                            : {}),
+                          customerId,
+                          name: lawnArea.name,
+                          areaSquareMetres:
+                            lawnArea.areaSquareMetres,
+                          displayOrder:
+                            lawnArea.displayOrder,
+                        }),
+                      ),
+                    });
+                  }
+                }
               } else {
                 const createdCustomer =
                   await tx.customer.create({
@@ -837,6 +1017,27 @@ export async function POST(request: Request) {
                   });
 
                 customerId = createdCustomer.id;
+
+                if (
+                  customer.lawnAreas &&
+                  customer.lawnAreas.length > 0
+                ) {
+                  await tx.customerLawnArea.createMany({
+                    data: customer.lawnAreas.map(
+                      (lawnArea) => ({
+                        ...(lawnArea.id
+                          ? { id: lawnArea.id }
+                          : {}),
+                        customerId,
+                        name: lawnArea.name,
+                        areaSquareMetres:
+                          lawnArea.areaSquareMetres,
+                        displayOrder:
+                          lawnArea.displayOrder,
+                      }),
+                    ),
+                  });
+                }
               }
 
               if (
@@ -885,6 +1086,11 @@ export async function POST(request: Request) {
                 },
               },
               include: {
+                lawnAreas: {
+                  orderBy: {
+                    displayOrder: "asc",
+                  },
+                },
                 additionalJobs: {
                   orderBy: {
                     createdAt: "asc",
@@ -972,6 +1178,27 @@ export async function POST(request: Request) {
           });
 
         if (
+          customerInput.lawnAreas &&
+          customerInput.lawnAreas.length > 0
+        ) {
+          await tx.customerLawnArea.createMany({
+            data: customerInput.lawnAreas.map(
+              (lawnArea) => ({
+                ...(lawnArea.id
+                  ? { id: lawnArea.id }
+                  : {}),
+                customerId: createdCustomer.id,
+                name: lawnArea.name,
+                areaSquareMetres:
+                  lawnArea.areaSquareMetres,
+                displayOrder:
+                  lawnArea.displayOrder,
+              }),
+            ),
+          });
+        }
+
+        if (
           customerInput.additionalJobs.length > 0
         ) {
           await tx.additionalCustomerJob.createMany({
@@ -1007,6 +1234,11 @@ export async function POST(request: Request) {
             id: createdCustomer.id,
           },
           include: {
+            lawnAreas: {
+              orderBy: {
+                displayOrder: "asc",
+              },
+            },
             additionalJobs: {
               orderBy: {
                 createdAt: "asc",

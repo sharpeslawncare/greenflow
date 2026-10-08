@@ -2810,14 +2810,39 @@ function OverviewTab({
         </section>
       </div>
 
-      {customer.notes && (
+      {(customer.lawnAreas.length > 0 || customer.notes) && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-            Customer note
-          </div>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-            {customer.notes}
-          </p>
+          {customer.lawnAreas.length > 0 && (
+            <div>
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                Lawn Measurements
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                {customer.lawnAreas
+                  .slice()
+                  .sort(
+                    (first, second) =>
+                      first.displayOrder - second.displayOrder,
+                  )
+                  .map(
+                    (lawn) =>
+                      `${lawn.name} ${lawn.areaSquareMetres.toLocaleString("en-GB")} m²`,
+                  )
+                  .join(" · ")}
+              </p>
+            </div>
+          )}
+
+          {customer.notes && (
+            <div className={customer.lawnAreas.length > 0 ? "mt-4 border-t border-slate-100 pt-4" : ""}>
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                Customer Note
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                {customer.notes}
+              </p>
+            </div>
+          )}
         </section>
       )}
     </div>

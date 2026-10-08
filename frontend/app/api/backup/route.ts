@@ -64,16 +64,26 @@ export async function GET() {
       auditEntries,
       organisationSettings,
       invoiceSequence,
+      customerSequence,
+      enquirySequence,
     ] = await prisma.$transaction([
       prisma.customer.findMany({
         where: { organisationId },
         include: {
           additionalJobs: true,
+          lawnAreas: {
+            orderBy: { displayOrder: "asc" },
+          },
         },
         orderBy: { customerNumber: "asc" },
       }),
       prisma.enquiry.findMany({
         where: { organisationId },
+        include: {
+          lawnAreas: {
+            orderBy: { displayOrder: "asc" },
+          },
+        },
         orderBy: { createdAt: "asc" },
       }),
       prisma.season.findMany({
@@ -122,6 +132,12 @@ export async function GET() {
       prisma.invoiceSequence.findUnique({
         where: { organisationId },
       }),
+      prisma.customerSequence.findUnique({
+        where: { organisationId },
+      }),
+      prisma.enquirySequence.findUnique({
+        where: { organisationId },
+      }),
     ]);
 
     const createdAt = new Date().toISOString();
@@ -151,6 +167,8 @@ export async function GET() {
         auditEntries,
         organisationSettings,
         invoiceSequence,
+        customerSequence,
+        enquirySequence,
       },
     };
 
