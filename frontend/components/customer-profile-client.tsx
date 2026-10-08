@@ -1040,62 +1040,52 @@ function cancelEditing() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-stretch gap-3 xl:self-center xl:justify-end">
-                {customer.mobilePhone && (
-                  <a
-                    href={getWhatsAppUrl(customer.mobilePhone)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-w-[165px] rounded-xl border border-green-200 bg-green-50 px-5 py-3.5 transition hover:bg-green-100"
-                  >
-                    <div className="text-base font-bold text-green-900">
-                      WhatsApp
+              <section className="w-full overflow-hidden rounded-2xl border border-green-200 bg-white shadow-sm xl:w-[390px] xl:shrink-0">
+                <div className="bg-green-50 px-5 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+                        Next Visit
+                      </div>
+                      <div className="mt-1.5 text-xl font-bold text-slate-950">
+                        {nextOverallVisit
+                          ? formatDate(nextOverallVisit.date)
+                          : "None scheduled"}
+                      </div>
+                      <div className="mt-1 text-sm font-bold text-[#176b37]">
+                        {nextOverallVisit?.label ?? "No work booked"}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-xs font-semibold text-green-700">
-                      {customer.mobilePhone}
-                    </div>
-                  </a>
-                )}
 
-                {customer.email && (
-                  <a
-                    href={`mailto:${customer.email}`}
-                    className="min-w-[165px] rounded-xl border border-slate-200 bg-white px-5 py-3.5 transition hover:bg-slate-50"
-                  >
-                    <div className="text-base font-bold text-slate-900">
-                      Email
-                    </div>
-                    <div className="mt-0.5 max-w-[180px] truncate text-xs font-semibold text-slate-500">
-                      {customer.email}
-                    </div>
-                  </a>
-                )}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("programme")}
+                      className="rounded-xl border border-green-200 bg-white px-3.5 py-2 text-sm font-bold text-green-800 transition hover:bg-green-100"
+                    >
+                      View Programme →
+                    </button>
+                  </div>
+                </div>
 
-                {customer.mobilePhone && (
-                  <a
-                    href={`tel:${customer.mobilePhone.replace(/\s+/g, "")}`}
-                    className="min-w-[165px] rounded-xl border border-slate-200 bg-white px-5 py-3.5 transition hover:bg-slate-50"
-                  >
-                    <div className="text-base font-bold text-slate-900">
-                      Call
-                    </div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-500">
-                      {customer.mobilePhone}
-                    </div>
-                  </a>
-                )}
-              </div>
+                <div className="grid grid-cols-3 border-t border-green-100">
+                  <OverviewBoxFact
+                    label="Programme"
+                    value={customerProgrammes.length > 0 ? "Active" : "Not assigned"}
+                  />
+                  <OverviewBoxFact
+                    label="Group"
+                    value={`Group ${customer.groupNumber}`}
+                  />
+                  <OverviewBoxFact
+                    label="Van"
+                    value={`Van ${customer.vanNumber}`}
+                  />
+                </div>
+              </section>
             </div>
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setContactingCustomer(true)}
-                  className="rounded-xl bg-[#176b37] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#125b2f]"
-                >
-                  Contact
-                </button>
                 <button
                   type="button"
                   onClick={openAdditionalJobModal}
@@ -1119,15 +1109,44 @@ function cancelEditing() {
                 </button>
               </div>
 
-              {openCustomerActions.length > 0 && (
-                <Link
-                  href="?tab=actions"
-                  onClick={() => setActiveTab("actions")}
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
-                >
-                  {openCustomerActions.length} open action{openCustomerActions.length === 1 ? "" : "s"} →
-                </Link>
-              )}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {openCustomerActions.length > 0 && (
+                  <Link
+                    href="?tab=actions"
+                    onClick={() => setActiveTab("actions")}
+                    className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
+                  >
+                    {openCustomerActions.length} open action{openCustomerActions.length === 1 ? "" : "s"} →
+                  </Link>
+                )}
+
+                {customer.mobilePhone && (
+                  <a
+                    href={getWhatsAppUrl(customer.mobilePhone)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex w-24 items-center justify-center rounded-xl border border-[#176b37] bg-green-50 px-4 py-2.5 text-sm font-bold text-[#176b37] transition hover:bg-green-100"
+                  >
+                    WhatsApp
+                  </a>
+                )}
+                {customer.email && (
+                  <a
+                    href={`mailto:${customer.email}`}
+                    className="inline-flex w-24 items-center justify-center rounded-xl border border-[#176b37] bg-green-50 px-4 py-2.5 text-sm font-bold text-[#176b37] transition hover:bg-green-100"
+                  >
+                    Email
+                  </a>
+                )}
+                {customer.mobilePhone && (
+                  <a
+                    href={`tel:${customer.mobilePhone.replace(/\s+/g, "")}`}
+                    className="inline-flex w-24 items-center justify-center rounded-xl border border-[#176b37] bg-green-50 px-4 py-2.5 text-sm font-bold text-[#176b37] transition hover:bg-green-100"
+                  >
+                    Call
+                  </a>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1152,19 +1171,11 @@ function cancelEditing() {
         {activeTab === "overview" ? (
           <OverviewTab
             customer={customer}
-            nextVisit={
-              nextOverallVisit
-                ? formatDate(nextOverallVisit.date)
-                : "None scheduled"
-            }
-            nextVisitLabel={nextOverallVisit?.label ?? "No work booked"}
-            hasProgramme={customerProgrammes.length > 0}
             treatmentPrice={customer.treatmentPrice}
             aerationPrice={aerationPrice}
             scarificationPrice={scarificationPrice}
             treatments={customerTreatments}
             onViewTreatments={() => setActiveTab("treatments")}
-            onViewProgramme={() => setActiveTab("programme")}
             onEditCustomer={beginEditing}
           />
         ) : (
@@ -2588,27 +2599,19 @@ function suggestedAdditionalJobPrice(
 
 function OverviewTab({
   customer,
-  nextVisit,
-  nextVisitLabel,
-  hasProgramme,
   treatmentPrice,
   aerationPrice,
   scarificationPrice,
   treatments,
   onViewTreatments,
-  onViewProgramme,
   onEditCustomer,
 }: {
   customer: StoredCustomer;
-  nextVisit: string;
-  nextVisitLabel: string;
-  hasProgramme: boolean;
   treatmentPrice: number;
   aerationPrice: number;
   scarificationPrice: number;
   treatments: TreatmentRecord[];
   onViewTreatments: () => void;
-  onViewProgramme: () => void;
   onEditCustomer: () => void;
 }) {
   const hasAccessAlert =
@@ -2730,64 +2733,23 @@ function OverviewTab({
       )}
 
       <div className="grid items-start gap-4 xl:grid-cols-2">
-        <section className="overflow-hidden rounded-2xl border border-green-200 bg-white shadow-sm">
-          <div className="bg-green-50 px-5 py-5 md:px-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
-                  Next visit
-                </div>
-                <div className="mt-2 text-2xl font-bold text-slate-950">
-                  {nextVisit}
-                </div>
-                <div className="mt-1 text-base font-bold text-[#176b37]">
-                  {nextVisitLabel}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={onViewProgramme}
-                className="rounded-xl border border-green-200 bg-white px-4 py-2.5 text-sm font-bold text-green-800 transition hover:bg-green-100"
-              >
-                View programme →
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-0 border-t border-green-100 sm:grid-cols-3">
-            <OverviewBoxFact
-              label="Programme"
-              value={hasProgramme ? "Active" : "Not assigned"}
-            />
-            <OverviewBoxFact
-              label="Group"
-              value={`Group ${customer.groupNumber}`}
-            />
-            <OverviewBoxFact
-              label="Van"
-              value={`Van ${customer.vanNumber}`}
-            />
-          </div>
-        </section>
-
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-bold text-slate-950">
-              Recent Treatments
+              Recent Visits
             </h2>
             <button
               type="button"
               onClick={onViewTreatments}
               className="text-sm font-bold text-[#176b37] hover:underline"
             >
-              View all treatments →
+              View All Visits →
             </button>
           </div>
 
           {treatments.length > 0 ? (
             <div className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
-              {treatments.slice(0, 4).map((treatment) => (
+              {treatments.map((treatment) => (
                 <div
                   key={treatment.id}
                   className="grid gap-2 py-3 sm:grid-cols-[125px_minmax(0,1fr)_auto] sm:items-center"
@@ -2795,8 +2757,13 @@ function OverviewTab({
                   <div className="text-sm font-medium text-slate-500">
                     {formatDate(getTreatmentDate(treatment))}
                   </div>
-                  <div className="min-w-0 text-sm font-bold text-slate-900">
-                    {treatment.treatmentName}
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-900">
+                      {treatment.treatmentName}
+                    </div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">
+                      {treatment.jobType === "additional" ? "Additional Job" : "Programme Visit"}
+                    </div>
                   </div>
                   <TreatmentOverviewStatus status={treatment.status} />
                 </div>
@@ -2804,16 +2771,18 @@ function OverviewTab({
             </div>
           ) : (
             <div className="mt-4 text-sm text-slate-500">
-              No treatment history recorded yet.
+              No visit history recorded yet.
             </div>
           )}
         </section>
-      </div>
 
-      {(customer.lawnAreas.length > 0 || customer.notes) && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          {customer.lawnAreas.length > 0 && (
-            <div>
+          <h2 className="text-lg font-bold text-slate-950">
+            Lawn Measurements & Customer Note
+          </h2>
+
+          {customer.lawnAreas.length > 0 ? (
+            <div className="mt-4">
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                 Lawn Measurements
               </div>
@@ -2831,10 +2800,14 @@ function OverviewTab({
                   .join(" · ")}
               </p>
             </div>
+          ) : (
+            <div className="mt-4 text-sm text-slate-500">
+              No individual lawn measurements recorded. Total lawn size: {customer.lawnSize.toLocaleString("en-GB")} m².
+            </div>
           )}
 
-          {customer.notes && (
-            <div className={customer.lawnAreas.length > 0 ? "mt-4 border-t border-slate-100 pt-4" : ""}>
+          {customer.notes ? (
+            <div className="mt-4 border-t border-slate-100 pt-4">
               <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                 Customer Note
               </div>
@@ -2842,9 +2815,13 @@ function OverviewTab({
                 {customer.notes}
               </p>
             </div>
+          ) : (
+            <div className="mt-4 border-t border-slate-100 pt-4 text-sm text-slate-500">
+              No customer note recorded.
+            </div>
           )}
         </section>
-      )}
+      </div>
     </div>
   );
 }
