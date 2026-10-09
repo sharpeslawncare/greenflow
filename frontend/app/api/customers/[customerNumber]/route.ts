@@ -31,6 +31,22 @@ type AdditionalJobsParseResult =
       error: string;
     };
 
+type LawnAreaInput = {
+  name: string;
+  areaSquareMetres: number;
+  displayOrder: number;
+};
+
+type LawnAreasParseResult =
+  | {
+      success: true;
+      lawnAreas: LawnAreaInput[];
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
 async function getCurrentMembership() {
   const session = await auth();
 
@@ -213,6 +229,74 @@ function parseAdditionalJobs(
   };
 }
 
+function parseLawnAreas(
+  value: unknown,
+): LawnAreasParseResult {
+  if (!Array.isArray(value)) {
+    return {
+      success: false,
+      error: "Lawn areas must be an array.",
+    };
+  }
+
+  const lawnAreas: LawnAreaInput[] = [];
+
+  for (const [index, rawLawnArea] of value.entries()) {
+    if (
+      !rawLawnArea ||
+      typeof rawLawnArea !== "object" ||
+      Array.isArray(rawLawnArea)
+    ) {
+      return {
+        success: false,
+        error: "Invalid lawn area data.",
+      };
+    }
+
+    const lawnArea =
+      rawLawnArea as Record<string, unknown>;
+
+    const name =
+      typeof lawnArea.name === "string"
+        ? lawnArea.name.trim()
+        : "";
+
+    const areaSquareMetres = Number(
+      lawnArea.areaSquareMetres,
+    );
+
+    if (!name) {
+      return {
+        success: false,
+        error:
+          "Every lawn measurement must have a name.",
+      };
+    }
+
+    if (
+      !Number.isInteger(areaSquareMetres) ||
+      areaSquareMetres <= 0
+    ) {
+      return {
+        success: false,
+        error:
+          "Every lawn measurement must have a whole-number area greater than 0 m².",
+      };
+    }
+
+    lawnAreas.push({
+      name,
+      areaSquareMetres,
+      displayOrder: index,
+    });
+  }
+
+  return {
+    success: true,
+    lawnAreas,
+  };
+}
+
 function createFullName(
   title: string,
   firstName: string,
@@ -227,6 +311,12 @@ function createFullName(
 function serializeCustomer<
   T extends {
     treatmentPrice: unknown;
+    lawnAreas: Array<{
+      id: string;
+      name: string;
+      areaSquareMetres: number;
+      displayOrder: number;
+    }>;
     additionalJobs: Array<{
       id: string;
       treatmentLibraryId: string;
@@ -244,6 +334,16 @@ function serializeCustomer<
     ...customer,
     treatmentPrice: Number(
       customer.treatmentPrice,
+    ),
+    lawnAreas: customer.lawnAreas.map(
+      (lawnArea) => ({
+        id: lawnArea.id,
+        name: lawnArea.name,
+        areaSquareMetres:
+          lawnArea.areaSquareMetres,
+        displayOrder:
+          lawnArea.displayOrder,
+      }),
     ),
     additionalJobs: customer.additionalJobs.map(
       (job) => ({
@@ -613,6 +713,37 @@ export async function PATCH(
       );
   }
 
+  let lawnAreas:
+    | LawnAreaInput[]
+    | undefined;
+
+  if (data.lawnAreas !== undefined) {
+    const lawnAreasResult =
+      parseLawnAreas(data.lawnAreas);
+
+    if (!lawnAreasResult.success) {
+      return NextResponse.json(
+        {
+          error:
+            lawnAreasResult.error,
+        },
+        { status: 400 },
+      );
+    }
+
+    lawnAreas = lawnAreasResult.lawnAreas;
+
+    if (lawnAreas.length > 0) {
+      updateData.lawnSize =
+        lawnAreas.reduce(
+          (total, lawnArea) =>
+            total +
+            lawnArea.areaSquareMetres,
+          0,
+        );
+    }
+  }
+
   let additionalJobs:
     | AdditionalJobInput[]
     | undefined;
@@ -646,6 +777,30 @@ export async function PATCH(
           },
           data: updateData,
         });
+
+        if (lawnAreas !== undefined) {
+          await tx.customerLawnArea.deleteMany({
+            where: {
+              customerId: existingCustomer.id,
+            },
+          });
+
+          if (lawnAreas.length > 0) {
+            await tx.customerLawnArea.createMany({
+              data: lawnAreas.map(
+                (lawnArea) => ({
+                  customerId:
+                    existingCustomer.id,
+                  name: lawnArea.name,
+                  areaSquareMetres:
+                    lawnArea.areaSquareMetres,
+                  displayOrder:
+                    lawnArea.displayOrder,
+                }),
+              ),
+            });
+          }
+        }
 
         if (additionalJobs !== undefined) {
           await tx.additionalCustomerJob.deleteMany({
@@ -684,6 +839,11 @@ export async function PATCH(
             id: existingCustomer.id,
           },
           include: {
+            lawnAreas: {
+              orderBy: {
+                displayOrder: "asc",
+              },
+            },
             additionalJobs: {
               orderBy: {
                 createdAt: "asc",

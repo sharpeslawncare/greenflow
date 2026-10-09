@@ -609,8 +609,46 @@ function cancelEditing() {
       return;
     }
 
+    const lawnAreas = draft.lawnAreas.map(
+      (lawn, index) => ({
+        ...lawn,
+        name: lawn.name.trim(),
+        areaSquareMetres:
+          lawn.areaSquareMetres,
+        displayOrder: index,
+      }),
+    );
+
+    if (
+      lawnAreas.some(
+        (lawn) =>
+          !lawn.name ||
+          !Number.isInteger(
+            lawn.areaSquareMetres,
+          ) ||
+          lawn.areaSquareMetres <= 0,
+      )
+    ) {
+      setSavedMessage(
+        "Each lawn measurement needs a name and a whole-number area greater than 0 m².",
+      );
+      return;
+    }
+
+    const lawnSize =
+      lawnAreas.length > 0
+        ? lawnAreas.reduce(
+            (total, lawn) =>
+              total +
+              lawn.areaSquareMetres,
+            0,
+          )
+        : draft.lawnSize;
+
     const result = await updateCustomer({
       ...draft,
+      lawnAreas,
+      lawnSize,
 
       title:
         draft.title.trim(),
@@ -1957,28 +1995,238 @@ function cancelEditing() {
                 </p>
               </FormField>
 
-              <FormField label="Lawn size (m²)">
-                <input
-                  type="number"
-                  min="0"
-                  value={draft.lawnSize}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
+              <div className="md:col-span-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-950">
+                        Lawn Measurements
+                      </h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Add individual lawns when measurements are known. When lawn measurements exist, their total becomes the customer&apos;s lawn size.
+                      </p>
+                    </div>
 
-                      lawnSize:
-                        Math.max(
-                          0,
-                          Number(
-                            event.target
-                              .value,
-                          ) || 0,
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          lawnAreas: [
+                            ...draft.lawnAreas,
+                            {
+                              id: `draft-lawn-${Date.now()}-${draft.lawnAreas.length}`,
+                              name: "",
+                              areaSquareMetres: 0,
+                              displayOrder:
+                                draft.lawnAreas.length,
+                            },
+                          ],
+                        })
+                      }
+                      className="rounded-xl border border-green-300 bg-white px-4 py-2 text-sm font-bold text-green-800 transition hover:bg-green-50"
+                    >
+                      + Add Lawn
+                    </button>
+                  </div>
+
+                  {draft.lawnAreas.length > 0 ? (
+                    <div className="mt-4 space-y-3">
+                      {draft.lawnAreas.map(
+                        (lawn, index) => (
+                          <div
+                            key={lawn.id}
+                            className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_180px_auto]"
+                          >
+                            <FormField label="Lawn Name">
+                              <input
+                                value={lawn.name}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...draft,
+                                    lawnAreas:
+                                      draft.lawnAreas.map(
+                                        (
+                                          item,
+                                          itemIndex,
+                                        ) =>
+                                          itemIndex ===
+                                          index
+                                            ? {
+                                                ...item,
+                                                name: event
+                                                  .target
+                                                  .value,
+                                              }
+                                            : item,
+                                      ),
+                                  })
+                                }
+                                placeholder="e.g. Front Lawn"
+                                className={inputClass}
+                              />
+                            </FormField>
+
+                            <FormField label="Area (m²)">
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={
+                                  lawn.areaSquareMetres ||
+                                  ""
+                                }
+                                onChange={(event) => {
+                                  const areaSquareMetres =
+                                    Math.max(
+                                      0,
+                                      Math.floor(
+                                        Number(
+                                          event.target
+                                            .value,
+                                        ) || 0,
+                                      ),
+                                    );
+
+                                  const lawnAreas =
+                                    draft.lawnAreas.map(
+                                      (
+                                        item,
+                                        itemIndex,
+                                      ) =>
+                                        itemIndex ===
+                                        index
+                                          ? {
+                                              ...item,
+                                              areaSquareMetres,
+                                            }
+                                          : item,
+                                    );
+
+                                  setDraft({
+                                    ...draft,
+                                    lawnAreas,
+                                    lawnSize:
+                                      lawnAreas.reduce(
+                                        (
+                                          total,
+                                          item,
+                                        ) =>
+                                          total +
+                                          item.areaSquareMetres,
+                                        0,
+                                      ),
+                                  });
+                                }}
+                                className={inputClass}
+                              />
+                            </FormField>
+
+                            <div className="flex items-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const lawnAreas =
+                                    draft.lawnAreas
+                                      .filter(
+                                        (
+                                          _item,
+                                          itemIndex,
+                                        ) =>
+                                          itemIndex !==
+                                          index,
+                                      )
+                                      .map(
+                                        (
+                                          item,
+                                          itemIndex,
+                                        ) => ({
+                                          ...item,
+                                          displayOrder:
+                                            itemIndex,
+                                        }),
+                                      );
+
+                                  setDraft({
+                                    ...draft,
+                                    lawnAreas,
+                                    lawnSize:
+                                      lawnAreas.length >
+                                      0
+                                        ? lawnAreas.reduce(
+                                            (
+                                              total,
+                                              item,
+                                            ) =>
+                                              total +
+                                              item.areaSquareMetres,
+                                            0,
+                                          )
+                                        : draft.lawnSize,
+                                  });
+                                }}
+                                className="w-full rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-50 sm:w-auto"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
                         ),
-                    })
-                  }
-                  className={inputClass}
-                />
-              </FormField>
+                      )}
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <FormField label="Total Lawn Area (m²)">
+                          <input
+                            type="number"
+                            value={draft.lawnSize}
+                            readOnly
+                            className={`${inputClass} bg-slate-100 font-bold text-slate-800`}
+                          />
+                        </FormField>
+
+                        <div className="flex items-end">
+                          <p className="pb-2.5 text-xs leading-5 text-slate-500">
+                            The total is calculated automatically from the individual lawn measurements.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <FormField label="Total Lawn Area (m²)">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={draft.lawnSize}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              lawnSize:
+                                Math.max(
+                                  0,
+                                  Math.floor(
+                                    Number(
+                                      event.target
+                                        .value,
+                                    ) || 0,
+                                  ),
+                                ),
+                            })
+                          }
+                          className={inputClass}
+                        />
+                      </FormField>
+
+                      <div className="flex items-end">
+                        <p className="pb-2.5 text-xs leading-5 text-slate-500">
+                          This customer currently has a total-only historical lawn size. Use Add Lawn whenever you want to record the individual lawn measurements.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <FormField label="Treatment price (£)">
                 <input
