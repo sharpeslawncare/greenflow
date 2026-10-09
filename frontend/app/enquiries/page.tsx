@@ -448,6 +448,211 @@ export default function EnquiriesPage() {
     );
   }
 
+  async function persistEnquiry(
+    enquiryToSave: EnquiryRecord,
+    successMessage: string,
+  ): Promise<boolean> {
+    const title = enquiryToSave.title.trim();
+    const firstName = enquiryToSave.firstName.trim();
+    const surname = enquiryToSave.surname.trim();
+    const address = enquiryToSave.address.trim();
+    const postcode = enquiryToSave.postcode.trim().toUpperCase();
+    const emailAddress = enquiryToSave.emailAddress.trim();
+    const homePhone = enquiryToSave.homePhone.trim();
+    const mobilePhone = enquiryToSave.mobilePhone.trim();
+
+    if (
+      emailAddress &&
+      !isValidEmailAddress(emailAddress)
+    ) {
+      showMessage(
+        "Enter a valid email address or leave the email field blank.",
+        "error",
+      );
+      return false;
+    }
+
+    if (
+      enquiryToSave.quoteDate &&
+      enquiryToSave.quoteExpiryDate &&
+      enquiryToSave.quoteExpiryDate < enquiryToSave.quoteDate
+    ) {
+      showMessage(
+        "The quote expiry date cannot be earlier than the quote date.",
+        "error",
+      );
+      return false;
+    }
+
+    if (enquiryToSave.lawnAreas.length > 0) {
+      for (const lawnArea of enquiryToSave.lawnAreas) {
+        if (!lawnArea.name.trim()) {
+          showMessage(
+            "Enter a name for each lawn measurement.",
+            "error",
+          );
+          return false;
+        }
+
+        if (
+          !Number.isFinite(lawnArea.areaSquareMetres) ||
+          !Number.isInteger(lawnArea.areaSquareMetres) ||
+          lawnArea.areaSquareMetres <= 0
+        ) {
+          showMessage(
+            "Each lawn measurement must have an area greater than 0 m².",
+            "error",
+          );
+          return false;
+        }
+      }
+    }
+
+    const quoteIsPreparedOrBeyond =
+      enquiryToSave.quoteStatus === "Draft" ||
+      enquiryToSave.quoteStatus === "Presented" ||
+      enquiryToSave.quoteStatus === "Accepted" ||
+      enquiryToSave.status === "Quote Prepared" ||
+      enquiryToSave.status === "Quote Accepted";
+
+    if (
+      quoteIsPreparedOrBeyond &&
+      (
+        !Number.isFinite(enquiryToSave.lawnSizeSquareMetres) ||
+        enquiryToSave.lawnSizeSquareMetres <= 0
+      )
+    ) {
+      showMessage(
+        "Enter the measured lawn size before saving a prepared or accepted quote.",
+        "error",
+      );
+      return false;
+    }
+
+    if (
+      quoteIsPreparedOrBeyond &&
+      (
+        !Number.isFinite(enquiryToSave.quotedTreatmentPrice) ||
+        enquiryToSave.quotedTreatmentPrice <= 0
+      )
+    ) {
+      showMessage(
+        "Calculate or enter a treatment price before saving a prepared or accepted quote.",
+        "error",
+      );
+      return false;
+    }
+
+    if (
+      !Number.isFinite(enquiryToSave.suggestedGroupNumber) ||
+      !Number.isInteger(enquiryToSave.suggestedGroupNumber) ||
+      enquiryToSave.suggestedGroupNumber < 1
+    ) {
+      showMessage(
+        "Suggested group must be a positive whole number.",
+        "error",
+      );
+      return false;
+    }
+
+    const suggestedVehicle = vehicles.find(
+      (vehicle) =>
+        vehicle.number === enquiryToSave.suggestedVanNumber,
+    );
+
+    if (!suggestedVehicle || !suggestedVehicle.active) {
+      showMessage(
+        "Choose an active fleet vehicle for the suggested van.",
+        "error",
+      );
+      return false;
+    }
+
+    if (
+      enquiryToSave.status === "Quote Accepted" &&
+      enquiryToSave.quoteStatus !== "Accepted"
+    ) {
+      showMessage(
+        "Set the quote status to Accepted before saving an accepted enquiry.",
+        "error",
+      );
+      return false;
+    }
+
+    if (
+      enquiryToSave.quoteStatus === "Accepted" &&
+      enquiryToSave.status !== "Quote Accepted" &&
+      enquiryToSave.status !== "Converted to Customer"
+    ) {
+      showMessage(
+        "Set the enquiry status to Quote Accepted before saving an accepted quote.",
+        "error",
+      );
+      return false;
+    }
+
+    const savedEnquiry: EnquiryRecord = {
+      ...enquiryToSave,
+      title,
+      firstName,
+      surname,
+      fullName: [title, firstName, surname]
+        .filter(Boolean)
+        .join(" "),
+      address,
+      postcode,
+      emailAddress,
+      homePhone,
+      mobilePhone,
+      referredBy: enquiryToSave.referredBy.trim(),
+      initialMessage: enquiryToSave.initialMessage.trim(),
+      internalNotes: enquiryToSave.internalNotes.trim(),
+      quoteNotes: enquiryToSave.quoteNotes.trim(),
+      extraWorkDescription:
+        enquiryToSave.extraWorkDescription.trim(),
+      lawnAreas: enquiryToSave.lawnAreas.map(
+        (lawnArea, index) => ({
+          ...lawnArea,
+          name: lawnArea.name.trim(),
+          areaSquareMetres: Math.max(
+            0,
+            Math.floor(lawnArea.areaSquareMetres),
+          ),
+          displayOrder: index,
+        }),
+      ),
+      lawnSizeSquareMetres:
+        enquiryToSave.lawnAreas.length > 0
+          ? enquiryToSave.lawnAreas.reduce(
+              (total, lawnArea) =>
+                total +
+                Math.max(
+                  0,
+                  Math.floor(lawnArea.areaSquareMetres),
+                ),
+              0,
+            )
+          : enquiryToSave.lawnSizeSquareMetres,
+    };
+
+    const result = await updateEnquiry(savedEnquiry);
+
+    if (!result.success) {
+      showMessage(result.message, "error");
+      return false;
+    }
+
+    setDraft({
+      ...savedEnquiry,
+      lawnAreas: savedEnquiry.lawnAreas.map(
+        (lawnArea) => ({ ...lawnArea }),
+      ),
+    });
+
+    showMessage(successMessage);
+    return true;
+  }
+
   async function saveEnquiry(
     event?: FormEvent<HTMLFormElement>,
   ) {
@@ -461,263 +666,9 @@ export default function EnquiriesPage() {
       return;
     }
 
-    const title =
-      draft.title.trim();
-    const firstName =
-      draft.firstName.trim();
-    const surname =
-      draft.surname.trim();
-    const address =
-      draft.address.trim();
-    const postcode =
-      draft.postcode.trim().toUpperCase();
-    const emailAddress =
-      draft.emailAddress.trim();
-    const homePhone =
-      draft.homePhone.trim();
-    const mobilePhone =
-      draft.mobilePhone.trim();
-
-    if (
-      emailAddress &&
-      !isValidEmailAddress(
-        emailAddress,
-      )
-    ) {
-      showMessage(
-        "Enter a valid email address or leave the email field blank.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      draft.quoteDate &&
-      draft.quoteExpiryDate &&
-      draft.quoteExpiryDate < draft.quoteDate
-    ) {
-      showMessage(
-        "The quote expiry date cannot be earlier than the quote date.",
-        "error",
-      );
-      return;
-    }
-
-    if (draft.lawnAreas.length > 0) {
-      for (const lawnArea of draft.lawnAreas) {
-        if (!lawnArea.name.trim()) {
-          showMessage(
-            "Enter a name for each lawn measurement.",
-            "error",
-          );
-          return;
-        }
-
-        if (
-          !Number.isFinite(
-            lawnArea.areaSquareMetres,
-          ) ||
-          !Number.isInteger(
-            lawnArea.areaSquareMetres,
-          ) ||
-          lawnArea.areaSquareMetres <= 0
-        ) {
-          showMessage(
-            "Each lawn measurement must have an area greater than 0 m².",
-            "error",
-          );
-          return;
-        }
-      }
-    }
-
-    const quoteIsPreparedOrBeyond =
-      draft.quoteStatus === "Draft" ||
-      draft.quoteStatus === "Presented" ||
-      draft.quoteStatus === "Accepted" ||
-      draft.status === "Quote Prepared" ||
-      draft.status === "Quote Accepted";
-
-    if (
-      quoteIsPreparedOrBeyond &&
-      (
-        !Number.isFinite(
-          draft.lawnSizeSquareMetres,
-        ) ||
-        draft.lawnSizeSquareMetres <= 0
-      )
-    ) {
-      showMessage(
-        "Enter the measured lawn size before saving a prepared or accepted quote.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      quoteIsPreparedOrBeyond &&
-      (
-        !Number.isFinite(
-          draft.quotedTreatmentPrice,
-        ) ||
-        draft.quotedTreatmentPrice <= 0
-      )
-    ) {
-      showMessage(
-        "Calculate or enter a treatment price before saving a prepared or accepted quote.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      !Number.isFinite(
-        draft.suggestedGroupNumber,
-      ) ||
-      !Number.isInteger(
-        draft.suggestedGroupNumber,
-      ) ||
-      draft.suggestedGroupNumber < 1
-    ) {
-      showMessage(
-        "Suggested group must be a positive whole number.",
-        "error",
-      );
-      return;
-    }
-
-    const suggestedVehicle =
-      vehicles.find(
-        (vehicle) =>
-          vehicle.number ===
-          draft.suggestedVanNumber,
-      );
-
-    if (
-      !suggestedVehicle ||
-      !suggestedVehicle.active
-    ) {
-      showMessage(
-        "Choose an active fleet vehicle for the suggested van.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      draft.status === "Quote Accepted" &&
-      draft.quoteStatus !== "Accepted"
-    ) {
-      showMessage(
-        "Set the quote status to Accepted before saving an accepted enquiry.",
-        "error",
-      );
-      return;
-    }
-
-    if (
-      draft.quoteStatus === "Accepted" &&
-      draft.status !== "Quote Accepted" &&
-      draft.status !== "Converted to Customer"
-    ) {
-      showMessage(
-        "Set the enquiry status to Quote Accepted before saving an accepted quote.",
-        "error",
-      );
-      return;
-    }
-
-    const savedEnquiry: EnquiryRecord = {
-      ...draft,
-
-      title,
-
-      firstName,
-
-      surname,
-
-      fullName: [
-        title,
-        firstName,
-        surname,
-      ]
-        .filter(Boolean)
-        .join(" "),
-
-      address,
-
-      postcode,
-
-      emailAddress,
-
-      homePhone,
-
-      mobilePhone,
-
-      referredBy:
-        draft.referredBy.trim(),
-
-      initialMessage:
-        draft.initialMessage.trim(),
-
-      internalNotes:
-        draft.internalNotes.trim(),
-
-      quoteNotes:
-        draft.quoteNotes.trim(),
-
-      extraWorkDescription:
-        draft.extraWorkDescription.trim(),
-
-      lawnAreas:
-        draft.lawnAreas.map(
-          (lawnArea, index) => ({
-            ...lawnArea,
-            name: lawnArea.name.trim(),
-            areaSquareMetres:
-              Math.max(
-                0,
-                Math.floor(
-                  lawnArea.areaSquareMetres,
-                ),
-              ),
-            displayOrder: index,
-          }),
-        ),
-
-      lawnSizeSquareMetres:
-        draft.lawnAreas.length > 0
-          ? draft.lawnAreas.reduce(
-              (total, lawnArea) =>
-                total +
-                Math.max(
-                  0,
-                  Math.floor(
-                    lawnArea.areaSquareMetres,
-                  ),
-                ),
-              0,
-            )
-          : draft.lawnSizeSquareMetres,
-    };
-
-    const result =
-      await updateEnquiry(
-        savedEnquiry,
-      );
-
-    if (!result.success) {
-      showMessage(
-        result.message,
-        "error",
-      );
-      return;
-    }
-
-    setDraft(savedEnquiry);
-
-    showMessage(
-      `${savedEnquiry.enquiryNumber} saved.`,
+    await persistEnquiry(
+      draft,
+      `${draft.enquiryNumber} saved.`,
     );
   }
 
@@ -831,7 +782,7 @@ export default function EnquiriesPage() {
     );
   }
 
-  function markQuotePresented() {
+  async function markQuotePresented() {
     if (!draft) {
       return;
     }
@@ -877,20 +828,21 @@ export default function EnquiriesPage() {
       return;
     }
 
-    setDraft({
+    const updatedEnquiry: EnquiryRecord = {
       ...draft,
       status: "Quote Prepared",
       quoteStatus: "Presented",
       quoteDate,
       quoteExpiryDate,
-    });
+    };
 
-    showMessage(
-      "Quote marked as presented. Save the enquiry to retain the change.",
+    await persistEnquiry(
+      updatedEnquiry,
+      "Quote marked as presented and all enquiry changes saved.",
     );
   }
 
-  function markQuoteAccepted() {
+  async function markQuoteAccepted() {
     if (!draft) {
       return;
     }
@@ -936,32 +888,34 @@ export default function EnquiriesPage() {
       return;
     }
 
-    setDraft({
+    const updatedEnquiry: EnquiryRecord = {
       ...draft,
       status: "Quote Accepted",
       quoteStatus: "Accepted",
       quoteDate,
       quoteExpiryDate,
-    });
+    };
 
-    showMessage(
-      "Quote marked as accepted. Save before converting the enquiry.",
+    await persistEnquiry(
+      updatedEnquiry,
+      "Quote marked as accepted and all enquiry changes saved. The enquiry is ready for conversion.",
     );
   }
 
-  function markQuoteDeclined() {
+  async function markQuoteDeclined() {
     if (!draft) {
       return;
     }
 
-    setDraft({
+    const updatedEnquiry: EnquiryRecord = {
       ...draft,
       status: "Quote Declined",
       quoteStatus: "Declined",
-    });
+    };
 
-    showMessage(
-      "Quote marked as declined. Save the enquiry to retain the change.",
+    await persistEnquiry(
+      updatedEnquiry,
+      "Quote marked as declined and all enquiry changes saved.",
     );
   }
 
