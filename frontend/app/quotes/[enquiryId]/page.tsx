@@ -45,7 +45,7 @@ export default function QuotePage() {
       <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
         <div className="max-w-lg rounded-2xl bg-white p-10 text-center shadow-sm">
           <h1 className="text-2xl font-bold">
-            Quotation not found
+            Quotation Not Found
           </h1>
 
           <p className="mt-3 text-slate-500">
@@ -56,7 +56,7 @@ export default function QuotePage() {
             href="/enquiries"
             className="mt-6 inline-flex rounded-xl bg-[#176b37] px-5 py-3 font-semibold text-white"
           >
-            Return to enquiries
+            Return to Enquiries
           </Link>
         </div>
       </main>
@@ -117,6 +117,20 @@ export default function QuotePage() {
   const quoteExpired =
     expiryDate < todayDate();
 
+  const lawnAreas = [...enquiry.lawnAreas].sort(
+    (first, second) =>
+      first.displayOrder - second.displayOrder,
+  );
+
+  const treatmentPrice =
+    enquiry.quotedTreatmentPrice;
+
+  const aerationPrice =
+    treatmentPrice * 2;
+
+  const scarificationPrice =
+    treatmentPrice * 3;
+
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 print:bg-white print:p-0">
       {!printableQuote && (
@@ -163,7 +177,7 @@ export default function QuotePage() {
               : "cursor-not-allowed bg-slate-400"
           }`}
         >
-          Print or save PDF
+          Print or Save PDF
         </button>
       </div>
 
@@ -197,7 +211,7 @@ export default function QuotePage() {
             </div>
 
             <div className="mt-1 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Lawn-care quotation
+              Lawn-Care Quotation
             </div>
 
             <div className="mt-3 text-sm text-slate-500">
@@ -276,7 +290,7 @@ export default function QuotePage() {
             <QuoteLabel
               colour={primaryColour}
             >
-              Prepared for
+              Prepared For
             </QuoteLabel>
 
             <div className="mt-2 text-xl font-bold">
@@ -307,28 +321,28 @@ export default function QuotePage() {
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <QuoteRow
-              label="Quotation number"
+              label="Quotation Number"
               value={
                 enquiry.enquiryNumber
               }
             />
 
             <QuoteRow
-              label="Quote date"
+              label="Quote Date"
               value={formatDate(
                 quoteDate,
               )}
             />
 
             <QuoteRow
-              label="Valid until"
+              label="Valid Until"
               value={formatDate(
                 expiryDate,
               )}
             />
 
             <QuoteRow
-              label="Quote status"
+              label="Quote Status"
               value={
                 quoteExpired
                   ? `${enquiry.quoteStatus} · Expired`
@@ -342,52 +356,139 @@ export default function QuotePage() {
           <QuoteLabel
             colour={primaryColour}
           >
-            Proposed lawn-care service
+            Your Lawn
           </QuoteLabel>
 
-          <p className="mt-4 leading-7 text-slate-700">
-            We are pleased to provide a
-            quotation for regular seasonal
-            lawn-care treatments at the
-            property shown above.
-          </p>
+          {lawnAreas.length > 0 ? (
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+              {lawnAreas.map(
+                (lawnArea, index) => (
+                  <div
+                    key={lawnArea.id}
+                    className={`flex items-center justify-between gap-6 px-4 py-3 ${
+                      index > 0
+                        ? "border-t border-slate-200"
+                        : ""
+                    }`}
+                  >
+                    <span className="font-semibold text-slate-800">
+                      {lawnArea.name}
+                    </span>
 
-          <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-            <div className="grid grid-cols-[1.5fr_0.75fr_0.75fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-              <span>Service</span>
-              <span>Lawn area</span>
-              <span className="text-right">
-                Price per visit
-              </span>
-            </div>
+                    <span className="font-bold text-slate-900">
+                      {lawnArea.areaSquareMetres.toLocaleString(
+                        "en-GB",
+                      )}{" "}
+                      m²
+                    </span>
+                  </div>
+                ),
+              )}
 
-            <div className="grid grid-cols-[1.5fr_0.75fr_0.75fr] items-center border-t border-slate-200 px-4 py-5">
-              <div>
-                <div className="font-bold">
-                  Regular seasonal lawn
-                  treatment
-                </div>
+              <div className="flex items-center justify-between gap-6 border-t-2 border-slate-300 bg-slate-50 px-4 py-3">
+                <span className="font-bold">
+                  Total Lawn Area
+                </span>
 
-                <div className="mt-1 text-sm text-slate-500">
-                  Treatment selected according
-                  to seasonal lawn requirements.
-                </div>
+                <span className="text-lg font-bold">
+                  {enquiry.lawnSizeSquareMetres.toLocaleString(
+                    "en-GB",
+                  )}{" "}
+                  m²
+                </span>
               </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex items-center justify-between gap-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <span className="font-bold">
+                Total Lawn Area
+              </span>
 
-              <div className="font-semibold">
+              <span className="text-lg font-bold">
                 {enquiry.lawnSizeSquareMetres.toLocaleString(
                   "en-GB",
                 )}{" "}
                 m²
-              </div>
-
-              <div className="text-right text-xl font-bold">
-                £
-                {enquiry.quotedTreatmentPrice.toFixed(
-                  2,
-                )}
-              </div>
+              </span>
             </div>
+          )}
+        </section>
+
+        <section className="mt-6 rounded-xl border border-slate-200 p-5">
+          <QuoteLabel
+            colour={primaryColour}
+          >
+            Your Lawn-Care Programme
+          </QuoteLabel>
+
+          <p className="mt-4 leading-7 text-slate-700">
+            Our standard lawn-care programme
+            consists of five seasonal treatment
+            visits through the year, normally
+            around ten weeks apart. Each visit is
+            selected to support the lawn at the
+            appropriate point in the season.
+          </p>
+
+          <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+            <ProgrammeRow
+              treatment="T5 – Winter Moss Control 2"
+              timing="Starts the year"
+            />
+            <ProgrammeRow
+              treatment="T1 – Spring Weed & Feed"
+              timing="Spring"
+            />
+            <ProgrammeRow
+              treatment="T2 – Summer Weed & Feed"
+              timing="Summer"
+            />
+            <ProgrammeRow
+              treatment="T3 – Autumn Weed & Feed"
+              timing="Autumn"
+            />
+            <ProgrammeRow
+              treatment="T4 – Winter Moss Control 1"
+              timing="Finishes the year"
+            />
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-xl border border-slate-200 p-5">
+          <QuoteLabel
+            colour={primaryColour}
+          >
+            Pricing
+          </QuoteLabel>
+
+          <p className="mt-4 leading-7 text-slate-700">
+            The standard treatment price below is
+            charged for each of the five treatment
+            visits in the annual programme. It is
+            not an annual total.
+          </p>
+
+          <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+            <PriceRow
+              service="Standard Lawn Treatment"
+              description="One seasonal treatment visit as part of the five-visit annual programme."
+              price={`£${treatmentPrice.toFixed(2)}`}
+              priceNote="per visit"
+            />
+
+            <PriceRow
+              service="Hollow Tine Aeration"
+              description="Helps relieve soil compaction, encourages healthy root growth and can help improve drainage."
+              price={`£${aerationPrice.toFixed(2)}`}
+              priceNote="additional service"
+            />
+
+            <PriceRow
+              service="Scarification"
+              description="Removes moss and thatch from the lawn, allowing water, air and nutrients to reach the root zone more effectively."
+              price={`£${scarificationPrice.toFixed(2)}`}
+              priceNote="additional service"
+            />
           </div>
 
           {enquiry.minimumPriceApplied && (
@@ -399,78 +500,46 @@ export default function QuotePage() {
           )}
         </section>
 
-        <section className="mt-6 grid grid-cols-[1.25fr_0.75fr] gap-5">
-          <div className="rounded-xl border border-slate-200 p-5">
-            <QuoteLabel
-              colour={primaryColour}
-            >
-              Quotation information
-            </QuoteLabel>
-
-            <p className="mt-3 whitespace-pre-line leading-7 text-slate-700">
-              {enquiry.quoteNotes ||
-                "This quotation covers the regular seasonal lawn-treatment service discussed during the enquiry or site visit."}
-            </p>
-
-            {enquiry.extraWorkRequired && (
-              <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                <div className="font-bold">
-                  Possible additional work
-                </div>
-
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {enquiry.extraWorkDescription ||
-                    "Additional lawn-renovation work may be recommended separately."}
-                </p>
-
-                {enquiry.preferredExtraWorkSeason && (
-                  <div className="mt-2 text-sm font-semibold text-slate-700">
-                    Suggested season:{" "}
-                    {
-                      enquiry.preferredExtraWorkSeason
-                    }
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div
-            className="rounded-xl p-5 text-white"
-            style={{
-              backgroundColor:
-                primaryColour,
-            }}
+        <section className="mt-6 rounded-xl border border-slate-200 p-5">
+          <QuoteLabel
+            colour={primaryColour}
           >
-            <div className="text-xs font-semibold uppercase tracking-wide text-white/80">
-              Quoted price
-            </div>
+            Notes About Your Lawn
+          </QuoteLabel>
 
-            <div className="mt-3 text-4xl font-bold">
-              £
-              {enquiry.quotedTreatmentPrice.toFixed(
-                2,
+          <p className="mt-3 whitespace-pre-line leading-7 text-slate-700">
+            {enquiry.quoteNotes ||
+              "No additional lawn notes were recorded for this quotation."}
+          </p>
+
+          {enquiry.extraWorkRequired && (
+            <div className="mt-5 rounded-xl bg-slate-50 p-4">
+              <div className="font-bold">
+                Specific Additional Work
+              </div>
+
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                {enquiry.extraWorkDescription ||
+                  "Additional lawn-renovation work may be recommended separately."}
+              </p>
+
+              {enquiry.preferredExtraWorkSeason && (
+                <div className="mt-2 text-sm font-semibold text-slate-700">
+                  Suggested season:{" "}
+                  {
+                    enquiry.preferredExtraWorkSeason
+                  }
+                </div>
               )}
             </div>
-
-            <div className="mt-2 text-sm text-white/80">
-              Per standard treatment visit
-            </div>
-
-            {settings.invoices
-              .showAmountIncludingVat && (
-              <div className="mt-4 border-t border-white/25 pt-4 text-sm">
-                Including VAT where applicable
-              </div>
-            )}
-          </div>
+          )}
         </section>
 
         <section className="mt-6 rounded-xl border border-green-200 bg-green-50 p-5">
           <QuoteLabel
             colour={primaryColour}
           >
-            What happens next
+            What Happens Next
           </QuoteLabel>
 
           <p className="mt-3 leading-7 text-green-950">
@@ -517,17 +586,73 @@ export default function QuotePage() {
       ) : (
         <div className="mx-auto max-w-[900px] rounded-2xl border border-red-200 bg-white p-10 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-red-800">
-            Quotation unavailable
+            Quotation Unavailable
           </h1>
           <p className="mt-3 text-slate-600">
             This enquiry cannot be presented as a customer quotation until its quote status, lawn area and quoted treatment price are valid.
           </p>
           <Link href="/enquiries" className="mt-6 inline-flex rounded-xl bg-[#176b37] px-5 py-3 font-semibold text-white">
-            Return to enquiries
+            Return to Enquiries
           </Link>
         </div>
       )}
     </main>
+  );
+}
+
+function ProgrammeRow({
+  treatment,
+  timing,
+}: {
+  treatment: string;
+  timing: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-6 border-b border-slate-200 px-4 py-3 last:border-b-0">
+      <span className="font-semibold text-slate-800">
+        {treatment}
+      </span>
+
+      <span className="text-right text-sm font-semibold text-slate-500">
+        {timing}
+      </span>
+    </div>
+  );
+}
+
+function PriceRow({
+  service,
+  description,
+  price,
+  priceNote,
+}: {
+  service: string;
+  description: string;
+  price: string;
+  priceNote: string;
+}) {
+  return (
+    <div className="grid grid-cols-[1fr_auto] gap-6 border-b border-slate-200 px-4 py-4 last:border-b-0">
+      <div>
+        <div className="font-bold text-slate-900">
+          {service}
+        </div>
+
+        <div className="mt-1 text-sm leading-6 text-slate-600">
+          {description}
+        </div>
+      </div>
+
+      <div className="min-w-[125px] text-right">
+        <div className="text-xl font-bold text-slate-900">
+          {price}
+        </div>
+
+        <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {priceNote}
+        </div>
+      </div>
+    </div>
   );
 }
 
