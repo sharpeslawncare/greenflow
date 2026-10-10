@@ -173,8 +173,9 @@ export default function EnquiriesPage() {
     return [...enquiries]
       .filter((enquiry) => {
         const matchesStatus =
-          statusFilter === "All" ||
-          enquiry.status === statusFilter;
+          statusFilter === "All"
+            ? enquiry.status !== "Converted to Customer"
+            : enquiry.status === statusFilter;
 
         if (!matchesStatus) {
           return false;
@@ -251,12 +252,12 @@ export default function EnquiriesPage() {
 
   const acceptedCount = enquiries.filter(
     (enquiry) =>
-      enquiry.quoteStatus ===
+      enquiry.status !==
+        "Converted to Customer" &&
+      (enquiry.quoteStatus ===
         "Accepted" ||
-      enquiry.status ===
-        "Quote Accepted" ||
-      enquiry.status ===
-        "Converted to Customer",
+        enquiry.status ===
+          "Quote Accepted"),
   ).length;
 
   function selectEnquiry(
@@ -1703,7 +1704,7 @@ export default function EnquiriesPage() {
               value={String(
                 acceptedCount,
               )}
-              detail="Accepted or already converted"
+              detail="Accepted and ready to convert"
             />
           </section>
 
