@@ -1003,9 +1003,13 @@ function normaliseCustomerStatus(
   if (
     value === "Active" ||
     value === "Paused" ||
-    value === "Inactive"
+    value === "Cancelled"
   ) {
     return value;
+  }
+
+  if (value === "Inactive") {
+    return "Cancelled";
   }
 
   return "Active";

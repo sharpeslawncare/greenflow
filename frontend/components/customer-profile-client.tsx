@@ -1821,8 +1821,8 @@ function cancelEditing() {
                     Paused
                   </option>
 
-                  <option value="Inactive">
-                    Inactive
+                  <option value="Cancelled">
+                    Cancelled
                   </option>
                 </select>
               </FormField>

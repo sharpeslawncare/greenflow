@@ -589,6 +589,7 @@ function parseCustomer(
   const allowedStatuses = [
     "Active",
     "Paused",
+    "Cancelled",
     "Inactive",
   ];
 
@@ -596,9 +597,14 @@ function parseCustomer(
     return {
       success: false,
       error:
-        "Status must be Active, Paused or Inactive.",
+        "Status must be Active, Paused or Cancelled.",
     };
   }
+
+  const canonicalStatus =
+    status === "Inactive"
+      ? "Cancelled"
+      : status;
 
   const allowedContactMethods = [
     "SMS",
@@ -645,7 +651,7 @@ function parseCustomer(
       lawnAreas: lawnAreasResult.lawnAreas,
       groupNumber,
       treatmentPrice,
-      status,
+      status: canonicalStatus,
       vanNumber,
       nextVisit,
       lastVisit,
@@ -696,6 +702,7 @@ function customerDatabaseData(
 
 function serializeCustomer<
   T extends {
+    status: string;
     treatmentPrice: unknown;
     lawnAreas: Array<{
       id: string;
@@ -718,6 +725,10 @@ function serializeCustomer<
 >(customer: T) {
   return {
     ...customer,
+    status:
+      customer.status === "Inactive"
+        ? "Cancelled"
+        : customer.status,
     treatmentPrice: Number(
       customer.treatmentPrice,
     ),

@@ -189,7 +189,7 @@ export default function CustomersPage() {
           customers.filter(
             (customer) =>
               customer.status ===
-              "Inactive",
+              "Cancelled",
           ).length,
       }),
       [customers],
@@ -252,9 +252,7 @@ export default function CustomersPage() {
         search.trim().toLowerCase();
 
       const requiredStatus =
-        activeTab === "Cancelled"
-          ? "Inactive"
-          : activeTab;
+        activeTab;
 
       const rows =
         customers
@@ -901,10 +899,7 @@ export default function CustomersPage() {
     setAddingCustomer(false);
     setAutomaticCustomerNumberPreview("");
     setActiveTab(
-      customer.status ===
-        "Inactive"
-        ? "Cancelled"
-        : customer.status,
+      customer.status,
     );
 
     setCurrentPage(1);
@@ -1700,9 +1695,7 @@ export default function CustomersPage() {
                           </td>
 
                           <td className="px-4 py-3">
-                            {row.customer.status === "Inactive"
-                              ? "Cancelled"
-                              : row.customer.status}
+                            {row.customer.status}
                           </td>
 
                           <td className="px-4 py-3">
@@ -1840,7 +1833,7 @@ export default function CustomersPage() {
                 >
                   <option value="Active">Active</option>
                   <option value="Paused">Paused</option>
-                  <option value="Inactive">Cancelled</option>
+                  <option value="Cancelled">Cancelled</option>
                 </select>
               </FormField>
 
@@ -2469,7 +2462,7 @@ function importStatus(
     normalised === "canceled" ||
     normalised === "closed"
   ) {
-    return "Inactive";
+    return "Cancelled";
   }
 
   return "Active";

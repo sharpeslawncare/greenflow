@@ -1,7 +1,7 @@
 export type CustomerStatus =
   | "Active"
   | "Paused"
-  | "Inactive";
+  | "Cancelled";
 
 export type Customer = {
   customerNumber: string;
